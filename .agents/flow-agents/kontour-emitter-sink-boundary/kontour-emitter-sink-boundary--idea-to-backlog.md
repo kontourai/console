@@ -3,15 +3,15 @@
 phase: backlog
 created: 2026-06-01
 source: Builder Kit shape
-issue_sync_status: not_requested
+issue_sync_status: completed
 
 ## Builder Kit Shape
 
 - Builder Kit Flow Definition: `kits/builder/flows/shape.flow.json`
 - Product-level surface used: `builder-shape`
 - Delegated primitive: `idea-to-backlog`
-- Issue sync: `not_requested`
-- Backlog gate decision: stopped before GitHub issue creation because the user invoked shaping, not issue sync.
+- Issue sync: `completed`
+- Backlog gate decision: GitHub issues synced after explicit continuation from the user.
 
 ## source_ideas
 
@@ -290,9 +290,12 @@ Related to Candidate Issue 1; not required for emitter skeleton.
 
 ## backlog_links
 
-- GitHub issue sync: `not_requested`
-- Created issues: none
-- Backlog gate status: shaped candidates are ready for issue sync if explicitly requested.
+- GitHub issue sync: `completed`
+- Milestone: `Kontour Console Producer Contract`
+- Created issues:
+  - #4 Define Kontour emitter, sink, and plane contracts: https://github.com/kontourai/kontour-console/issues/4
+  - #5 Implement local and composite sink skeleton: https://github.com/kontourai/kontour-console/issues/5
+- Backlog gate status: executable backlog synced for Candidate Issues 1 and 2. Parked/future ideas remain in this artifact only.
 
 ## parked_or_rejected
 
@@ -314,6 +317,6 @@ Related to Candidate Issue 1; not required for emitter skeleton.
 ## next_gate
 
 - Gate: Backlog Gate
-- Status: pass, stopped before issue creation
-- Reason: shaped candidates are coherent and testable, but GitHub issue sync was not explicitly requested.
-- Recommended next action if user wants execution backlog: sync Candidate Issue 1, or Candidate Issues 1+2 as a bundled milestone slice if immediate implementation evidence is preferred.
+- Status: pass, issue sync completed for committed near-term slices
+- Reason: Candidate Issues 1 and 2 are coherent, testable, and suitable for executable backlog. Candidate Issue 3 and parked future ideas remain unsynced.
+- Recommended next action: pull #4 first, then #5 after #4 lands unless both are intentionally bundled during planning.
