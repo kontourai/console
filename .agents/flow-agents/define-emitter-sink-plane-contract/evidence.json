@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "define-emitter-sink-plane-contract",
+  "verdict": "pass",
+  "checks": [
+    {
+      "id": "build",
+      "kind": "build",
+      "status": "skip",
+      "summary": "Docs-only change; no compile or bundle surface changed."
+    },
+    {
+      "id": "types",
+      "kind": "types",
+      "status": "skip",
+      "summary": "Docs-only change; no TypeScript/runtime source changed."
+    },
+    {
+      "id": "lint",
+      "kind": "lint",
+      "status": "skip",
+      "summary": "No repo lint script is defined and modified product files are Markdown docs only."
+    },
+    {
+      "id": "tests",
+      "kind": "test",
+      "status": "skip",
+      "summary": "npm test was skipped because no runtime files, examples, fixtures, inspector behavior, or package files changed."
+    },
+    {
+      "id": "security-doc-review",
+      "kind": "security",
+      "status": "pass",
+      "summary": "Doc review found explicit prohibitions on generic sinks executing action descriptors, opening URLs, calling endpoints, running commands, fetching backend resources, mutating product-owned state, or trusting record-provided paths.",
+      "artifact_refs": [
+        "docs/specs/emitter-sink-plane-contract.md:133",
+        "docs/specs/projection-schema.md:543",
+        ".agents/flow-agents/define-emitter-sink-plane-contract/define-emitter-sink-plane-contract--verify-work-review.md"
+      ]
+    },
+    {
+      "id": "targeted-rg",
+      "kind": "diff",
+      "status": "pass",
+      "command": "rg -n \"control-plane|telemetry-plane|KontourEmitter|LocalFileSink|CompositeSink|HttpApiSink|Otel|OpenTelemetry|fanout|delivery result|at-least-once|dedupe|descriptor|execute|endpoint|command|externalUrl|local-first\" docs/specs docs/product-boundaries.md README.md",
+      "summary": "Targeted vocabulary search found required plane, role, fanout, result, dedupe, local-first, and inert action descriptor terms in the docs."
+    },
+    {
+      "id": "acceptance-doc-inspection",
+      "kind": "diff",
+      "status": "pass",
+      "summary": "Line-numbered manual inspection verified AC1-AC5 and R1-R6 in docs/specs/emitter-sink-plane-contract.md, with supporting cross-links in projection-schema, product-boundaries, and README.",
+      "artifact_refs": [
+        "docs/specs/emitter-sink-plane-contract.md:22",
+        "docs/specs/emitter-sink-plane-contract.md:58",
+        "docs/specs/emitter-sink-plane-contract.md:78",
+        "docs/specs/emitter-sink-plane-contract.md:117",
+        "docs/specs/emitter-sink-plane-contract.md:133",
+        "docs/specs/projection-schema.md:9",
+        "docs/product-boundaries.md:96",
+        "README.md:27"
+      ]
+    },
+    {
+      "id": "scope-review",
+      "kind": "diff",
+      "status": "pass",
+      "summary": "git status, git diff, and source-file search confirmed scope is docs/spec, README, and workflow artifacts only; no hosted API/client, network sink, emitter code, product integration, or UI was added."
+    },
+    {
+      "id": "provider",
+      "kind": "external",
+      "status": "skip",
+      "summary": "Provider/CI checks skipped by risk: this is a local docs-only verification and the repo does not require provider evidence for this documentation change."
+    }
+  ],
+  "not_verified_gaps": []
+}

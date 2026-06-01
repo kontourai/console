@@ -93,4 +93,4 @@ The shared foundation should be contracts first:
 
 Shared UI code can come later, after Surface Console and Flow Console prove which primitives are actually common.
 
-See [Event And Projection Schema](specs/projection-schema.md) for the v0.1 local event stream and projection envelope.
+See [Event And Projection Schema](specs/projection-schema.md) for the v0.1 local event stream and projection envelope, and [Emitter, Sink, And Plane Contract](specs/emitter-sink-plane-contract.md) for the producer-side boundary between semantic records, required local file output, future sinks, and telemetry.

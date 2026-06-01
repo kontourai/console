@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "define-emitter-sink-plane-contract",
+  "status": "pass",
+  "reviewers": [
+    {
+      "reviewer": "tool-code-reviewer",
+      "agent_id": "019e8400-0a00-7791-8b6d-8ff9fdc13133",
+      "verdict": "PASS",
+      "findings": [],
+      "summary": "Verified delivery result recordId is required and projection dedupe identity no longer relies on generatedAt."
+    },
+    {
+      "reviewer": "tool-security-reviewer",
+      "agent_id": "019e8400-2aa4-72f1-b45e-524c1617083d",
+      "verdict": "PASS",
+      "findings": [],
+      "summary": "No security findings for descriptor, endpoint, command, URL, path, future sink, delivery result, or product mutation boundary language."
+    }
+  ],
+  "prior_findings_resolved": [
+    "Changed SinkDeliveryResult.recordId from optional to required.",
+    "Defined recordId as stable semantic identity rather than sink-local receipt identity.",
+    "Clarified projection dedupe identity and excluded generatedAt as a dedupe key."
+  ]
+}

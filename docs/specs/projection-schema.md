@@ -6,6 +6,8 @@ Kontour Console composes product-owned event streams and projections. It does no
 
 The event stream is the durable integration contract. Projections are cached read models derived from events so the suite-level console can render claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions quickly.
 
+See [Emitter, Sink, And Plane Contract](emitter-sink-plane-contract.md) for the producer-side delivery boundary, including control-plane versus telemetry-plane records, required local file output, multi-sink fanout, and inert action descriptor rules.
+
 ## Principle
 
 Surface Claims are the trust backbone. Most products should emit Surface Claims when they need to say whether something is verified, stale, disputed, rejected, unsupported, fresh, or policy-compliant.

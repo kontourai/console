@@ -28,5 +28,6 @@ The command reads checked-in files under `docs/examples/event-streams/` and `doc
 
 - [Product Boundaries](docs/product-boundaries.md)
 - [Event And Projection Schema](docs/specs/projection-schema.md)
+- [Emitter, Sink, And Plane Contract](docs/specs/emitter-sink-plane-contract.md)
 - [Example event streams](docs/examples/event-streams/)
 - [ADR 0001: Kontour Console As Suite Management Plane](docs/adr/0001-kontour-console-as-suite-management-plane.md)
