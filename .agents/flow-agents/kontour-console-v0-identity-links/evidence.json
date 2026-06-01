@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-identity-links",
+  "verdict": "pass",
+  "checks": [
+    {
+      "name": "doc_inspection_acceptance",
+      "type": "inspection",
+      "status": "pass",
+      "evidence": [
+        "docs/specs/projection-schema.md:529",
+        "docs/specs/projection-schema.md:567",
+        "docs/specs/projection-schema.md:579",
+        "docs/specs/projection-schema.md:592",
+        "docs/specs/projection-schema.md:607",
+        "docs/specs/projection-schema.md:624",
+        "docs/specs/projection-schema.md:668",
+        "docs/specs/projection-schema.md:721"
+      ]
+    },
+    {
+      "name": "inline_json_fences_parse",
+      "type": "command",
+      "status": "pass",
+      "command": "python3 -c 'import pathlib,json,re,sys; p=pathlib.Path(\"docs/specs/projection-schema.md\"); text=p.read_text(); blocks=re.findall(r\"```json\\n(.*?)\\n```\", text, re.S); print(f\"json_fences={len(blocks)}\");\\nfor i,b in enumerate(blocks,1):\\n    try: json.loads(b); print(f\"json fence {i}: OK\")\\n    except Exception as e: print(f\"json fence {i}: FAIL {e}\"); sys.exit(1)'",
+      "summary": "Found 4 json fences; all parsed successfully."
+    },
+    {
+      "name": "event_stream_jsonl_parse",
+      "type": "command",
+      "status": "pass",
+      "command": "python3 -c 'import json,pathlib,sys; paths=list(pathlib.Path(\"docs/examples/event-streams\").glob(\"*.jsonl\")); print(f\"jsonl_files={len(paths)}\");\\nfor p in paths:\\n    n=0\\n    for lineno,line in enumerate(p.read_text().splitlines(),1):\\n        if line.strip(): json.loads(line); n+=1\\n    print(f\"{p}: {n} records OK\")'",
+      "summary": "Parsed 3 JSONL files: campfit-field-review.jsonl 5 records, surface-claim-freshness.jsonl 3 records, flow-gate-route-back.jsonl 5 records."
+    },
+    {
+      "name": "scope_check",
+      "type": "inspection",
+      "status": "pass",
+      "evidence": [
+        "git diff --name-only showed only workflow artifacts currently uncommitted",
+        "docs/specs/projection-schema.md:278",
+        "docs/specs/projection-schema.md:622"
+      ],
+      "summary": "No graph DB, global identity service, inferred linker, reducer implementation, hosted ingestion, adapters, or UI found in modified scope."
+    },
+    {
+      "name": "issue_1_event_contract_compatibility",
+      "type": "inspection",
+      "status": "pass",
+      "evidence": [
+        "docs/specs/projection-schema.md:68",
+        "docs/specs/projection-schema.md:91",
+        "docs/specs/projection-schema.md:97",
+        "docs/specs/projection-schema.md:204",
+        "docs/specs/projection-schema.md:721"
+      ],
+      "summary": "Identity remains represented through subject, payload.refs, and links."
+    }
+  ],
+  "not_verified_gaps": []
+}

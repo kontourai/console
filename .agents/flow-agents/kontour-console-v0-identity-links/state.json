@@ -1,24 +1,27 @@
 {
   "schema_version": "1.0",
   "task_slug": "kontour-console-v0-identity-links",
-  "status": "executed",
-  "phase": "execution",
+  "status": "verified",
+  "phase": "verification",
   "owner": "tool-planner",
   "created_at": "2026-06-01T13:01:18Z",
-  "updated_at": "2026-06-01T13:08:42Z",
+  "updated_at": "2026-06-01T13:20:00Z",
   "source_request": "Plan GitHub issue #3 in /Users/brian/dev/github/kontourai/kontour-console: Define Cross-Product Identity Link Minimums.",
   "artifact_paths": [
     ".agents/flow-agents/kontour-console-v0-identity-links/kontour-console-v0-identity-links--pull-work.md",
     ".agents/flow-agents/kontour-console-v0-identity-links/kontour-console-v0-identity-links--plan-work.md",
     ".agents/flow-agents/kontour-console-v0-identity-links/kontour-console-v0-identity-links--plan-work-plan.md",
     ".agents/flow-agents/kontour-console-v0-identity-links/acceptance.json",
+    ".agents/flow-agents/kontour-console-v0-identity-links/critique.json",
+    ".agents/flow-agents/kontour-console-v0-identity-links/evidence.json",
+    ".agents/flow-agents/kontour-console-v0-identity-links/kontour-console-v0-identity-links--verify-work-review.md",
     ".agents/flow-agents/kontour-console-v0-identity-links/handoff.json",
     ".agents/flow-agents/kontour-console-v0-identity-links/state.json"
   ],
   "next_action": {
-    "status": "continue",
-    "summary": "Execution complete for issue #3 identity link minimums; ready for review-work and verify-work.",
-    "target_phase": "review",
-    "target_artifact": ".agents/flow-agents/kontour-console-v0-identity-links/kontour-console-v0-identity-links--plan-work-plan.md"
+    "status": "complete",
+    "summary": "Verification passed for issue #3 identity link minimums.",
+    "target_phase": "done",
+    "target_artifact": ".agents/flow-agents/kontour-console-v0-identity-links/kontour-console-v0-identity-links--verify-work-review.md"
   }
 }

@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-identity-links",
+  "status": "pass",
+  "phase": "review",
+  "reviewers": [
+    {
+      "reviewer": "tool-code-reviewer",
+      "artifact": ".agents/flow-agents/kontour-console-v0-identity-links/code-review.md",
+      "verdict": "pass",
+      "findings": []
+    },
+    {
+      "reviewer": "tool-security-reviewer",
+      "artifact": ".agents/flow-agents/kontour-console-v0-identity-links/security-review.md",
+      "verdict": "pass",
+      "findings": []
+    }
+  ],
+  "summary": "Code review and security review passed with no findings.",
+  "next_action": "Run verify-work for AC1-AC3 and R1-R4 evidence."
+}
+

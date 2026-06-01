@@ -6,36 +6,36 @@
     {
       "id": "AC1",
       "description": "Cross-product ref and link shapes are documented.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ],
-      "notes": "Expected evidence: doc inspection confirms CrossProductRef and CrossProductLink required and optional fields."
+      "notes": "PASS: CrossProductRef and CrossProductLink shapes and required/optional field tables are documented in docs/specs/projection-schema.md lines 531-590."
     },
     {
       "id": "AC2",
       "description": "Required v0 link examples are documented.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md",
         "docs/examples/"
       ],
-      "notes": "Expected evidence: claim-to-run, review-to-claim, gate-to-evidence, and domain-field-to-claim examples are documented; parse optional fixture files if added."
+      "notes": "PASS: Required link scenarios and examples are documented in docs/specs/projection-schema.md lines 607-721. All 4 inline JSON fenced examples parsed successfully."
     },
     {
       "id": "AC3",
       "description": "Campfit provider field to Surface claim to Flow Review Item mapping can be represented.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md",
         "docs/examples/event-streams/campfit-field-review.jsonl"
       ],
-      "notes": "Expected evidence: a concrete mapping includes Campfit provider field ref, Surface claim ref, Flow review item ref, and connecting CrossProductLink relations."
+      "notes": "PASS: Campfit provider field, Surface claim, and Flow review item refs plus derived_from, updates, and reviews links are documented in docs/specs/projection-schema.md lines 668-718."
     },
     {
       "id": "R1",
       "description": "References must include product, kind, id, and optional label/url.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ]
@@ -43,7 +43,7 @@
     {
       "id": "R2",
       "description": "Links must include from, to, relation, and optional strength.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ]
@@ -51,7 +51,7 @@
     {
       "id": "R3",
       "description": "v0 relation vocabulary must support supports, blocks, updates, reviews, produced_by, evidenced_by, controls, and derived_from.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ]
@@ -59,15 +59,15 @@
     {
       "id": "R4",
       "description": "The spec must identify which links are required for v0 console usefulness.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ]
     }
   ],
   "goal_fit": {
-    "status": "pending",
-    "summary": "Pending execution and verification. The planned finish line is a durable docs/spec contract that preserves issue #3 requirements and stays within docs/examples scope.",
+    "status": "pass",
+    "summary": "Verified. docs/specs/projection-schema.md provides a durable docs/spec contract for v0 identity links, preserves issue #3 requirements, and remains within docs/artifact scope.",
     "open_gaps": []
   }
 }
