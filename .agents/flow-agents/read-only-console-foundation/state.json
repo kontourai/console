@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "read-only-console-foundation",
+  "status": "planned",
+  "phase": "planning",
+  "owner": "tool-planner",
+  "created_at": "2026-06-01T14:52:57Z",
+  "updated_at": "2026-06-01T14:52:57Z",
+  "source_request": "Plan the next deliverable in /Users/brian/dev/github/kontourai/kontour-console: create the first read-only Kontour Console foundation that can load local event stream and projection snapshot fixtures, validate/inspect them, and expose current claim/process/gate/review state for a future console without executing actions.",
+  "artifact_paths": [
+    ".agents/flow-agents/read-only-console-foundation/read-only-console-foundation--deliver.md",
+    ".agents/flow-agents/read-only-console-foundation/read-only-console-foundation--plan-work-plan.md",
+    ".agents/flow-agents/read-only-console-foundation/state.json",
+    ".agents/flow-agents/read-only-console-foundation/acceptance.json",
+    ".agents/flow-agents/read-only-console-foundation/handoff.json"
+  ],
+  "next_action": {
+    "status": "continue",
+    "summary": "Execute the read-only console foundation plan, starting with the Node fixture loader/validator skeleton.",
+    "target_phase": "execution",
+    "target_artifact": ".agents/flow-agents/read-only-console-foundation/read-only-console-foundation--plan-work-plan.md"
+  }
+}

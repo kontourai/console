@@ -1,0 +1,64 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "read-only-console-foundation",
+  "source_request": "Plan the next deliverable in /Users/brian/dev/github/kontourai/kontour-console: create the first read-only Kontour Console foundation that can load local event stream and projection snapshot fixtures, validate/inspect them, and expose current claim/process/gate/review state for a future console without executing actions.",
+  "criteria": [
+    {
+      "id": "AC1",
+      "description": "A local command can inspect checked-in event stream and projection fixtures and report counts/current-state summaries.",
+      "status": "pending",
+      "evidence_refs": [
+        "npm run inspect:fixtures",
+        "docs/examples/event-streams/*.jsonl",
+        "docs/examples/projections/*.json"
+      ],
+      "notes": "Expected evidence should include command output showing stream/event/projection/object counts and current-state summaries."
+    },
+    {
+      "id": "AC2",
+      "description": "Projection loading preserves the V0 contract boundaries: provenance, object arrays, product authority refs, and links.",
+      "status": "pending",
+      "evidence_refs": [
+        "node --test",
+        "docs/specs/projection-schema.md",
+        "docs/examples/projections/*.json"
+      ],
+      "notes": "Expected tests should assert derivedFrom, object arrays, authority descriptors/refs, and links are preserved."
+    },
+    {
+      "id": "AC3",
+      "description": "The implementation can query current Surface claim status without selecting a Flow run.",
+      "status": "pending",
+      "evidence_refs": [
+        "node --test",
+        "docs/examples/projections/surface-current-claim-status.json"
+      ],
+      "notes": "Expected evidence should show claim-provider-directory-current status/freshness returned without process/run selection."
+    },
+    {
+      "id": "AC4",
+      "description": "The implementation can query Campfit field-review state across claim, review item, evidence, decision/action, and links.",
+      "status": "pending",
+      "evidence_refs": [
+        "node --test",
+        "docs/examples/projections/campfit-field-review.json"
+      ],
+      "notes": "Expected evidence should show review-provider-118-npi plus linked claim, evidence, decision, action, and links."
+    },
+    {
+      "id": "AC5",
+      "description": "Action descriptors remain read-only; no endpoint, command, URL, or product mutation is executed.",
+      "status": "pending",
+      "evidence_refs": [
+        "node --test",
+        "rg \"exec|spawn|fetch\\\\(|open\\\\(|http|https|child_process\" src test bin package.json"
+      ],
+      "notes": "Expected evidence should show action authority fields are treated as inert descriptors and no execution/network/open path exists."
+    }
+  ],
+  "goal_fit": {
+    "status": "pending",
+    "summary": "Pending execution and verification against the read-only console foundation user outcome.",
+    "open_gaps": []
+  }
+}
