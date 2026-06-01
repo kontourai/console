@@ -65,6 +65,23 @@ console.log(result.children.map((child) => ({
 })));
 ```
 
+After a producer writes local records, inspect the generated `.kontour` tree without copying files into `docs/examples`:
+
+```sh
+node bin/kontour-console-inspect.js local
+```
+
+The same local read path is exported for programmatic consumers:
+
+```js
+const { inspectLocalKontour } = require("./src/console-foundation");
+
+const report = inspectLocalKontour({ rootDir: process.cwd() });
+console.log(report.eventStreams.length, report.projections.length);
+```
+
+`inspectLocalKontour` recursively reads `.kontour/events/**/*.jsonl` and `.kontour/projections/**/*.json`, labels records as `local`, and treats action descriptors as read-only data. `npm run inspect:fixtures` remains fixture-only for checked-in examples under `docs/examples`.
+
 `CompositeSink` returns one child result per sink, so a local `accepted` result can remain visible even when another sink fails. A future hosted API sink can be added as another child sink role in this fanout model, but this package does not implement an API, network transport, background retries, or remote ingestion.
 
 ## Docs

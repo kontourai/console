@@ -20,6 +20,9 @@ test("inspects checked-in event streams and projections", () => {
   assert.equal(eventCount, 13);
 
   const surface = report.projections.find((projection) => projection.relativePath.endsWith("surface-current-claim-status.json"));
+  assert.equal(report.eventStreams[0].sourceKind, "fixture");
+  assert.equal(surface.sourceKind, "fixture");
+  assert.match(surface.relativePath, /^docs\/examples\/projections\//);
   assert.equal(surface.summary.objectCounts.claims, 1);
   assert.equal(surface.summary.objectCounts.actions, 1);
   assert.equal(surface.summary.objectCounts.links, 3);

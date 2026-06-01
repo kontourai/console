@@ -1,23 +1,25 @@
 {
   "schema_version": "1.0",
   "task_slug": "discover-local-kontour-producer-outputs",
-  "status": "planned",
-  "phase": "planning",
-  "owner": "tool-planner",
+  "status": "verified",
+  "phase": "done",
+  "owner": "codex",
   "created_at": "2026-06-01T20:29:36Z",
-  "updated_at": "2026-06-01T20:29:36Z",
+  "updated_at": "2026-06-01T21:15:00Z",
   "source_request": "Plan implementation for GitHub issue #6 in /Users/brian/dev/github/kontourai/kontour-console: add local .kontour/events/**/*.jsonl and .kontour/projections/**/*.json discovery to the console foundation/inspector.",
   "artifact_paths": [
     ".agents/flow-agents/discover-local-kontour-producer-outputs/discover-local-kontour-producer-outputs--pull-work.md",
     ".agents/flow-agents/discover-local-kontour-producer-outputs/issue-body.md",
     ".agents/flow-agents/discover-local-kontour-producer-outputs/discover-local-kontour-producer-outputs--plan.md",
     ".agents/flow-agents/discover-local-kontour-producer-outputs/acceptance.json",
-    ".agents/flow-agents/discover-local-kontour-producer-outputs/handoff.json"
+    ".agents/flow-agents/discover-local-kontour-producer-outputs/handoff.json",
+    ".agents/flow-agents/discover-local-kontour-producer-outputs/evidence.json",
+    ".agents/flow-agents/discover-local-kontour-producer-outputs/discover-local-kontour-producer-outputs--verification.md"
   ],
   "next_action": {
-    "status": "continue",
-    "summary": "Execute Wave 1 foundation, CLI, and docs tasks from the plan, then add tests and run verification.",
-    "target_phase": "execution",
+    "status": "done",
+    "summary": "Implementation and verification complete for local .kontour discovery.",
+    "target_phase": "done",
     "target_artifact": ".agents/flow-agents/discover-local-kontour-producer-outputs/discover-local-kontour-producer-outputs--plan.md"
   }
 }

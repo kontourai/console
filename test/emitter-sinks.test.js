@@ -9,6 +9,7 @@ const {
   CompositeSink,
   InMemorySink,
   classifyRecord,
+  inspectLocalKontour,
   loadProjectionSnapshots
 } = require("../src/console-foundation");
 
@@ -52,6 +53,64 @@ test("local projection snapshots are compatible with the existing loader", () =>
   assert.equal(loaded[0].actions[0].authority.command, "flow.run.start");
   assert.equal(loaded[0].actions[0].authority.endpoint, "kontour-local-action");
   assert.equal(loaded[0].actions[0].warnings.some((warning) => warning.message.includes("inert descriptor only")), true);
+});
+
+test("local discovery loads events written through LocalFileSink", async () => {
+  const rootDir = tempRoot();
+  const kontourRoot = path.join(rootDir, ".kontour");
+  const event = validEvent({ id: "event-local-discovery" });
+  const emitter = new KontourEmitter({
+    sink: new LocalFileSink({ root: kontourRoot })
+  });
+
+  const result = await emitter.emitEvent(event);
+  const report = inspectLocalKontour({ rootDir });
+
+  assert.equal(result.outcome, "accepted");
+  assert.equal(report.validation.errors.length, 0);
+  assert.equal(report.eventStreams.length, 1);
+  assert.equal(report.eventStreams[0].sourceKind, "local");
+  assert.equal(report.eventStreams[0].relativePath, path.join("events", event.producer.id, `${event.scope.kind}-${event.scope.id}.jsonl`));
+  assert.equal(report.eventStreams[0].events[0].id, event.id);
+});
+
+test("local discovery resolves relative kontourRoot under rootDir", async () => {
+  const rootDir = tempRoot();
+  const event = validEvent({ id: "event-relative-root" });
+  await new KontourEmitter({
+    sink: new LocalFileSink({ root: path.join(rootDir, "custom-kontour") })
+  }).emitEvent(event);
+
+  const report = inspectLocalKontour({ rootDir, kontourRoot: "custom-kontour" });
+
+  assert.equal(report.kontourRoot, path.join(rootDir, "custom-kontour"));
+  assert.equal(report.eventStreams.length, 1);
+  assert.equal(report.eventStreams[0].events[0].id, event.id);
+});
+
+test("local discovery loads projections written through LocalFileSink with inert actions", () => {
+  const rootDir = tempRoot();
+  const kontourRoot = path.join(rootDir, ".kontour");
+  const projection = validProjection();
+  const result = new LocalFileSink({ root: kontourRoot }).deliver(projection);
+
+  const report = inspectLocalKontour({ rootDir });
+  const loaded = report.projections[0];
+
+  assert.equal(result.outcome, "accepted");
+  assert.equal(report.validation.errors.length, 0);
+  assert.equal(report.projections.length, 1);
+  assert.equal(loaded.sourceKind, "local");
+  assert.equal(loaded.relativePath, path.join("projections", projection.producer.id, `${projection.scope.kind}-${projection.scope.id}.json`));
+  assert.equal(loaded.snapshot.generatedAt, projection.generatedAt);
+  assert.equal(loaded.summary.objectCounts.claims, 1);
+  assert.equal(loaded.summary.objectCounts.actions, 1);
+  assert.equal(loaded.actions[0].id, "action-refresh-provider-directory");
+  assert.equal(loaded.actions[0].readOnly, true);
+  assert.equal(loaded.actions[0].authority.command, "flow.run.start");
+  assert.equal(loaded.actions[0].authority.endpoint, "kontour-local-action");
+  assert.equal(loaded.actions[0].warnings.some((warning) => warning.message.includes("authority.command is an inert descriptor only")), true);
+  assert.equal(loaded.actions[0].warnings.some((warning) => warning.message.includes("authority.endpoint is an inert descriptor only")), true);
 });
 
 test("composite results preserve per-sink failures and sibling successes", async () => {
@@ -254,6 +313,35 @@ test("local sink rejects symlink kontour root", { skip: process.platform === "wi
   assert.equal(result.outcome, "failed");
   assert.match(result.safeMessage, /symbolic link/);
   assert.equal(fs.existsSync(path.join(outside, "events")), false);
+});
+
+test("local discovery skips symlink escapes", { skip: process.platform === "win32" }, () => {
+  const rootDir = tempRoot();
+  const kontourRoot = path.join(rootDir, ".kontour");
+  const outside = tempRoot();
+  const event = validEvent({ id: "event-outside-symlink" });
+  fs.mkdirSync(path.join(kontourRoot, "events"), { recursive: true });
+  new LocalFileSink({ root: outside }).deliver(event);
+  fs.symlinkSync(path.join(outside, "events"), path.join(kontourRoot, "events", "escaped"), "dir");
+
+  const report = inspectLocalKontour({ rootDir });
+
+  assert.equal(report.eventStreams.length, 0);
+  assert.equal(report.validation.errors.length, 0);
+});
+
+test("local discovery rejects symlink kontour root", { skip: process.platform === "win32" }, () => {
+  const rootDir = tempRoot();
+  const outside = tempRoot();
+  const event = validEvent({ id: "event-outside-root-symlink" });
+  new LocalFileSink({ root: outside }).deliver(event);
+  fs.symlinkSync(outside, path.join(rootDir, ".kontour"), "dir");
+
+  const report = inspectLocalKontour({ rootDir });
+
+  assert.equal(report.eventStreams.length, 0);
+  assert.equal(report.projections.length, 0);
+  assert.equal(report.validation.errors.length, 0);
 });
 
 function tempRoot() {

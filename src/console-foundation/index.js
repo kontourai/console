@@ -3,6 +3,7 @@ const path = require("node:path");
 
 const EVENT_DIR = path.join("docs", "examples", "event-streams");
 const PROJECTION_DIR = path.join("docs", "examples", "projections");
+const LOCAL_KONTOUR_DIR = ".kontour";
 const OBJECT_ARRAY_KEYS = [
   "claims",
   "processes",
@@ -16,8 +17,12 @@ const OBJECT_ARRAY_KEYS = [
 
 function inspectFixtures(options = {}) {
   const rootDir = options.rootDir || process.cwd();
-  const eventStreams = loadEventStreams(path.join(rootDir, EVENT_DIR), rootDir);
-  const projections = loadProjectionSnapshots(path.join(rootDir, PROJECTION_DIR), rootDir);
+  const source = {
+    sourceKind: "fixture",
+    sourceRoot: rootDir
+  };
+  const eventStreams = loadEventStreams(path.join(rootDir, EVENT_DIR), rootDir, source);
+  const projections = loadProjectionSnapshots(path.join(rootDir, PROJECTION_DIR), rootDir, source);
   const issues = eventStreams.flatMap((stream) => stream.validation)
     .concat(projections.flatMap((projection) => projection.validation));
 
@@ -29,12 +34,51 @@ function inspectFixtures(options = {}) {
   };
 }
 
-function loadEventStreams(streamDir, rootDir = process.cwd()) {
-  return listFiles(streamDir, ".jsonl").map((filePath) => {
+function inspectLocalKontour(options = {}) {
+  const rootDir = path.resolve(options.rootDir || process.cwd());
+  const kontourRoot = resolveUnderRoot(rootDir, options.kontourRoot || options.localRoot || LOCAL_KONTOUR_DIR);
+  const sourceRoot = kontourRoot;
+  const source = {
+    sourceKind: "local",
+    sourceRoot
+  };
+  const eventStreams = loadEventStreams(path.join(kontourRoot, "events"), sourceRoot, {
+    ...source,
+    recursive: true,
+    containmentRoot: sourceRoot
+  });
+  const projections = loadProjectionSnapshots(path.join(kontourRoot, "projections"), sourceRoot, {
+    ...source,
+    recursive: true,
+    containmentRoot: sourceRoot
+  });
+  const issues = eventStreams.flatMap((stream) => stream.validation)
+    .concat(projections.flatMap((projection) => projection.validation));
+
+  return {
+    rootDir,
+    kontourRoot: sourceRoot,
+    eventStreams,
+    projections,
+    validation: splitIssues(issues)
+  };
+}
+
+function loadEventStreams(streamDir, rootDir = process.cwd(), options = {}) {
+  const files = options.recursive
+    ? listFilesRecursive(streamDir, ".jsonl", options.containmentRoot || streamDir)
+    : listFiles(streamDir, ".jsonl");
+  return files.map((filePath) => {
     const relativePath = path.relative(rootDir, filePath);
-    const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
     const events = [];
     const validation = [];
+    let lines = [];
+
+    try {
+      lines = readContainedTextFile(filePath, options.containmentRoot).split(/\r?\n/);
+    } catch (error) {
+      validation.push(issue("error", relativePath, `unable to read event stream: ${error.message}`));
+    }
 
     lines.forEach((line, index) => {
       if (!line.trim()) return;
@@ -50,6 +94,8 @@ function loadEventStreams(streamDir, rootDir = process.cwd()) {
     return {
       filePath,
       relativePath,
+      sourceKind: options.sourceKind,
+      sourceRoot: options.sourceRoot,
       events,
       summary: summarizeEvents(events),
       validation
@@ -57,14 +103,17 @@ function loadEventStreams(streamDir, rootDir = process.cwd()) {
   });
 }
 
-function loadProjectionSnapshots(projectionDir, rootDir = process.cwd()) {
-  return listFiles(projectionDir, ".json").map((filePath) => {
+function loadProjectionSnapshots(projectionDir, rootDir = process.cwd(), options = {}) {
+  const files = options.recursive
+    ? listFilesRecursive(projectionDir, ".json", options.containmentRoot || projectionDir)
+    : listFiles(projectionDir, ".json");
+  return files.map((filePath) => {
     const relativePath = path.relative(rootDir, filePath);
     const validation = [];
     let snapshot = {};
 
     try {
-      snapshot = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      snapshot = JSON.parse(readContainedTextFile(filePath, options.containmentRoot));
       validation.push(...validateProjection(snapshot, relativePath));
     } catch (error) {
       validation.push(issue("error", relativePath, `invalid JSON: ${error.message}`));
@@ -73,6 +122,8 @@ function loadProjectionSnapshots(projectionDir, rootDir = process.cwd()) {
     return {
       filePath,
       relativePath,
+      sourceKind: options.sourceKind,
+      sourceRoot: options.sourceRoot,
       snapshot,
       summary: summarizeProjection(snapshot),
       actions: extractActionDescriptors(snapshot, relativePath),
@@ -253,6 +304,82 @@ function listFiles(dir, extension) {
     .map((name) => path.join(dir, name));
 }
 
+function listFilesRecursive(dir, extension, containmentRoot) {
+  const root = path.resolve(containmentRoot);
+  const start = path.resolve(dir);
+  if (!isSafeDiscoveryRoot(root) || !isContainedPath(start, root) || !fs.existsSync(start)) return [];
+  const entries = [];
+  walkSafe(start, root, extension, entries);
+  return entries.sort();
+}
+
+function resolveUnderRoot(rootDir, maybeRelativePath) {
+  return path.resolve(path.isAbsolute(maybeRelativePath)
+    ? maybeRelativePath
+    : path.join(rootDir, maybeRelativePath));
+}
+
+function readContainedTextFile(filePath, containmentRoot) {
+  if (!containmentRoot) return fs.readFileSync(filePath, "utf8");
+  const root = path.resolve(containmentRoot);
+  if (!isContainedPath(filePath, root)) {
+    throw new Error("file must stay inside the configured kontour root");
+  }
+
+  const flags = fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0);
+  const fd = fs.openSync(filePath, flags);
+  try {
+    const stat = fs.fstatSync(fd);
+    if (!stat.isFile()) {
+      throw new Error("file must be a regular file");
+    }
+    return fs.readFileSync(fd, "utf8");
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function isSafeDiscoveryRoot(root) {
+  try {
+    const stat = fs.lstatSync(root);
+    return stat.isDirectory() && !stat.isSymbolicLink();
+  } catch (error) {
+    return false;
+  }
+}
+
+function walkSafe(dir, root, extension, entries) {
+  let stat;
+  try {
+    stat = fs.lstatSync(dir);
+  } catch (error) {
+    return;
+  }
+  if (!stat.isDirectory() || stat.isSymbolicLink() || !isContainedPath(dir, root)) return;
+
+  for (const name of fs.readdirSync(dir).sort()) {
+    const filePath = path.join(dir, name);
+    let childStat;
+    try {
+      childStat = fs.lstatSync(filePath);
+    } catch (error) {
+      continue;
+    }
+    if (childStat.isSymbolicLink()) continue;
+    if (!isContainedPath(filePath, root)) continue;
+    if (childStat.isDirectory()) {
+      walkSafe(filePath, root, extension, entries);
+    } else if (childStat.isFile() && filePath.endsWith(extension)) {
+      entries.push(filePath);
+    }
+  }
+}
+
+function isContainedPath(candidate, root) {
+  const relative = path.relative(root, path.resolve(candidate));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
 function matchesReview(reviewItem, options) {
   if (options.reviewId && reviewItem.id !== options.reviewId) return false;
   if (options.claimId && !refsContain(reviewItem.claimRefs, new Set([options.claimId]))) return false;
@@ -393,6 +520,7 @@ const emitter = require("./emitter");
 
 module.exports = {
   inspectFixtures,
+  inspectLocalKontour,
   loadEventStreams,
   loadProjectionSnapshots,
   getSurfaceClaimStatus,

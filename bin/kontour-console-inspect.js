@@ -2,6 +2,7 @@
 
 const {
   inspectFixtures,
+  inspectLocalKontour,
   getSurfaceClaimStatus,
   getCampfitFieldReviewState
 } = require("../src/console-foundation");
@@ -12,7 +13,14 @@ function main(argv) {
 
   if (command === "inspect") {
     const report = inspectFixtures({ rootDir });
-    printInspection(report);
+    printInspection(report, { title: "Kontour Console fixture inspection" });
+    exitForValidation(report);
+    return;
+  }
+
+  if (command === "local") {
+    const report = inspectLocalKontour({ rootDir, kontourRoot: argv[3] });
+    printInspection(report, { title: "Kontour Console local inspection" });
     exitForValidation(report);
     return;
   }
@@ -47,16 +55,16 @@ function main(argv) {
     return;
   }
 
-  console.error("Usage: kontour-console-inspect [inspect|surface-claim [claimId]|campfit-review [reviewId]]");
+  console.error("Usage: kontour-console-inspect [inspect|local [kontourRoot]|surface-claim [claimId]|campfit-review [reviewId]]");
   process.exitCode = 2;
 }
 
-function printInspection(report) {
-  console.log("Kontour Console fixture inspection");
+function printInspection(report, options = {}) {
+  console.log(options.title || "Kontour Console inspection");
   console.log("");
   console.log(`Event streams: ${report.eventStreams.length}`);
   for (const stream of report.eventStreams) {
-    console.log(`- ${stream.relativePath}: events=${stream.events.length} accepted=${stream.summary.acceptedEventCount}`);
+    console.log(`- ${formatSource(stream)}: events=${stream.events.length} accepted=${stream.summary.acceptedEventCount}`);
     console.log(`  types: ${formatCounts(stream.summary.eventTypeCounts)}`);
   }
 
@@ -64,7 +72,7 @@ function printInspection(report) {
   console.log(`Projection snapshots: ${report.projections.length}`);
   for (const projection of report.projections) {
     const counts = projection.summary.objectCounts;
-    console.log(`- ${projection.relativePath}: claims=${counts.claims} processes=${counts.processes} gates=${counts.gates} reviewItems=${counts.reviewItems} evidence=${counts.evidence} decisions=${counts.decisions} actions=${counts.actions} links=${counts.links}`);
+    console.log(`- ${formatSource(projection)}: claims=${counts.claims} processes=${counts.processes} gates=${counts.gates} reviewItems=${counts.reviewItems} evidence=${counts.evidence} decisions=${counts.decisions} actions=${counts.actions} links=${counts.links}`);
     console.log(`  derivedFrom: ${projection.snapshot.derivedFrom && projection.snapshot.derivedFrom.mode}; producer=${projection.snapshot.producer && projection.snapshot.producer.id}`);
     printCurrentState(projection.summary.currentState);
   }
@@ -98,6 +106,11 @@ function printCurrentState(state) {
 
 function formatCounts(counts) {
   return Object.keys(counts).sort().map((key) => `${key}=${counts[key]}`).join(", ");
+}
+
+function formatSource(item) {
+  if (!item.sourceKind) return item.relativePath;
+  return `${item.sourceKind}:${item.relativePath}`;
 }
 
 function exitForValidation(report) {

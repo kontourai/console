@@ -6,53 +6,49 @@
     {
       "id": "AC1",
       "description": "A test writes one event through LocalFileSink, then loads it through the console foundation local discovery path and verifies the same event id is present.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "npm test",
-        "test assertion over emitted event id loaded by local discovery"
+        "test/emitter-sinks.test.js: local discovery loads events written through LocalFileSink"
       ]
     },
     {
       "id": "AC2",
       "description": "A test writes one projection through LocalFileSink, then loads it through the console foundation local discovery path and verifies projection summaries/action descriptors work.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "npm test",
-        "test assertions over projection summary and action descriptors loaded by local discovery"
+        "test/emitter-sinks.test.js: local discovery loads projections written through LocalFileSink with inert actions"
       ]
     },
     {
       "id": "AC3",
       "description": "Existing npm run inspect:fixtures output still works for checked-in examples.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
-        "npm run inspect:fixtures"
+        "npm run inspect:fixtures: exits 0, reports 3 event streams and 2 projection snapshots"
       ]
     },
     {
       "id": "AC4",
       "description": "README/docs show local loop: KontourEmitter/LocalFileSink writes .kontour, then inspector/foundation reads .kontour.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
-        "README.md",
-        "optional docs/specs updates"
+        "README.md: Local Console Producer Emission documents KontourEmitter/LocalFileSink writing .kontour and inspectLocalKontour / CLI local reading it"
       ]
     },
     {
       "id": "AC5",
       "description": "Security/scope scan finds no child_process, command execution, URL open/fetch, or network imports.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
-        "rg forbidden API scan over src bin test"
+        "rg forbidden API scan over src bin test README.md: no child_process, command execution, URL open/fetch, or network import matches"
       ]
     }
   ],
   "goal_fit": {
-    "status": "pending",
-    "summary": "Pending implementation and verification of local .kontour discovery while preserving fixture inspection.",
-    "open_gaps": [
-      "No implementation has been performed by planning.",
-      "Verification commands have not been run as part of planning."
-    ]
+    "status": "pass",
+    "summary": "Local .kontour discovery is implemented with fixture behavior preserved and source labels for fixture/local records.",
+    "open_gaps": []
   }
 }
