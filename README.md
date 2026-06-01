@@ -12,7 +12,17 @@ The primitives remain portable:
 
 Kontour Console brings those products together into one operating plane for claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.
 
-This repo currently holds the product context and architecture decisions. It does not yet ship an app or package.
+This repo ships a small local read-only fixture inspector package alongside the product context and architecture decisions; it is not an app or hosted service.
+
+## Local Fixture Inspection
+
+Run the read-only fixture inspector from the repo root:
+
+```sh
+npm run inspect:fixtures
+```
+
+The command reads checked-in files under `docs/examples/event-streams/` and `docs/examples/projections/`, validates the local v0 envelopes, and prints event counts plus current claim, process, gate, review, action, and link summaries. Actions are shown as inert descriptors only; the inspector does not execute product commands, follow URLs, or mutate product-owned state.
 
 ## Docs
 

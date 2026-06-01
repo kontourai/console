@@ -6,59 +6,59 @@
     {
       "id": "AC1",
       "description": "A local command can inspect checked-in event stream and projection fixtures and report counts/current-state summaries.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "npm run inspect:fixtures",
         "docs/examples/event-streams/*.jsonl",
         "docs/examples/projections/*.json"
       ],
-      "notes": "Expected evidence should include command output showing stream/event/projection/object counts and current-state summaries."
+      "notes": "PASS: npm run inspect:fixtures reported 3 event streams, 2 projections, 13 events, object counts/current-state summaries, and 0 validation errors."
     },
     {
       "id": "AC2",
       "description": "Projection loading preserves the V0 contract boundaries: provenance, object arrays, product authority refs, and links.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "node --test",
         "docs/specs/projection-schema.md",
         "docs/examples/projections/*.json"
       ],
-      "notes": "Expected tests should assert derivedFrom, object arrays, authority descriptors/refs, and links are preserved."
+      "notes": "PASS: node --test covered derivedFrom provenance, object arrays, authority descriptors/refs, source/producer refs, and links; loader returns original snapshot objects."
     },
     {
       "id": "AC3",
       "description": "The implementation can query current Surface claim status without selecting a Flow run.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "node --test",
         "docs/examples/projections/surface-current-claim-status.json"
       ],
-      "notes": "Expected evidence should show claim-provider-directory-current status/freshness returned without process/run selection."
+      "notes": "PASS: node --test and CLI query returned claim-provider-directory-current as verified/fresh with requiresSelectedFlowRun=false and no Flow run selection."
     },
     {
       "id": "AC4",
       "description": "The implementation can query Campfit field-review state across claim, review item, evidence, decision/action, and links.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "node --test",
         "docs/examples/projections/campfit-field-review.json"
       ],
-      "notes": "Expected evidence should show review-provider-118-npi plus linked claim, evidence, decision, action, and links."
+      "notes": "PASS: node --test and CLI query returned review-provider-118-npi plus claim-provider-118-npi, evidence-provider-118-npi-source, decision-provider-118-npi-approved, action-apply-provider-118-npi, and relevant links."
     },
     {
       "id": "AC5",
       "description": "Action descriptors remain read-only; no endpoint, command, URL, or product mutation is executed.",
-      "status": "pending",
+      "status": "pass",
       "evidence_refs": [
         "node --test",
         "rg \"exec|spawn|fetch\\\\(|open\\\\(|http|https|child_process\" src test bin package.json"
       ],
-      "notes": "Expected evidence should show action authority fields are treated as inert descriptors and no execution/network/open path exists."
+      "notes": "PASS: tests assert readOnly action descriptors and inert command/externalUrl warnings; forbidden path scan found no child_process, exec, spawn, fetch, open, or node:http/node:https imports."
     }
   ],
   "goal_fit": {
-    "status": "pending",
-    "summary": "Pending execution and verification against the read-only console foundation user outcome.",
+    "status": "pass",
+    "summary": "PASS: A developer can run the local fixture inspector and query Surface/Campfit projection state from checked-in fixtures without hosted services or action execution.",
     "open_gaps": []
   }
 }
