@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-identity-links",
+  "source_request": "Plan GitHub issue #3: Define Cross-Product Identity Link Minimums.",
+  "criteria": [
+    {
+      "id": "AC1",
+      "description": "Cross-product ref and link shapes are documented.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md"
+      ],
+      "notes": "Expected evidence: doc inspection confirms CrossProductRef and CrossProductLink required and optional fields."
+    },
+    {
+      "id": "AC2",
+      "description": "Required v0 link examples are documented.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md",
+        "docs/examples/"
+      ],
+      "notes": "Expected evidence: claim-to-run, review-to-claim, gate-to-evidence, and domain-field-to-claim examples are documented; parse optional fixture files if added."
+    },
+    {
+      "id": "AC3",
+      "description": "Campfit provider field to Surface claim to Flow Review Item mapping can be represented.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md",
+        "docs/examples/event-streams/campfit-field-review.jsonl"
+      ],
+      "notes": "Expected evidence: a concrete mapping includes Campfit provider field ref, Surface claim ref, Flow review item ref, and connecting CrossProductLink relations."
+    },
+    {
+      "id": "R1",
+      "description": "References must include product, kind, id, and optional label/url.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md"
+      ]
+    },
+    {
+      "id": "R2",
+      "description": "Links must include from, to, relation, and optional strength.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md"
+      ]
+    },
+    {
+      "id": "R3",
+      "description": "v0 relation vocabulary must support supports, blocks, updates, reviews, produced_by, evidenced_by, controls, and derived_from.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md"
+      ]
+    },
+    {
+      "id": "R4",
+      "description": "The spec must identify which links are required for v0 console usefulness.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md"
+      ]
+    }
+  ],
+  "goal_fit": {
+    "status": "pending",
+    "summary": "Pending execution and verification. The planned finish line is a durable docs/spec contract that preserves issue #3 requirements and stays within docs/examples scope.",
+    "open_gaps": []
+  }
+}

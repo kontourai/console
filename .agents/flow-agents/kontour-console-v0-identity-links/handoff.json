@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-identity-links",
+  "summary": "Planning complete for GitHub issue #3. Execute a docs/spec-only slice that tightens CrossProductRef and CrossProductLink minimums, relation direction semantics, required v0 links, and examples proving claim/run/review/evidence/domain-field joins, especially the Campfit provider field to Surface claim to Flow Review Item chain.",
+  "current_state_ref": ".agents/flow-agents/kontour-console-v0-identity-links/state.json",
+  "next_steps": [
+    "Use .agents/flow-agents/kontour-console-v0-identity-links/kontour-console-v0-identity-links--plan-work-plan.md as the implementation plan.",
+    "Edit docs/specs/projection-schema.md first; add optional docs/examples fixtures only if they make the mapping evidence clearer.",
+    "Verify by doc inspection mapped to AC1-AC3 and R1-R4, plus parse checks for any JSON or JSONL fixtures added.",
+    "Keep scope out of graph databases, global identity services, inferred linkers, projection reducers, hosted ingestion, adapters, and UI."
+  ],
+  "blockers": [],
+  "warnings": [
+    "Issue #2 should wait until this identity-link minimum is implemented and verified.",
+    "Do not overwrite the pull-work artifact; it remains the pickup/source handoff."
+  ]
+}
