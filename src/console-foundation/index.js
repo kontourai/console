@@ -517,6 +517,7 @@ function arrayOf(value) {
 }
 
 const emitter = require("./emitter");
+const surfaceClaimHelper = require("./surface-claim-helper");
 
 module.exports = {
   inspectFixtures,
@@ -533,5 +534,7 @@ module.exports = {
   CompositeSink: emitter.CompositeSink,
   InMemorySink: emitter.InMemorySink,
   classifyRecord: emitter.classifyRecord,
-  formatDeliveryResult: emitter.formatDeliveryResult
+  formatDeliveryResult: emitter.formatDeliveryResult,
+  surfaceClaimStateToProjection: surfaceClaimHelper.surfaceClaimStateToProjection,
+  surfaceFreshnessTransitionToEvent: surfaceClaimHelper.surfaceFreshnessTransitionToEvent
 };

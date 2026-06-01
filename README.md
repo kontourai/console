@@ -84,6 +84,44 @@ console.log(report.eventStreams.length, report.projections.length);
 
 `CompositeSink` returns one child result per sink, so a local `accepted` result can remain visible even when another sink fails. A future hosted API sink can be added as another child sink role in this fanout model, but this package does not implement an API, network transport, background retries, or remote ingestion.
 
+### Surface Claim Status/Freshness Producer Helper
+
+`surfaceClaimStateToProjection()` and `surfaceFreshnessTransitionToEvent()` are the first Surface Console producer pattern in this package. They are dependency-free helper/example functions for mapping caller-owned Surface claim state into local Console records; they are not live Surface integration.
+
+```js
+const {
+  KontourEmitter,
+  LocalFileSink,
+  surfaceClaimStateToProjection,
+  surfaceFreshnessTransitionToEvent
+} = require("./src/console-foundation");
+
+const emitter = new KontourEmitter({
+  sink: new LocalFileSink({ root: ".kontour" })
+});
+
+await emitter.emitProjection(surfaceClaimStateToProjection({
+  claimId: "claim-provider-directory-current",
+  status: "verified",
+  freshness: { status: "fresh", asOf: "2026-06-01T16:05:00Z" },
+  validFrom: "2026-06-01T16:00:00Z",
+  validUntil: "2026-06-30T16:00:00Z",
+  lastUpdatedAt: "2026-06-01T16:05:00Z",
+  generatedAt: "2026-06-01T16:06:00Z",
+  evidenceRefs: [{ product: "surface", kind: "evidence", id: "evidence-directory-crawl" }],
+  actionRefs: [{ product: "surface", kind: "action", id: "action-refresh-directory" }]
+}));
+
+await emitter.emitEvent(surfaceFreshnessTransitionToEvent({
+  claimId: "claim-provider-directory-current",
+  occurredAt: "2026-06-01T16:10:00Z",
+  before: { status: "stale" },
+  after: { status: "fresh" }
+}));
+```
+
+Optional action descriptors supplied to the helper are persisted as inert projection data only. The helper does not fetch Surface data, start Flow, execute commands, dereference URLs, or mutate product state.
+
 ## Docs
 
 - [Product Boundaries](docs/product-boundaries.md)
