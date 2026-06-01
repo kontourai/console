@@ -564,6 +564,162 @@ Identity links are the core of the suite-level console. They let Kontour Console
 - Which Flow Agents session produced this decision?
 - Which Campfit provider field does this claim describe?
 
+### CrossProductRef Minimum
+
+`product`, `kind`, and `id` form the stable identity tuple. The producing product owns the meaning and lifecycle of each tuple; Kontour Console stores and displays refs but does not mint global ids, normalize product ids, or become the authority for product-local semantics.
+
+| Field | Required | Minimum meaning |
+| --- | --- | --- |
+| `product` | Yes | Product or vertical namespace that owns the referenced object, such as `surface`, `flow`, `survey`, `veritas`, `flow-agents`, or `campfit`. |
+| `kind` | Yes | Product-owned object kind, such as `claim`, `run`, `gate`, `review_item`, `evidence`, `decision`, `action`, or `provider_field`. |
+| `id` | Yes | Stable product-local object id. It must be stable enough for replay, deduplication, projection links, and external navigation. |
+| `label` | No | Display text only. Consumers must not parse it for identity or semantics. |
+| `url` | No | Navigation aid only. Consumers must treat it as untrusted until a trusted product adapter or URL allowlist validates it. |
+
+### CrossProductLink Minimum
+
+`from`, `to`, and `relation` are the required relationship tuple. Links are explicit product-emitted statements; v0 required console behavior must not depend on Kontour Console automatically inferring missing links.
+
+| Field | Required | Minimum meaning |
+| --- | --- | --- |
+| `from` | Yes | Source object of the directed relation. |
+| `to` | Yes | Target object of the directed relation. |
+| `relation` | Yes | Directed relation vocabulary term. Use the v0 terms below for core console behavior. |
+| `strength` | No | Relationship confidence or origin descriptor. Prefer `direct` for product-owned emitted links. `inferred` and `weak` are allowed descriptors for enrichment, but not required v0 links. |
+| `createdAt` | No | ISO 8601 time when the relationship was emitted, observed, or became known. |
+| `extensions` | No | Namespaced product/deployment detail that does not change the core relation meaning. |
+
+### Relation Vocabulary
+
+Relations are directed from `from` to `to`. Product owners may add relation extensions, but Kontour Console v0 core projections should rely on these terms for cross-product workflows.
+
+| Relation | Direction | Minimum use | Example pair |
+| --- | --- | --- | --- |
+| `supports` | evidence, observation, decision, or claim -> claim, gate, decision, or review item | The source provides positive support for the target. | Surface evidence `supports` Surface claim. |
+| `blocks` | gate, gap, exception, review item, or failed check -> process, claim refresh, action, or gate | The source prevents target progress until resolved under the owning product's rules. | Failed Flow gate `blocks` Flow run. |
+| `updates` | process, action, decision, domain field, or claim event -> claim, field, projection object, or process | The source changed or intends to change the target. | Flow run `updates` Surface claim. |
+| `reviews` | review item, reviewer decision, or review workflow -> claim, domain field, evidence, candidate fact, or gate exception | The source is the review/control item whose subject is the target. | Flow Review Item `reviews` Surface claim. |
+| `produced_by` | claim, evidence, decision, action, review item, or projection object -> run, agent session, actor, or producer | The target created, emitted, or recorded the source. | Decision `produced_by` Flow Agents run. |
+| `evidenced_by` | claim, gate, decision, review item, or exception -> evidence or proof record | The target evidence is attached as proof for the source. | Flow gate `evidenced_by` source excerpt evidence. |
+| `controls` | gate, policy, checklist item, or authority object -> process, claim refresh, action, exception path, or publish step | The source governs whether the target may proceed. | Flow gate `controls` claim reverification. |
+| `derived_from` | claim, field value, evidence summary, decision, or projection object -> source field, source document, upstream claim, or observation | The source was calculated, copied, summarized, or transformed from the target. | Surface claim `derived_from` Campfit provider field. |
+
+### Required V0 Links
+
+Products should emit these links when the referenced objects exist. They are the minimum links that make Kontour Console useful for claim status, workflow progress, proof, route-back, and review queues without giving the console authority over product semantics.
+
+| Scenario | Required link | Why it is required |
+| --- | --- | --- |
+| A process or run changes a claim. | Flow/product run `updates` Surface claim, or Surface claim `produced_by` Flow/product run when the claim was emitted from that run. | Lets the console answer which workflow is changing or last changed a claim. |
+| A review item is about a claim. | Flow/product review item `reviews` Surface claim. | Lets the console route claim review queues and show pending review next to trust state. |
+| A review item is about a domain field or candidate fact. | Flow/product review item `reviews` product domain field/candidate fact. If that field maps to a claim, also emit the domain-field-to-claim link below. | Lets vertical field review appear in the same queue as claim review. |
+| A gate controls progress. | Flow/product gate `controls` process, claim refresh, action, or publish step. If failed or waiting, the gate may also `blocks` that same target. | Lets the console display why a process, refresh, or action cannot proceed. |
+| Evidence proves or explains a claim, gate, decision, or review item. | Claim/gate/decision/review item `evidenced_by` evidence, or evidence `supports` claim/gate/decision/review item. | Lets the console surface proof and missing proof without parsing product payloads. |
+| An action or decision came from a process, run, agent session, or actor. | Action/decision `produced_by` Flow run, Flow Agents session, actor, or product process. | Lets timelines explain who or what produced a queued action or decision. |
+| A domain field maps to a Surface claim. | Surface claim `derived_from` product domain field when the claim is based on the field; product domain field `updates` Surface claim when the field change is intended to change the claim. | Lets vertical records, such as Campfit provider fields, connect to Surface trust state. |
+| A Flow Review Item is about a claim or field. | Flow Review Item `reviews` Surface claim, product domain field, or both. | Lets the console show the same review item from claim, process, and domain-record views. |
+
+Additional links can enrich timelines and navigation, but v0 examples and projection work should not require inferred links, graph storage, hosted ingestion, adapters, or a global identity service.
+
+### Identity Link Examples
+
+Claim changed by a Flow run:
+
+```json
+{
+  "from": { "product": "flow", "kind": "run", "id": "run-provider-refresh-42", "label": "Provider refresh run 42" },
+  "to": { "product": "surface", "kind": "claim", "id": "claim-provider-npi-active-123" },
+  "relation": "updates",
+  "strength": "direct",
+  "createdAt": "2026-06-01T12:00:00Z"
+}
+```
+
+Review item about a Surface claim:
+
+```json
+{
+  "from": { "product": "flow", "kind": "review_item", "id": "review-provider-active-123" },
+  "to": { "product": "surface", "kind": "claim", "id": "claim-provider-npi-active-123" },
+  "relation": "reviews",
+  "strength": "direct"
+}
+```
+
+Gate with attached evidence:
+
+```json
+[
+  {
+    "from": { "product": "flow", "kind": "gate", "id": "gate-required-source-proof-123" },
+    "to": { "product": "flow", "kind": "run", "id": "run-provider-refresh-42" },
+    "relation": "controls",
+    "strength": "direct"
+  },
+  {
+    "from": { "product": "flow", "kind": "gate", "id": "gate-required-source-proof-123" },
+    "to": { "product": "surface", "kind": "evidence", "id": "evidence-nppes-page-123" },
+    "relation": "evidenced_by",
+    "strength": "direct"
+  }
+]
+```
+
+Campfit provider field to Surface claim to Flow Review Item:
+
+```json
+{
+  "refs": {
+    "campfitProviderField": {
+      "product": "campfit",
+      "kind": "provider_field",
+      "id": "provider-123.registration_status",
+      "label": "Provider 123 registration status"
+    },
+    "surfaceClaim": {
+      "product": "surface",
+      "kind": "claim",
+      "id": "claim-provider-123-registration-active",
+      "label": "Provider 123 registration is active"
+    },
+    "flowReviewItem": {
+      "product": "flow",
+      "kind": "review_item",
+      "id": "review-registration-status-123",
+      "label": "Review provider registration status"
+    }
+  },
+  "links": [
+    {
+      "from": { "product": "surface", "kind": "claim", "id": "claim-provider-123-registration-active" },
+      "to": { "product": "campfit", "kind": "provider_field", "id": "provider-123.registration_status" },
+      "relation": "derived_from",
+      "strength": "direct"
+    },
+    {
+      "from": { "product": "campfit", "kind": "provider_field", "id": "provider-123.registration_status" },
+      "to": { "product": "surface", "kind": "claim", "id": "claim-provider-123-registration-active" },
+      "relation": "updates",
+      "strength": "direct"
+    },
+    {
+      "from": { "product": "flow", "kind": "review_item", "id": "review-registration-status-123" },
+      "to": { "product": "surface", "kind": "claim", "id": "claim-provider-123-registration-active" },
+      "relation": "reviews",
+      "strength": "direct"
+    },
+    {
+      "from": { "product": "flow", "kind": "review_item", "id": "review-registration-status-123" },
+      "to": { "product": "campfit", "kind": "provider_field", "id": "provider-123.registration_status" },
+      "relation": "reviews",
+      "strength": "direct"
+    }
+  ]
+}
+```
+
+These examples can be emitted in event `links`, projection `links`, and supporting `payload.refs`. The event `subject` should still name the primary object changed by that event.
+
 ## Campfit Mapping Example
 
 Campfit can project its current review workflow like this:
@@ -594,5 +750,4 @@ The read model shown in Kontour Console can then be rebuilt from the event strea
 - After v0 local JSONL, should later versions add hosted stream ingestion as an optional transport?
 - Should each product emit one projection file, or should Kontour Console assemble projections from events and product-native APIs?
 - Should action authority start as CLI commands, local HTTP endpoints, or both?
-- Which identity links should be required for v0.1?
 - Which events must be emitted synchronously, and which can be backfilled from product snapshots?
