@@ -4,7 +4,7 @@ const {
   inspectFixtures,
   inspectLocalKontour,
   getSurfaceClaimStatus,
-  getCampfitFieldReviewState
+  getSurveyReviewState
 } = require("../src/console-foundation");
 
 function main(argv) {
@@ -39,10 +39,10 @@ function main(argv) {
     return;
   }
 
-  if (command === "campfit-review") {
+  if (command === "survey-review") {
     const report = inspectFixtures({ rootDir });
     const reviewId = argv[3];
-    const reviews = getCampfitFieldReviewState(report.projections, { reviewId });
+    const reviews = getSurveyReviewState(report.projections, { reviewId });
     for (const review of reviews) {
       console.log(`${review.reviewItem.id}: ${review.reviewItem.status}`);
       console.log(`  claim: ${review.claim && review.claim.id} (${review.claim && review.claim.status})`);
@@ -55,7 +55,7 @@ function main(argv) {
     return;
   }
 
-  console.error("Usage: kontour-console-inspect [inspect|local [kontourRoot]|surface-claim [claimId]|campfit-review [reviewId]]");
+  console.error("Usage: kontour-console-inspect [inspect|local [kontourRoot]|surface-claim [claimId]|survey-review [reviewId]]");
   process.exitCode = 2;
 }
 

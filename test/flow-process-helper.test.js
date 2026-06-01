@@ -48,7 +48,7 @@ test("flow process helper emits local process and gate status without selected S
   assert.equal(statuses[0].openGates.length, 1);
   assert.equal(statuses[0].nextActionRefs[0].id, "action-resume-provider-onboarding");
   assert.equal(statuses[0].claimRefs[0].product, "surface");
-  assert.equal(statuses[0].reviewItemRefs[0].product, "campfit");
+  assert.equal(statuses[0].reviewItemRefs[0].product, "survey");
   assert.equal(statuses[0].actions.length, 1);
   assert.equal(statuses[0].actions[0].readOnly, true);
   assert.equal(statuses[0].actions[0].authority.command, "flow.run.resume");
@@ -121,7 +121,7 @@ function flowProcessState() {
       { product: "surface", kind: "claim", id: "claim-provider-directory-current" }
     ],
     reviewItemRefs: [
-      { product: "campfit", kind: "review_item", id: "review-provider-npi" }
+      { product: "survey", kind: "review_item", id: "review-provider-npi" }
     ],
     gates: [
       {

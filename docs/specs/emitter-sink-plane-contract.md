@@ -8,7 +8,7 @@ The event and projection schemas remain the record shape contract. This spec def
 
 ## Terminology
 
-A **Console producer** is the Kontour product or product runtime that emits control-plane records for Kontour Console. Surface, Flow, Survey, Veritas, Flow Agents, and vertical products such as Campfit can all be Console producers.
+A **Console producer** is the Kontour product or product runtime that emits control-plane records for Kontour Console. Surface, Flow, Survey, Veritas, and Flow Agents are the primary Console producers. Vertical products usually contribute through those primitives as extension metadata and refs, rather than depending on `.kontour` or Kontour Console directly.
 
 A **domain producer** is a product-native source inside one of those products, such as a crawler, extractor, verifier, importer, workflow runner, agent, or policy clock. Domain producers may appear as `actor`, `derivedFrom`, `evidence`, `payload.data`, or product-specific `extensions`, but they do not replace the top-level `producer` field's Console meaning.
 

@@ -10,7 +10,9 @@ See [Emitter, Sink, And Plane Contract](emitter-sink-plane-contract.md) for the 
 
 ## Producer Terminology
 
-The top-level `producer` field identifies the **Console producer**: the Kontour product or product runtime that emitted the event or projection for Kontour Console. Examples include `surface`, `flow`, `survey`, `veritas`, `flow-agents`, and vertical products such as `campfit`.
+The top-level `producer` field identifies the **Console producer**: the Kontour product or product runtime that emitted the event or projection for Kontour Console. The primary Console producers are portable primitives such as `surface`, `flow`, `survey`, `veritas`, and `flow-agents`.
+
+Vertical products usually contribute through primitive producers rather than emitting Console records directly. A provider-field admin review UX should extend Survey's review surface; Survey emits review records, Surface emits claims/evidence/trust state, and Flow emits process/gate state. Vertical-specific provider IDs, field names, and render hints belong in refs, `payload.data`, or namespaced `extensions`.
 
 This is intentionally separate from product-native producer concepts. A crawler, extractor, verifier, importer, workflow runner, agent, or policy clock inside a product is a **domain producer** or actor/source. Put that lower-level source in `actor`, `derivedFrom`, `evidence`, `payload.data`, or product-specific `extensions` as appropriate.
 
@@ -84,11 +86,11 @@ Example sequences:
 
 - [Surface claim freshness](../examples/event-streams/surface-claim-freshness.jsonl)
 - [Flow gate route-back](../examples/event-streams/flow-gate-route-back.jsonl)
-- [Campfit field review](../examples/event-streams/campfit-field-review.jsonl)
+- [Survey field review](../examples/event-streams/survey-field-review.jsonl)
 
 Example projection snapshots:
 
-- [Campfit field review projection](../examples/projections/campfit-field-review.json)
+- [Survey field review projection](../examples/projections/survey-field-review.json)
 - [Surface current claim status projection](../examples/projections/surface-current-claim-status.json)
 
 ## Event Envelope
@@ -125,7 +127,7 @@ type KontourConsoleEvent = {
 | `id` | Yes | `string` | Stable event identity for idempotency, duplicate handling, and causal references. |
 | `type` | Yes | `ConsoleEventType` | Product-neutral event vocabulary used for routing, filtering, and projection folding. |
 | `occurredAt` | Yes | ISO 8601 `string` | Time the producing product says the event happened. |
-| `producer` | Yes | `ConsoleProducer` | Kontour product, vertical, or product runtime that emitted the event for Console consumption. |
+| `producer` | Yes | `ConsoleProducer` | Kontour product or product runtime that emitted the event for Console consumption. |
 | `scope` | Yes | `ConsoleScope` | Boundary the event belongs to, such as repo, workspace, project, product, tenant, or domain. |
 | `subject` | Yes | `CrossProductRef` | Primary object changed or described by the event. |
 | `payload` | Yes | `ConsoleEventPayload` | State delta, summary, reason, refs, and product-specific data. |
@@ -137,9 +139,9 @@ type KontourConsoleEvent = {
 | `links` | No | `CrossProductLink[]` | Explicit identity and relationship links across products. |
 | `extensions` | No | `Record<string, unknown>` | Namespaced product or deployment detail that is not part of the core v0 envelope. |
 
-`payload.data` and `extensions` are the only places for vertical-specific facts that Kontour Console does not need for core v0 behavior. For example, Campfit provider field names, source-specific confidence scores, and domain-specific review metadata belong there, not as new top-level envelope fields.
+`payload.data` and `extensions` are the only places for vertical-specific facts that Kontour Console does not need for core v0 behavior. For example, provider field names, source-specific confidence scores, render hints, and domain-specific review metadata belong there, not as new top-level envelope fields.
 
-Use `correlationId` when multiple events describe one user-visible workflow. Use `causationId` when one event follows another, such as `gate.routed_back` caused by `gate.failed`, or `review_item.approved` caused by a reviewer action. Use `links` when the relationship should survive projection rebuilding, such as a Flow gate controlling a Surface claim refresh or a Campfit provider field being reviewed by a review item.
+Use `correlationId` when multiple events describe one user-visible workflow. Use `causationId` when one event follows another, such as `gate.routed_back` caused by `gate.failed`, or `review_item.approved` caused by a reviewer action. Use `links` when the relationship should survive projection rebuilding, such as a Flow gate controlling a Surface claim refresh or a provider field being reviewed by a review item.
 
 ## Event Types
 
@@ -281,7 +283,7 @@ type ProjectionProvenance = {
 };
 ```
 
-Projections are current read models. They are optimized for rendering the latest suite-level operating state, not for replacing product event logs, Surface trust records, Flow runs, Campfit records, or other product-owned sources of truth.
+Projections are current read models. They are optimized for rendering the latest suite-level operating state, not for replacing product event logs, Surface trust records, Flow runs, Survey records, or other product-owned sources of truth.
 
 `derivedFrom` is required for v0 projection snapshots. It tells a consumer whether the snapshot was rebuilt from events, emitted directly because event history is unavailable or partial, or seeded from a prior snapshot and then advanced with later accepted events. Direct snapshots are allowed only as read-model input or fallback. They must not become a new authority for claim truth, run-control state, vertical domain values, decisions, or action execution.
 
@@ -326,7 +328,7 @@ The v0 projection envelope carries arrays of product-owned objects plus explicit
 | Claims | `claims` | Surface owns trust status, freshness, validity windows, and claim semantics. Vertical products may emit domain-derived claims through Surface refs. | Current trust state, stale/disputed queues, and claim detail panels. |
 | Processes | `processes` | Flow or the emitting product owns run lifecycle and transition semantics. | Running, blocked, completed, or waiting work. |
 | Gates | `gates` | Flow owns gate evaluation, route-back, exception, and run-control semantics. | Blocking reasons, missing evidence, and route-back visibility. |
-| Review items | `reviewItems` | Flow, Campfit, Survey, Veritas, or another owner defines review lifecycle and decision semantics. | Unified review queues and subject navigation. |
+| Review items | `reviewItems` | Survey owns source/candidate/review lifecycle semantics for fact review. Flow, Veritas, and Flow Agents may create review-like control items under their own semantics. Vertical products extend Survey review context instead of redefining review lifecycle. | Unified review queues and subject navigation. |
 | Evidence | `evidence` | The producer or Surface owns evidence integrity, availability, and privacy semantics. | Proof summaries, source navigation, and missing/stale evidence display. |
 | Decisions | `decisions` | The product or actor that recorded the decision owns the durable decision meaning. | Timeline entries and rationale display. |
 | Actions | `actions` | The authority descriptor identifies the owning product; Kontour Console must route execution through trusted product control paths. | Available next actions, disabled reasons, and pending/completed action state. |
@@ -338,7 +340,7 @@ Each object should retain `CrossProductRef` fields for the product objects it de
 
 The checked-in projection examples demonstrate two required v0 shapes:
 
-- The Campfit example maps a Campfit `provider_field` to a Surface `claim`, a Flow-owned process/gate, a Campfit review item, Surface evidence, a Campfit decision/action, and explicit `links`.
+- The Survey field review example maps a provider field to a Surface `claim`, a Flow-owned process/gate, a Survey review item, evidence, decision/action, and explicit `links`.
 - The Surface example keeps current claim `status`, `freshness`, `validFrom`, `validUntil`, and `lastUpdatedAt` directly on `claims[]`, so a console can render current claim status without selecting a Flow run. It still retains optional links to the Flow refresh definition/action and Surface evidence.
 
 ## Producer
@@ -353,7 +355,7 @@ type ConsoleProducer = {
 };
 ```
 
-The producer identifies the Console producer: the Kontour product, vertical, or product runtime emitting the event or projection for Console consumption. A vertical product such as Campfit may emit both product-native objects and links to Surface/Flow objects.
+The producer identifies the Console producer: the Kontour product or product runtime emitting the event or projection for Console consumption. Primitive producers should be preferred. A vertical product should normally contribute through Survey, Surface, and Flow records, with product-native objects preserved as refs and extension metadata. Direct vertical Console emission is optional and should be treated as an escape hatch, not the normal integration path.
 
 Use `actor`, `derivedFrom`, `evidence.producerRef`, `payload.data`, or product-specific `extensions` to preserve product-native source detail. For example, Surface may be the Console producer while `actor` identifies a Surface verifier agent, or Flow may be the Console producer while `derivedFrom` identifies a specific run.
 
@@ -483,7 +485,7 @@ type ReviewItemProjection = {
 };
 ```
 
-Review Items can be created by Flow gates, Survey candidate workflows, Veritas readiness gaps, Flow Agents continuations, or vertical products. The owning product remains responsible for the decision semantics.
+Review Items can be created by Survey candidate workflows, Flow gates, Veritas readiness gaps, or Flow Agents continuations. For vertical admin review UX, the vertical product should extend Survey review items with domain refs and render metadata. The owning primitive remains responsible for the decision semantics.
 
 ## Evidence
 
@@ -630,7 +632,7 @@ Identity links are the core of the suite-level console. They let Kontour Console
 - Which Review Item is waiting on this Survey Candidate?
 - Which Veritas readiness gap blocks this Flow gate?
 - Which Flow Agents session produced this decision?
-- Which Campfit provider field does this claim describe?
+- Which provider field does this claim describe?
 
 ### CrossProductRef Minimum
 
@@ -638,7 +640,7 @@ Identity links are the core of the suite-level console. They let Kontour Console
 
 | Field | Required | Minimum meaning |
 | --- | --- | --- |
-| `product` | Yes | Product or vertical namespace that owns the referenced object, such as `surface`, `flow`, `survey`, `veritas`, `flow-agents`, or `campfit`. |
+| `product` | Yes | Product or vertical namespace that owns the referenced object, such as `surface`, `flow`, `survey`, `veritas`, `flow-agents`, or `survey`. |
 | `kind` | Yes | Product-owned object kind, such as `claim`, `run`, `gate`, `review_item`, `evidence`, `decision`, `action`, or `provider_field`. |
 | `id` | Yes | Stable product-local object id. It must be stable enough for replay, deduplication, projection links, and external navigation. |
 | `label` | No | Display text only. Consumers must not parse it for identity or semantics. |
@@ -670,7 +672,7 @@ Relations are directed from `from` to `to`. Product owners may add relation exte
 | `produced_by` | claim, evidence, decision, action, review item, or projection object -> run, agent session, actor, or producer | The target created, emitted, or recorded the source. | Decision `produced_by` Flow Agents run. |
 | `evidenced_by` | claim, gate, decision, review item, or exception -> evidence or proof record | The target evidence is attached as proof for the source. | Flow gate `evidenced_by` source excerpt evidence. |
 | `controls` | gate, policy, checklist item, or authority object -> process, claim refresh, action, exception path, or publish step | The source governs whether the target may proceed. | Flow gate `controls` claim reverification. |
-| `derived_from` | claim, field value, evidence summary, decision, or projection object -> source field, source document, upstream claim, or observation | The source was calculated, copied, summarized, or transformed from the target. | Surface claim `derived_from` Campfit provider field. |
+| `derived_from` | claim, field value, evidence summary, decision, or projection object -> source field, source document, upstream claim, or observation | The source was calculated, copied, summarized, or transformed from the target. | Surface claim `derived_from` provider field. |
 
 ### Required V0 Links
 
@@ -684,8 +686,8 @@ Products should emit these links when the referenced objects exist. They are the
 | A gate controls progress. | Flow/product gate `controls` process, claim refresh, action, or publish step. If failed or waiting, the gate may also `blocks` that same target. | Lets the console display why a process, refresh, or action cannot proceed. |
 | Evidence proves or explains a claim, gate, decision, or review item. | Claim/gate/decision/review item `evidenced_by` evidence, or evidence `supports` claim/gate/decision/review item. | Lets the console surface proof and missing proof without parsing product payloads. |
 | An action or decision came from a process, run, agent session, or actor. | Action/decision `produced_by` Flow run, Flow Agents session, actor, or product process. | Lets timelines explain who or what produced a queued action or decision. |
-| A domain field maps to a Surface claim. | Surface claim `derived_from` product domain field when the claim is based on the field; product domain field `updates` Surface claim when the field change is intended to change the claim. | Lets vertical records, such as Campfit provider fields, connect to Surface trust state. |
-| A Flow Review Item is about a claim or field. | Flow Review Item `reviews` Surface claim, product domain field, or both. | Lets the console show the same review item from claim, process, and domain-record views. |
+| A domain field maps to a Surface claim. | Surface claim `derived_from` product domain field when the claim is based on the field; product domain field `updates` Surface claim when the field change is intended to change the claim. | Lets vertical records, such as provider fields, connect to Surface trust state. |
+| A Survey Review Item is about a claim or field. | Survey Review Item `reviews` Surface claim, product domain field, or both. | Lets the console show the same review item from claim, process, and domain-record views. |
 
 Additional links can enrich timelines and navigation, but v0 examples and projection work should not require inferred links, graph storage, hosted ingestion, adapters, or a global identity service.
 
@@ -733,13 +735,13 @@ Gate with attached evidence:
 ]
 ```
 
-Campfit provider field to Surface claim to Flow Review Item:
+Provider field to Surface claim to Survey Review Item:
 
 ```json
 {
   "refs": {
-    "campfitProviderField": {
-      "product": "campfit",
+    "providerField": {
+      "product": "provider-directory",
       "kind": "provider_field",
       "id": "provider-123.registration_status",
       "label": "Provider 123 registration status"
@@ -750,8 +752,8 @@ Campfit provider field to Surface claim to Flow Review Item:
       "id": "claim-provider-123-registration-active",
       "label": "Provider 123 registration is active"
     },
-    "flowReviewItem": {
-      "product": "flow",
+    "surveyReviewItem": {
+      "product": "survey",
       "kind": "review_item",
       "id": "review-registration-status-123",
       "label": "Review provider registration status"
@@ -760,25 +762,25 @@ Campfit provider field to Surface claim to Flow Review Item:
   "links": [
     {
       "from": { "product": "surface", "kind": "claim", "id": "claim-provider-123-registration-active" },
-      "to": { "product": "campfit", "kind": "provider_field", "id": "provider-123.registration_status" },
+      "to": { "product": "provider-directory", "kind": "provider_field", "id": "provider-123.registration_status" },
       "relation": "derived_from",
       "strength": "direct"
     },
     {
-      "from": { "product": "campfit", "kind": "provider_field", "id": "provider-123.registration_status" },
+      "from": { "product": "provider-directory", "kind": "provider_field", "id": "provider-123.registration_status" },
       "to": { "product": "surface", "kind": "claim", "id": "claim-provider-123-registration-active" },
       "relation": "updates",
       "strength": "direct"
     },
     {
-      "from": { "product": "flow", "kind": "review_item", "id": "review-registration-status-123" },
+      "from": { "product": "survey", "kind": "review_item", "id": "review-registration-status-123" },
       "to": { "product": "surface", "kind": "claim", "id": "claim-provider-123-registration-active" },
       "relation": "reviews",
       "strength": "direct"
     },
     {
-      "from": { "product": "flow", "kind": "review_item", "id": "review-registration-status-123" },
-      "to": { "product": "campfit", "kind": "provider_field", "id": "provider-123.registration_status" },
+      "from": { "product": "survey", "kind": "review_item", "id": "review-registration-status-123" },
+      "to": { "product": "provider-directory", "kind": "provider_field", "id": "provider-123.registration_status" },
       "relation": "reviews",
       "strength": "direct"
     }
@@ -788,30 +790,32 @@ Campfit provider field to Surface claim to Flow Review Item:
 
 These examples can be emitted in event `links`, projection `links`, and supporting `payload.refs`. The event `subject` should still name the primary object changed by that event.
 
-## Campfit Mapping Example
+## Survey Review Extension Example
 
-Campfit can project its current review workflow like this:
+ should normally project its admin review workflow through Survey, Surface, and Flow rather than emitting Console records directly:
 
-- provider registration status claim -> `ClaimStatusProjection`
-- crawl or review workflow -> `ProcessStatusProjection`
+- provider registration status claim -> `ClaimStatusProjection` emitted by Surface
+- crawl or review workflow -> `ProcessStatusProjection` emitted by Flow
 - required-field coverage check -> `GateStatusProjection` or Surface claim, depending on whether it is process progress or trust state
-- proposed field change -> `ReviewItemProjection`
-- source excerpt and source URL -> `EvidenceProjection`
-- approve/reject/apply next -> `ConsoleActionProjection`
+- proposed field change -> `ReviewItemProjection` emitted by Survey
+- source excerpt and source URL -> `EvidenceProjection` emitted by Survey or Surface, depending on evidence authority
+- approve/reject/apply next -> inert `ConsoleActionProjection` routed through Survey or the owning vertical product
 - field provenance and `lastVerifiedAt` -> claim freshness/evidence metadata
-- provider ID, field name, claim ID, review item ID, and Flow Run ID -> `CrossProductLink`
+- provider ID, field name, claim ID, Survey review item ID, and Flow Run ID -> `CrossProductLink`
 
-Campfit can also emit events as the workflow happens:
+The primitive producers can emit events as the workflow happens:
 
-- crawl started -> `process.started`
-- source observed -> `evidence.attached`
-- proposed field change created -> `review_item.opened`
-- reviewer approved a value -> `review_item.approved` and `decision.recorded`
-- provider field applied -> `action.completed`
+- Flow crawl/review workflow started -> `process.started`
+- Survey source observed -> `evidence.attached`
+- Survey proposed field change created -> `review_item.opened`
+- Survey reviewer approved a value -> `review_item.approved` and `decision.recorded`
+- Vertical-owned provider field applied through a routed action -> `action.completed`
 - Surface claim updated -> `claim.status.changed`
-- field verification expires by policy -> `claim.freshness.changed`
+- Surface field verification expires by policy -> `claim.freshness.changed`
 
 The read model shown in Kontour Console can then be rebuilt from the event stream or loaded from the latest projection snapshot.
+
+The checked-in `survey-field-review` fixtures show Survey as the review producer with vertical details represented as generic refs and Survey extension metadata.
 
 ## Open Questions
 

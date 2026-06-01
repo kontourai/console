@@ -57,7 +57,7 @@ Positive:
 - Kontour has a clear suite-level product to sell.
 - The primitives stay portable, local-first, and independently valuable.
 - Surface Console and Flow Console can align toward a future management plane without blocking on hosted infrastructure.
-- Vertical products such as Campfit can expose native review workflows while still contributing to the suite-level operating state.
+- Vertical products can expose native review workflows through primitive console extensions while still contributing to the suite-level operating state.
 - Cross-product questions become first-class: claim status plus process status plus proof plus next action.
 
 Trade-offs:

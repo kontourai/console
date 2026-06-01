@@ -6,26 +6,26 @@
     "mode": "event_replay",
     "eventHistory": "complete",
     "streamIds": [
-      "docs/examples/event-streams/campfit-field-review.jsonl"
+      "docs/examples/event-streams/survey-field-review.jsonl"
     ],
-    "lastAcceptedEventId": "evt-campfit-field-review-005",
+    "lastAcceptedEventId": "evt-survey-field-review-005",
     "lastAcceptedEventOccurredAt": "2026-05-31T17:09:00Z",
     "lastComparableSequence": {
-      "producerId": "campfit-local",
-      "streamId": "docs/examples/event-streams/campfit-field-review.jsonl",
+      "producerId": "survey-local",
+      "streamId": "docs/examples/event-streams/survey-field-review.jsonl",
       "sequence": 5
     },
     "acceptedEventCount": 5
   },
   "producer": {
-    "id": "campfit-local-projector",
-    "product": "campfit",
-    "name": "Campfit local projection"
+    "id": "survey-local-projector",
+    "product": "survey",
+    "name": "Survey local projection"
   },
   "scope": {
     "kind": "workspace",
-    "id": "campfit-demo",
-    "label": "Campfit demo workspace"
+    "id": "survey-demo",
+    "label": "Survey demo workspace"
   },
   "summary": {
     "claimCount": 1,
@@ -62,14 +62,14 @@
       ],
       "actionRefs": [
         {
-          "product": "campfit",
+          "product": "survey",
           "kind": "action",
           "id": "action-apply-provider-118-npi",
           "label": "Apply approved NPI"
         }
       ],
       "sourceRef": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "provider_field",
         "id": "provider-118:npi",
         "label": "Provider 118 NPI"
@@ -79,7 +79,7 @@
           "product": "surface",
           "note": "Surface owns claim status and freshness semantics."
         },
-        "campfit": {
+        "survey": {
           "providerId": "provider-118",
           "fieldName": "npi"
         }
@@ -88,9 +88,9 @@
   ],
   "processes": [
     {
-      "id": "run-campfit-provider-118-field-review",
-      "definitionId": "campfit-provider-field-review",
-      "label": "Campfit provider field review",
+      "id": "run-survey-provider-118-field-review",
+      "definitionId": "survey-provider-field-review",
+      "label": "Survey provider field review",
       "status": "completed",
       "currentStep": "apply-approved-field",
       "startedAt": "2026-05-31T17:01:00Z",
@@ -99,7 +99,7 @@
       "percentComplete": 100,
       "reviewItemRefs": [
         {
-          "product": "campfit",
+          "product": "survey",
           "kind": "review_item",
           "id": "review-provider-118-npi",
           "label": "Review Provider 118 NPI"
@@ -115,7 +115,7 @@
       ],
       "nextActionRefs": [
         {
-          "product": "campfit",
+          "product": "survey",
           "kind": "action",
           "id": "action-apply-provider-118-npi",
           "label": "Apply approved NPI"
@@ -135,8 +135,8 @@
       "processRef": {
         "product": "flow",
         "kind": "run",
-        "id": "run-campfit-provider-118-field-review",
-        "label": "Campfit provider field review"
+        "id": "run-survey-provider-118-field-review",
+        "label": "Survey provider field review"
       },
       "label": "Provider field evidence present",
       "status": "passed",
@@ -173,7 +173,7 @@
       "status": "approved",
       "priority": "medium",
       "subjectRef": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "provider_field",
         "id": "provider-118:npi",
         "label": "Provider 118 NPI"
@@ -190,8 +190,8 @@
         {
           "product": "flow",
           "kind": "run",
-          "id": "run-campfit-provider-118-field-review",
-          "label": "Campfit provider field review"
+          "id": "run-survey-provider-118-field-review",
+          "label": "Survey provider field review"
         }
       ],
       "evidenceRefs": [
@@ -204,7 +204,7 @@
       ],
       "actionRefs": [
         {
-          "product": "campfit",
+          "product": "survey",
           "kind": "action",
           "id": "action-apply-provider-118-npi",
           "label": "Apply approved NPI"
@@ -214,8 +214,8 @@
       "updatedAt": "2026-05-31T17:08:01Z",
       "extensions": {
         "authority": {
-          "product": "campfit",
-          "note": "Campfit owns provider field review semantics."
+          "product": "survey",
+          "note": "Survey owns review item lifecycle and decision semantics."
         }
       }
     }
@@ -232,10 +232,10 @@
       "sourceExcerpt": "NPI: 1234567890",
       "capturedAt": "2026-05-31T17:00:00Z",
       "producerRef": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "crawler",
-        "id": "campfit-crawler",
-        "label": "Campfit crawler"
+        "id": "survey-crawler",
+        "label": "Survey source collector"
       },
       "claimRefs": [
         {
@@ -257,13 +257,13 @@
       "rationale": "Reviewed source evidence supports the field value.",
       "subjectRefs": [
         {
-          "product": "campfit",
+          "product": "survey",
           "kind": "review_item",
           "id": "review-provider-118-npi",
           "label": "Review Provider 118 NPI"
         },
         {
-          "product": "campfit",
+          "product": "survey",
           "kind": "provider_field",
           "id": "provider-118:npi",
           "label": "Provider 118 NPI"
@@ -287,12 +287,12 @@
       "kind": "approve",
       "status": "completed",
       "authority": {
-        "product": "campfit",
-        "command": "campfit.providerField.applyApproved"
+        "product": "survey",
+        "command": "survey.providerField.applyApproved"
       },
       "subjectRefs": [
         {
-          "product": "campfit",
+          "product": "survey",
           "kind": "provider_field",
           "id": "provider-118:npi",
           "label": "Provider 118 NPI"
@@ -315,7 +315,7 @@
         "label": "Provider 118 NPI is verified"
       },
       "to": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "provider_field",
         "id": "provider-118:npi",
         "label": "Provider 118 NPI"
@@ -326,7 +326,7 @@
     },
     {
       "from": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "provider_field",
         "id": "provider-118:npi",
         "label": "Provider 118 NPI"
@@ -351,8 +351,8 @@
       "to": {
         "product": "flow",
         "kind": "run",
-        "id": "run-campfit-provider-118-field-review",
-        "label": "Campfit provider field review"
+        "id": "run-survey-provider-118-field-review",
+        "label": "Survey provider field review"
       },
       "relation": "controls",
       "strength": "direct",
@@ -360,7 +360,7 @@
     },
     {
       "from": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "review_item",
         "id": "review-provider-118-npi",
         "label": "Review Provider 118 NPI"
@@ -368,8 +368,8 @@
       "to": {
         "product": "flow",
         "kind": "run",
-        "id": "run-campfit-provider-118-field-review",
-        "label": "Campfit provider field review"
+        "id": "run-survey-provider-118-field-review",
+        "label": "Survey provider field review"
       },
       "relation": "produced_by",
       "strength": "direct",
@@ -377,7 +377,7 @@
     },
     {
       "from": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "review_item",
         "id": "review-provider-118-npi",
         "label": "Review Provider 118 NPI"
@@ -394,13 +394,13 @@
     },
     {
       "from": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "review_item",
         "id": "review-provider-118-npi",
         "label": "Review Provider 118 NPI"
       },
       "to": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "provider_field",
         "id": "provider-118:npi",
         "label": "Provider 118 NPI"
@@ -428,13 +428,13 @@
     },
     {
       "from": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "action",
         "id": "action-apply-provider-118-npi",
         "label": "Apply approved NPI"
       },
       "to": {
-        "product": "campfit",
+        "product": "survey",
         "kind": "decision",
         "id": "decision-provider-118-npi-approved",
         "label": "Approve Provider 118 NPI"
@@ -445,7 +445,7 @@
     }
   ],
   "extensions": {
-    "campfit": {
+    "survey": {
       "vertical": "provider_directory"
     }
   }

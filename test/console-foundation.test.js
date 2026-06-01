@@ -3,7 +3,7 @@ const test = require("node:test");
 const {
   inspectFixtures,
   getSurfaceClaimStatus,
-  getCampfitFieldReviewState,
+  getSurveyReviewState,
   validateProjection
 } = require("../src/console-foundation");
 
@@ -31,7 +31,7 @@ test("inspects checked-in event streams and projections", () => {
 test("projection loading preserves v0 boundaries and original objects", () => {
   const report = inspectFixtures({ rootDir });
   const surface = report.projections.find((projection) => projection.relativePath.endsWith("surface-current-claim-status.json"));
-  const campfit = report.projections.find((projection) => projection.relativePath.endsWith("campfit-field-review.json"));
+  const survey = report.projections.find((projection) => projection.relativePath.endsWith("survey-field-review.json"));
 
   assert.equal(surface.snapshot.derivedFrom.directSnapshot.sourceRef.product, "surface");
   assert.equal(surface.snapshot.claims[0].extensions.authority.product, "surface");
@@ -39,10 +39,10 @@ test("projection loading preserves v0 boundaries and original objects", () => {
   assert.equal(surface.snapshot.actions[0].authority.externalUrl, "https://example.test/flow/definitions/refresh-provider-directory");
   assert.equal(surface.snapshot.links[2].relation, "updates");
 
-  assert.equal(campfit.snapshot.claims[0].sourceRef.product, "campfit");
-  assert.equal(campfit.snapshot.processes[0].extensions.authority.product, "flow");
-  assert.equal(campfit.snapshot.reviewItems[0].subjectRef.id, "provider-118:npi");
-  assert.equal(campfit.snapshot.links.some((link) => link.relation === "reviews"), true);
+  assert.equal(survey.snapshot.claims[0].sourceRef.product, "survey");
+  assert.equal(survey.snapshot.processes[0].extensions.authority.product, "flow");
+  assert.equal(survey.snapshot.reviewItems[0].subjectRef.id, "provider-118:npi");
+  assert.equal(survey.snapshot.links.some((link) => link.relation === "reviews"), true);
 });
 
 test("surface claim query does not require a selected Flow run", () => {
@@ -59,9 +59,9 @@ test("surface claim query does not require a selected Flow run", () => {
   assert.equal(claims[0].requiresSelectedFlowRun, false);
 });
 
-test("campfit review query composes claim, review, evidence, decision, action, and links", () => {
+test("survey review query composes claim, review, evidence, decision, action, and links", () => {
   const report = inspectFixtures({ rootDir });
-  const reviews = getCampfitFieldReviewState(report.projections, { reviewId: "review-provider-118-npi" });
+  const reviews = getSurveyReviewState(report.projections, { reviewId: "review-provider-118-npi" });
 
   assert.equal(reviews.length, 1);
   assert.equal(reviews[0].reviewItem.id, "review-provider-118-npi");
@@ -104,16 +104,16 @@ test("projection validation reports malformed nested object refs", () => {
         status: "verified",
         evidenceRefs: [{ product: "surface", kind: "evidence" }],
         actionRefs: "action-1",
-        sourceRef: { product: "campfit", kind: "provider_field" }
+        sourceRef: { product: "survey", kind: "provider_field" }
       }
     ],
     processes: [
       {
         id: "process-1",
         status: "active",
-        reviewItemRefs: [{ product: "campfit", kind: "review_item", id: "review-1" }],
+        reviewItemRefs: [{ product: "survey", kind: "review_item", id: "review-1" }],
         claimRefs: [null],
-        nextActionRefs: [{ product: "campfit", kind: "action" }]
+        nextActionRefs: [{ product: "survey", kind: "action" }]
       }
     ],
     gates: [
@@ -130,11 +130,11 @@ test("projection validation reports malformed nested object refs", () => {
         id: "review-1",
         kind: "field_change",
         status: "open",
-        subjectRef: { product: "campfit", kind: "provider_field" },
+        subjectRef: { product: "survey", kind: "provider_field" },
         claimRefs: [{ product: "surface", kind: "claim" }],
         processRefs: [{ product: "flow", kind: "run", id: "process-1" }],
         evidenceRefs: [{ product: "surface", kind: "evidence" }],
-        actionRefs: [{ product: "campfit", kind: "action" }]
+        actionRefs: [{ product: "survey", kind: "action" }]
       }
     ],
     evidence: [
@@ -150,7 +150,7 @@ test("projection validation reports malformed nested object refs", () => {
         id: "decision-1",
         kind: "approval",
         decidedAt: "2026-05-31T17:08:05Z",
-        subjectRefs: [{ product: "campfit", kind: "review_item" }],
+        subjectRefs: [{ product: "survey", kind: "review_item" }],
         evidenceRefs: [{ product: "surface", kind: "evidence" }]
       }
     ],
@@ -158,7 +158,7 @@ test("projection validation reports malformed nested object refs", () => {
       {
         id: "exception-1",
         status: "open",
-        subjectRefs: [{ product: "campfit", kind: "review_item" }],
+        subjectRefs: [{ product: "survey", kind: "review_item" }],
         evidenceRefs: [{ product: "surface", kind: "evidence" }]
       }
     ]

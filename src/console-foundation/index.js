@@ -154,9 +154,9 @@ function getSurfaceClaimStatus(projections, options = {}) {
     .filter((claim) => !options.claimId || claim.id === options.claimId);
 }
 
-function getCampfitFieldReviewState(projections, options = {}) {
+function getSurveyReviewState(projections, options = {}) {
   return projections
-    .filter((projection) => projection.snapshot.producer && projection.snapshot.producer.product === "campfit")
+    .filter((projection) => projection.snapshot.producer && projection.snapshot.producer.product === "survey")
     .flatMap((projection) => {
       const snapshot = projection.snapshot;
       return arrayOf(snapshot.reviewItems)
@@ -591,7 +591,7 @@ module.exports = {
   loadProjectionSnapshots,
   getSurfaceClaimStatus,
   getFlowProcessStatus,
-  getCampfitFieldReviewState,
+  getSurveyReviewState,
   extractActionDescriptors,
   validateEvent,
   validateProjection,

@@ -1,6 +1,6 @@
 # Kontour Console
 
-Kontour Console is the suite-level management and visibility product for Kontour. It brings portable primitives from Surface, Flow, Survey, Veritas, Flow Agents, and vertical products into one operating plane.
+Kontour Console is the suite-level management and visibility product for Kontour. It brings portable primitives from Surface, Flow, Survey, Veritas, and Flow Agents into one operating plane, with vertical products extending those primitive consoles rather than depending on Kontour Console directly.
 
 ## Language
 
@@ -17,7 +17,7 @@ The suite-level layer that aggregates, correlates, filters, routes, and manages 
 _Avoid_: Product kernel, replacement for Surface or Flow, hidden workflow authority
 
 **Console Projection**:
-A product-owned read model shaped for console display and action. Surface, Flow, Veritas, Survey, Flow Agents, and vertical products may each publish projections; Kontour Console composes them without redefining their core meaning. Projections are cached views; product event streams are the durable integration contract when available.
+A product-owned read model shaped for console display and action. Surface, Flow, Survey, Veritas, and Flow Agents publish primitive projections; vertical products may contribute extension metadata through the primitive they build on. Kontour Console composes projections without redefining their core meaning. Projections are cached views; product event streams are the durable integration contract when available.
 _Avoid_: New source of truth, arbitrary BI model, direct database dependency
 
 **Product Event Stream**:
@@ -29,8 +29,12 @@ A portable reference connecting related objects across products, such as Surface
 _Avoid_: UI-only join, implicit path convention, lossy correlation
 
 **Unified Work Queue**:
-A suite-level queue that brings together stale claims, evidence gaps, open Flow gates, Review Items, producer reverification requests, Veritas readiness gaps, Survey candidate reviews, and Flow Agents continuation needs.
+A suite-level queue that brings together stale claims, evidence gaps, open Flow gates, Survey Review Items, producer reverification requests, Veritas readiness gaps, Survey candidate reviews, and Flow Agents continuation needs.
 _Avoid_: Replacing product-owned queues, generic task board, hiding product authority
+
+**Survey Console Extension**:
+A vertical product extension of Survey's review console surface. A vertical product can provide domain labels, subject refs, field renderers, and admin action context while Survey owns review item, candidate, source, observation, decision, and publication semantics.
+_Avoid_: vertical products depending on `.kontour`, vertical products redefining Survey review semantics, Kontour Console becoming the admin review source of truth
 
 **Suite-Level Action**:
 A cross-product action exposed by Kontour Console, such as refresh a claim, request producer reverification, approve a Review Item, resume a Flow Run, route a gate back, attach proof, or open a product-native detail view. The product that owns the action remains the authority.
@@ -56,7 +60,7 @@ Kontour Console owns:
 - operator and producer management views
 - hosted collaboration and monitoring, when present
 - identity links across product objects
-- extension composition across products and verticals
+- extension composition across primitive consoles and verticals
 
 Kontour Console does not own:
 
@@ -65,7 +69,7 @@ Kontour Console does not own:
 - Survey fact-review record semantics
 - Veritas repo/change governance policy
 - Flow Agents runtime adapter behavior
-- vertical product domain truth
+- vertical product domain truth or admin UX semantics
 - a requirement that primitives depend on hosted infrastructure
 
 ## Implementation Stance
@@ -80,4 +84,4 @@ Start with contracts and composition before a shared UI package:
 - route conventions
 - refresh and reverification semantics
 
-A shared shell or component package can emerge after Surface Console and Flow Console prove which primitives are truly common.
+A shared shell or component package can emerge after Surface Console, Flow Console, and Survey Console prove which primitives are truly common. Survey Console is the expected primitive review surface; vertical products should extend it for admin review UX rather than integrating with Kontour Console as a requirement.

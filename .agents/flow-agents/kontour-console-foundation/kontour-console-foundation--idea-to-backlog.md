@@ -6,7 +6,7 @@ Next gate: Backlog Gate - BLOCKED on GitHub remote/auth before issue sync.
 
 ## source_ideas
 
-- Conversation: realtime claim status, Flow run/control visibility, Flow Console, Surface Console alignment, Campfit review surface extraction, Kontour Console as suite-level product, event-first integration.
+- Conversation: realtime claim status, Flow run/control visibility, Flow Console, Surface Console alignment,  review surface extraction, Kontour Console as suite-level product, event-first integration.
 - Existing repo artifacts:
   - `CONTEXT.md`
   - `docs/product-boundaries.md`
@@ -44,11 +44,11 @@ Next gate: Backlog Gate - BLOCKED on GitHub remote/auth before issue sync.
 - Outcome: shape
 - Reason: identity links are required to join Surface Claims, Flow Runs, Review Items, evidence, actions, and vertical domain records.
 
-### I5 - Flow Console V0 With Campfit Extension
+### I5 - Survey Console V0 With Vertical Extension
 
 - Classification: feature / product integration
 - Outcome: research then shape
-- Reason: desired implementation target is Flow-focused first with Campfit as reference extension. Needs exploration of Campfit repo and Flow/Surface console code before executable scope.
+- Reason: desired implementation target is Survey-focused first with a generic vertical review extension. Needs exploration of Survey, Surface, and Flow console boundaries before executable scope.
 
 ### I6 - Surface Console / Flow Console Architectural Alignment
 
@@ -81,8 +81,8 @@ Next gate: Backlog Gate - BLOCKED on GitHub remote/auth before issue sync.
 ### S2 - Define V0 Event Stream Contract
 
 - Ideas: I2
-- Thinnest meaningful slice: specify event envelope, required fields, v0 event types, ordering/correlation rules, JSONL file convention, and examples for Surface/Flow/Campfit.
-- Success signal: Surface, Flow, and Campfit can each emit a minimal event stream that Kontour Console can consume.
+- Thinnest meaningful slice: specify event envelope, required fields, v0 event types, ordering/correlation rules, JSONL file convention, and examples for Surface, Flow, and Survey.
+- Success signal: Surface, Flow, and Survey can each emit a minimal event stream that Kontour Console can consume.
 - Non-goals: hosted event bus, durable storage engine, UI.
 
 ### S3 - Define V0 Projection Read Model
@@ -99,19 +99,19 @@ Next gate: Backlog Gate - BLOCKED on GitHub remote/auth before issue sync.
 - Success signal: console can answer "what workflow is changing this claim?" and "what claim does this review item affect?" from fixtures.
 - Non-goals: global identity service, database schema, graph store.
 
-### S5 - Flow Console Contract And Local Server Spike
+### S5 - Survey Console Contract And Extension Boundary
 
 - Ideas: I5, I6
-- Thinnest meaningful slice: explore Surface Console architecture and define Flow Console local file/route conventions, then create a minimal Flow-owned projection/server plan.
-- Success signal: executable issue can be planned for Flow Console v0 without importing Campfit-specific assumptions.
+- Thinnest meaningful slice: explore Surface/Flow console architecture and define Survey Console review route/projection conventions, then define how vertical products extend Survey admin review UX without depending on Kontour Console.
+- Success signal: executable issue can be planned for Survey Console v0 without importing branded vertical assumptions.
 - Non-goals: full app, shared `kontour-console` package, hosted UI.
 
-### S6 - Campfit Reference Extension Mapping
+### S6 - Generic Survey Review Extension Mapping
 
 - Ideas: I5
-- Thinnest meaningful slice: map Campfit provider review concepts to Flow Review Items, Surface Claims, evidence, decisions, actions, and cross-product events.
-- Success signal: one Campfit provider review fixture can be represented as events plus projection objects.
-- Non-goals: migrating Campfit admin UI, production adapter, data writes back to Campfit.
+- Thinnest meaningful slice: map generic provider-field review concepts to Survey Review Items, Surface Claims, Flow process/gate refs, evidence, decisions, actions, and cross-product events.
+- Success signal: one generic provider-field review fixture can be represented as Survey/Surface/Flow events plus projection objects.
+- Non-goals: migrating a vertical admin UI, production adapter, data writes back to a vertical product.
 
 ### S7 - Surface Current Claim Status Events
 
@@ -133,7 +133,7 @@ The work should not ship as one bundled implementation. The ideas share one outc
 
 - S1 is already completed as documentation/repo setup.
 - S2-S4 are the platform contract foundation and should be bundled only as a "Kontour Console V0 contract" milestone because each depends on the others for a coherent integration target.
-- S5-S6 depend on S2-S4 and should follow as proof through Flow/Campfit.
+- S5-S6 depend on S2-S4 and should follow as proof through Survey and vertical review extensions.
 - S7 can proceed in parallel conceptually but should align with S2 event vocabulary.
 - S8 should wait until the object/event model is stable enough to avoid speculative IA.
 
@@ -144,8 +144,8 @@ Decision: split into separate backlog issues under one milestone rather than one
 - S2 blocks S3, S5, S6, S7, S8.
 - S4 blocks S3, S5, S6, S8.
 - S3 blocks implementation of any shared console renderer.
-- S5 blocks production-grade Flow Console.
-- S6 depends on S5 enough to avoid leaking Campfit semantics into Flow core.
+- S5 blocks production-grade Survey Console.
+- S6 depends on S5 enough to avoid leaking vertical semantics into Survey or Flow core.
 - S7 related to S2 and S3; it can be shaped in Surface once event vocabulary exists.
 - S8 blocked by S2-S4.
 
@@ -168,11 +168,11 @@ Decision: split into separate backlog issues under one milestone rather than one
 - Confidence: medium-high; direction is agreed, exact v0 required fields need validation.
 - Size: medium.
 
-### OB2 - Flow Console With Campfit Reference Extension
+### OB2 - Survey Console With Vertical Review Extension
 
-- Problem: Flow needs a real console path for run/gate/review visibility, and Campfit is the current best proof of a domain review workflow.
-- Stakeholder: Flow users, Campfit operators, future vertical products, Flow Agents.
-- Outcome: Flow Console can show process state and review queues while Campfit supplies native field/evidence rendering.
+- Problem: Survey needs a real console path for review queue visibility, and a generic vertical review extension is the current proof target.
+- Stakeholder: Survey users, future vertical products, Flow users, Flow Agents.
+- Outcome: Survey Console can show review queues while vertical extensions supply native field/evidence rendering and Flow contributes process/gate state.
 - Confidence: medium; requires code exploration and likely incremental implementation.
 - Size: large.
 
@@ -189,7 +189,7 @@ Decision: split into separate backlog issues under one milestone rather than one
 ### Work Item W1 - Define Kontour Console V0 Event Stream Contract
 
 Story / Outcome:
-As a product builder, I want a stable event contract for Kontour Console so that Surface, Flow, Campfit, and future products can emit realtime operating state without coupling to a hosted console.
+As a product builder, I want a stable event contract for Kontour Console so that Surface, Flow, Survey, and future products can emit realtime operating state without coupling to a hosted console.
 
 Problem:
 Snapshots alone make realtime progress, audit, and cross-product correlation difficult. Products need an append-only event shape that Kontour Console can consume locally or hosted.
@@ -199,7 +199,7 @@ Scope:
 - Define v0 event type vocabulary.
 - Define local JSONL convention.
 - Define ordering, event IDs, correlation, causation, and replay expectations.
-- Include examples for Surface claim status, Flow process/gate state, and Campfit review events.
+- Include examples for Surface claim status, Flow process/gate state, and Survey review events.
 
 Non-goals:
 - Hosted event bus.
@@ -218,7 +218,7 @@ Acceptance Criteria:
 - AC1: A spec lists required fields for `KontourConsoleEvent`.
 - AC2: A spec lists v0 event types and their intended use.
 - AC3: A local JSONL file convention is documented.
-- AC4: At least three example event sequences exist: Surface claim freshness, Flow gate route-back, Campfit field review.
+- AC4: At least three example event sequences exist: Surface claim freshness, Flow gate route-back, Survey field review.
 - AC5: The spec states how projections are rebuilt from events.
 
 Verification Expectation:
@@ -252,7 +252,7 @@ Requirements:
 Acceptance Criteria:
 - AC1: Projection envelope and object types are documented.
 - AC2: The relationship between event stream and projection snapshot is explicit.
-- AC3: The projection schema can represent the Campfit mapping example.
+- AC3: The projection schema can represent the Survey field review mapping example.
 - AC4: The projection schema can represent Surface current claim status independent of run picker state.
 
 Verification Expectation:
@@ -264,7 +264,7 @@ Story / Outcome:
 As an operator, I want Kontour Console to connect claims, workflows, review items, evidence, and domain records so that I can understand why something is blocked or stale without hunting across tools.
 
 Problem:
-Surface Claims, Flow Runs, Survey Candidates, Veritas checks, Flow Agents sessions, and Campfit fields are related but currently use product-local identifiers.
+Surface Claims, Flow Runs, Survey Candidates, Veritas checks, Flow Agents sessions, and vertical domain fields are related but currently use product-local identifiers.
 
 Scope:
 - Define required `CrossProductRef` fields.
@@ -286,41 +286,41 @@ Requirements:
 Acceptance Criteria:
 - AC1: Cross-product ref and link shapes are documented.
 - AC2: Required v0 link examples are documented.
-- AC3: Campfit provider field to Surface claim to Flow Review Item mapping can be represented.
+- AC3: Provider field to Surface claim to Flow Review Item mapping can be represented.
 
 Verification Expectation:
 Doc review and fixture mapping.
 
-### Work Item W4 - Explore Flow Console V0 With Campfit Extension
+### Work Item W4 - Explore Survey Console V0 With Vertical Extension
 
 Story / Outcome:
-As a Flow product builder, I want Flow Console v0 grounded in Campfit review workflows so that generic Flow run/control/review semantics are proven against a real vertical product.
+As a Survey product builder, I want Survey Console v0 grounded in generic vertical review workflows so that Survey review semantics and extension boundaries are proven against realistic admin review UX.
 
 Problem:
-Flow Console should not become abstract UI theory, and Campfit should not define Flow core. We need an exploration artifact that maps the real Campfit admin/review flow into Flow/Kontour Console contracts.
+Survey Console should not become abstract UI theory, and vertical review UX should not define Survey or Flow core. We need an exploration artifact that maps generic vertical admin/review flow into Survey/Surface/Flow/Kontour Console contracts.
 
 Scope:
 - Inspect Surface Console architecture.
 - Inspect Flow run/report/control state.
-- Inspect Campfit admin review data and UI flow.
-- Produce a Flow Console v0 implementation plan with Campfit extension boundary.
+- Inspect generic vertical admin review data and UI extension needs.
+- Produce a Survey Console v0 implementation plan with vertical extension boundary.
 - Identify required event/projection additions.
 
 Non-goals:
 - Production implementation.
-- Migrating Campfit UI.
+- Migrating vertical UI.
 - Creating shared `kontour-console` package.
 
 Requirements:
 - R1: Exploration must identify reusable Surface Console architecture patterns.
-- R2: Exploration must map Campfit review concepts to Flow Review Items and Kontour events.
-- R3: Exploration must separate Flow-owned semantics from Campfit extension rendering.
+- R2: Exploration must map vertical review concepts to Survey Review Items and Kontour events.
+- R3: Exploration must separate Survey-owned review semantics from vertical extension rendering.
 - R4: Exploration must produce executable follow-up issues.
 
 Acceptance Criteria:
 - AC1: Exploration artifact lists relevant files and current code facts.
-- AC2: Flow Console v0 scope is defined.
-- AC3: Campfit extension boundary is defined.
+- AC2: Survey Console v0 scope is defined.
+- AC3: Vertical extension boundary is defined.
 - AC4: Follow-up issues are ready for `pull-work`.
 
 Verification Expectation:
@@ -381,7 +381,7 @@ Doc review against Surface glossary and console docs.
 ### Issue 1 - Define Kontour Console V0 Event Stream Contract
 
 Story / Outcome:
-As a product builder, I want a stable event contract for Kontour Console so that Surface, Flow, Campfit, and future products can emit realtime operating state without coupling to a hosted console.
+As a product builder, I want a stable event contract for Kontour Console so that Surface, Flow, Survey, and future products can emit realtime operating state without coupling to a hosted console.
 
 Problem:
 Snapshots alone make realtime progress, audit, and cross-product correlation difficult. Products need an append-only event shape that Kontour Console can consume locally or hosted.
@@ -391,7 +391,7 @@ Scope:
 - Define v0 event type vocabulary.
 - Define local JSONL convention.
 - Define ordering, event IDs, correlation, causation, and replay expectations.
-- Include examples for Surface claim status, Flow process/gate state, and Campfit review events.
+- Include examples for Surface claim status, Flow process/gate state, and Survey review events.
 
 Non-goals:
 - Hosted event bus.
@@ -410,7 +410,7 @@ Acceptance Criteria:
 - AC1: A spec lists required fields for `KontourConsoleEvent`.
 - AC2: A spec lists v0 event types and their intended use.
 - AC3: A local JSONL file convention is documented.
-- AC4: At least three example event sequences exist: Surface claim freshness, Flow gate route-back, Campfit field review.
+- AC4: At least three example event sequences exist: Surface claim freshness, Flow gate route-back, Survey field review.
 - AC5: The spec states how projections are rebuilt from events.
 
 Verification Expectation:
@@ -453,7 +453,7 @@ Requirements:
 Acceptance Criteria:
 - AC1: Projection envelope and object types are documented.
 - AC2: The relationship between event stream and projection snapshot is explicit.
-- AC3: The projection schema can represent the Campfit mapping example.
+- AC3: The projection schema can represent the Survey field review mapping example.
 - AC4: The projection schema can represent Surface current claim status independent of run picker state.
 
 Verification Expectation:
@@ -474,7 +474,7 @@ Story / Outcome:
 As an operator, I want Kontour Console to connect claims, workflows, review items, evidence, and domain records so that I can understand why something is blocked or stale without hunting across tools.
 
 Problem:
-Surface Claims, Flow Runs, Survey Candidates, Veritas checks, Flow Agents sessions, and Campfit fields are related but currently use product-local identifiers.
+Surface Claims, Flow Runs, Survey Candidates, Veritas checks, Flow Agents sessions, and vertical domain fields are related but currently use product-local identifiers.
 
 Scope:
 - Define required `CrossProductRef` fields.
@@ -496,7 +496,7 @@ Requirements:
 Acceptance Criteria:
 - AC1: Cross-product ref and link shapes are documented.
 - AC2: Required v0 link examples are documented.
-- AC3: Campfit provider field to Surface claim to Flow Review Item mapping can be represented.
+- AC3: Provider field to Surface claim to Flow Review Item mapping can be represented.
 
 Verification Expectation:
 Doc review and fixture mapping.

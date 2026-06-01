@@ -26,7 +26,7 @@ The command reads checked-in files under `docs/examples/event-streams/` and `doc
 
 ## Local Console Producer Emission
 
-A Console producer is the Kontour product or product runtime that emits control-plane records for Kontour Console. Surface, Flow, Survey, Veritas, Flow Agents, and vertical products such as Campfit can all be Console producers. This is separate from any product-native "producer" concept inside those products, such as a crawler, verifier, importer, workflow runner, or agent.
+A Console producer is the Kontour product or product runtime that emits control-plane records for Kontour Console. Surface, Flow, Survey, Veritas, and Flow Agents are the primary Console producers. Vertical products usually contribute through those primitives as extension metadata and refs, rather than depending on `.kontour` or Kontour Console directly. This is separate from any product-native "producer" concept inside those products, such as a crawler, verifier, importer, workflow runner, or agent.
 
 Products can write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under a configured `.kontour` root, appending events below `.kontour/events/` and writing current projection snapshots below `.kontour/projections/`.
 
