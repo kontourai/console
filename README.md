@@ -122,6 +122,55 @@ await emitter.emitEvent(surfaceFreshnessTransitionToEvent({
 
 Optional action descriptors supplied to the helper are persisted as inert projection data only. The helper does not fetch Surface data, start Flow, execute commands, dereference URLs, or mutate product state.
 
+### Flow Process/Gate Status Producer Helper
+
+`flowProcessStateToProjection()` and `flowGateTransitionToEvent()` are dependency-free Flow Console producer helper/example functions. They map caller-owned process and gate state into local Console records; they are not real Flow integration, do not run Flow control semantics, and do not perform action descriptors. Action descriptors are inert, read-only metadata for display and review.
+
+```js
+const {
+  KontourEmitter,
+  LocalFileSink,
+  inspectLocalKontour,
+  getFlowProcessStatus,
+  flowProcessStateToProjection,
+  flowGateTransitionToEvent
+} = require("./src/console-foundation");
+
+const emitter = new KontourEmitter({
+  sink: new LocalFileSink({ root: ".kontour" })
+});
+
+await emitter.emitProjection(flowProcessStateToProjection({
+  processId: "run-provider-onboarding-42",
+  status: "running",
+  currentStep: { id: "review-provider-fields" },
+  percentComplete: 62,
+  generatedAt: "2026-06-01T18:12:30Z",
+  openGateRefs: [{ product: "flow", kind: "gate", id: "gate-provider-review" }],
+  gates: [{ id: "gate-provider-review", status: "open" }],
+  actions: [{
+    id: "action-resume-provider-onboarding",
+    kind: "resume",
+    authority: { product: "flow", command: "flow.run.resume" },
+    subjectRefs: [{ product: "flow", kind: "run", id: "run-provider-onboarding-42" }]
+  }]
+}));
+
+await emitter.emitEvent(flowGateTransitionToEvent({
+  processId: "run-provider-onboarding-42",
+  gateId: "gate-provider-review",
+  occurredAt: "2026-06-01T18:15:00Z",
+  before: { status: "waiting" },
+  after: { status: "open" }
+}));
+
+const report = inspectLocalKontour({ rootDir: process.cwd() });
+const statuses = getFlowProcessStatus(report.projections, {
+  processId: "run-provider-onboarding-42"
+});
+console.log(statuses[0].status, statuses[0].actions[0].readOnly);
+```
+
 ## Docs
 
 - [Product Boundaries](docs/product-boundaries.md)

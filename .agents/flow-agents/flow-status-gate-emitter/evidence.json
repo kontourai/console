@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "flow-status-gate-emitter",
+  "verdict": "pass",
+  "checks": [
+    {
+      "id": "tests",
+      "kind": "test",
+      "status": "pass",
+      "command": "npm test",
+      "summary": "26 tests passed, including Flow process/status and gate event round trips."
+    },
+    {
+      "id": "fixture-inspection",
+      "kind": "runtime",
+      "status": "pass",
+      "command": "npm run inspect:fixtures",
+      "summary": "Fixture inspection completed with validation errors=0 and expected inert action warnings only."
+    },
+    {
+      "id": "forbidden-api-scan",
+      "kind": "security",
+      "status": "pass",
+      "command": "rg -n \"child_process|exec\\\\(|execFile\\\\(|spawn\\\\(|fork\\\\(|open\\\\(|fetch\\\\(|node:http|node:https|require\\\\(['\\\\\\\"]node:net|require\\\\(['\\\\\\\"]node:tls\" src/console-foundation/flow-process-helper.js test/flow-process-helper.test.js README.md",
+      "summary": "No matches; rg exited 1 as expected for a clean no-match scan."
+    },
+    {
+      "id": "diff-whitespace",
+      "kind": "diff",
+      "status": "pass",
+      "command": "git diff --check",
+      "summary": "No whitespace errors."
+    },
+    {
+      "id": "sidecar-json-parse",
+      "kind": "runtime",
+      "status": "pass",
+      "command": "node -e JSON.parse sidecar check",
+      "summary": "state.json, acceptance.json, and evidence.json parsed successfully before verifier sidecar reconciliation."
+    },
+    {
+      "id": "diff-review",
+      "kind": "diff",
+      "status": "pass",
+      "summary": "Reviewed helper, export/read helper, tests, README docs, and workflow sidecars against AC1-AC5."
+    },
+    {
+      "id": "provider-checks",
+      "kind": "external",
+      "status": "skip",
+      "summary": "Provider checks skipped: local helper/example verification only, no PR/provider evidence required for requested local gate."
+    }
+  ],
+  "external_evidence": [
+    {
+      "system": "local-file",
+      "ref": ".agents/flow-agents/flow-status-gate-emitter/flow-status-gate-emitter--verification.md",
+      "summary": "Human-readable verification report mapped to AC1-AC5."
+    }
+  ],
+  "not_verified_gaps": []
+}

@@ -185,6 +185,55 @@ function getCampfitFieldReviewState(projections, options = {}) {
     });
 }
 
+function getFlowProcessStatus(projections, options = {}) {
+  return projections
+    .filter((projection) => projection.snapshot.producer && projection.snapshot.producer.product === "flow")
+    .flatMap((projection) => {
+      const snapshot = projection.snapshot;
+      return arrayOf(snapshot.processes)
+        .filter((process) => matchesProcess(process, snapshot, options))
+        .map((process) => {
+          const processIds = new Set([process.id]);
+          const openGateIds = new Set(arrayOf(process.openGateRefs).map((ref) => ref.id));
+          const nextActionIds = new Set(arrayOf(process.nextActionRefs).map((ref) => ref.id));
+          const gates = arrayOf(snapshot.gates).filter((gate) => {
+            const matchesProcessRef = gate.processRef && processIds.has(gate.processRef.id);
+            const matchesExplicitGate = openGateIds.has(gate.id);
+            return matchesProcessRef || matchesExplicitGate || options.gateId === gate.id;
+          });
+          const gateIds = new Set(gates.map((gate) => gate.id));
+          const openGates = gates.filter((gate) => isOpenFlowGate(gate) || openGateIds.has(gate.id));
+          const evidence = arrayOf(snapshot.evidence).filter((item) => refsContain(item.processRefs, processIds) || refsContain(item.gateRefs, gateIds));
+          const decisions = arrayOf(snapshot.decisions).filter((decision) => refsContain(decision.subjectRefs, processIds) || refsContain(decision.subjectRefs, gateIds));
+          const actions = arrayOf(snapshot.actions).filter((action) => {
+            if (nextActionIds.has(action.id)) return true;
+            if (refsContain(action.subjectRefs, processIds)) return true;
+            return refsContain(action.subjectRefs, gateIds);
+          });
+
+          return {
+            projection: projection.relativePath,
+            id: process.id,
+            definitionId: process.definitionId,
+            label: process.label,
+            status: process.status,
+            currentStep: process.currentStep,
+            percentComplete: process.percentComplete,
+            openGateRefs: arrayOf(process.openGateRefs),
+            claimRefs: arrayOf(process.claimRefs),
+            reviewItemRefs: arrayOf(process.reviewItemRefs),
+            nextActionRefs: arrayOf(process.nextActionRefs),
+            gates,
+            openGates,
+            evidence,
+            decisions,
+            actions: actions.map((action) => toActionDescriptor(action, `${projection.relativePath}.actions`)),
+            source: process
+          };
+        });
+    });
+}
+
 function validateEvent(event, basePath) {
   const issues = [];
   requireString(event, "schema", basePath, issues);
@@ -387,6 +436,21 @@ function matchesReview(reviewItem, options) {
   return true;
 }
 
+function matchesProcess(process, snapshot, options) {
+  if (options.processId && process.id !== options.processId) return false;
+  if (options.status && process.status !== options.status) return false;
+  if (options.gateId) {
+    const openGateRefs = new Set(arrayOf(process.openGateRefs).map((ref) => ref.id));
+    const hasGate = arrayOf(snapshot.gates).some((gate) => gate.id === options.gateId && gate.processRef && gate.processRef.id === process.id);
+    if (!openGateRefs.has(options.gateId) && !hasGate) return false;
+  }
+  return true;
+}
+
+function isOpenFlowGate(gate) {
+  return gate && ["open", "waiting", "routed_back"].includes(gate.status);
+}
+
 function refsContain(refs, ids) {
   return arrayOf(refs).some((ref) => ids.has(ref.id));
 }
@@ -518,6 +582,7 @@ function arrayOf(value) {
 
 const emitter = require("./emitter");
 const surfaceClaimHelper = require("./surface-claim-helper");
+const flowProcessHelper = require("./flow-process-helper");
 
 module.exports = {
   inspectFixtures,
@@ -525,6 +590,7 @@ module.exports = {
   loadEventStreams,
   loadProjectionSnapshots,
   getSurfaceClaimStatus,
+  getFlowProcessStatus,
   getCampfitFieldReviewState,
   extractActionDescriptors,
   validateEvent,
@@ -536,5 +602,7 @@ module.exports = {
   classifyRecord: emitter.classifyRecord,
   formatDeliveryResult: emitter.formatDeliveryResult,
   surfaceClaimStateToProjection: surfaceClaimHelper.surfaceClaimStateToProjection,
-  surfaceFreshnessTransitionToEvent: surfaceClaimHelper.surfaceFreshnessTransitionToEvent
+  surfaceFreshnessTransitionToEvent: surfaceClaimHelper.surfaceFreshnessTransitionToEvent,
+  flowProcessStateToProjection: flowProcessHelper.flowProcessStateToProjection,
+  flowGateTransitionToEvent: flowProcessHelper.flowGateTransitionToEvent
 };
