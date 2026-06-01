@@ -6,58 +6,55 @@
     {
       "id": "AC1-event-required-fields",
       "description": "A spec lists required fields for KontourConsoleEvent.",
-      "status": "pending",
+      "status": "complete",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ],
-      "notes": "Expected evidence: explicit required/optional field table covering schema, version, id, type, occurredAt, producer, scope, subject, and payload."
+      "notes": "Complete. docs/specs/projection-schema.md includes Event Envelope Fields table with required/optional status covering schema, version, id, type, occurredAt, producer, scope, subject, payload, and optional actor/observedAt/correlationId/causationId/sequence/links/extensions."
     },
     {
       "id": "AC2-v0-event-types",
       "description": "A spec lists v0 event types and their intended use.",
-      "status": "pending",
+      "status": "complete",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ],
-      "notes": "Expected evidence: event vocabulary table covering claim status/freshness, process progress, gates, review items, evidence, decisions, actions, and exceptions."
+      "notes": "Complete. docs/specs/projection-schema.md includes V0 Event Type Vocabulary table covering claims, process, gates, review items, evidence, decisions, actions, and exceptions."
     },
     {
       "id": "AC3-local-jsonl-convention",
       "description": "A local JSONL file convention is documented.",
-      "status": "pending",
+      "status": "complete",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ],
-      "notes": "Expected evidence: local-first JSONL path, line format, append-only, ordering, idempotency, correlation, causation, backfill, and replay guidance."
+      "notes": "Complete. docs/specs/projection-schema.md includes Local JSONL Stream Convention covering path, UTF-8 JSONL, one event per line, append-only writes, event IDs, sequence/order, correlation, causation, backfill, replay, snapshots, and no hosted dependency."
     },
     {
       "id": "AC4-event-sequence-examples",
       "description": "At least three example event sequences exist: Surface claim freshness, Flow gate route-back, Campfit field review.",
-      "status": "pending",
+      "status": "complete",
       "evidence_refs": [
         "docs/examples/event-streams/surface-claim-freshness.jsonl",
         "docs/examples/event-streams/flow-gate-route-back.jsonl",
         "docs/examples/event-streams/campfit-field-review.jsonl",
         "docs/specs/projection-schema.md"
       ],
-      "notes": "Expected evidence: examples are linked from the spec and use the v0 envelope."
+      "notes": "Complete. Three JSONL examples exist and are linked from the spec. Independent parse and required-field check passed: campfit-field-review.jsonl 5 events, flow-gate-route-back.jsonl 5 events, surface-claim-freshness.jsonl 3 events."
     },
     {
       "id": "AC5-projection-rebuilds",
       "description": "The spec states how projections are rebuilt from events.",
-      "status": "pending",
+      "status": "complete",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ],
-      "notes": "Expected evidence: deterministic replay/folding, event-id idempotency, ordering, derivedFrom metadata, link accumulation, and snapshot fallback are documented."
+      "notes": "Complete. docs/specs/projection-schema.md includes Rebuilding Projections From Events with deterministic folding, event-id idempotency, ordering, correlation/causation timelines, link accumulation, snapshot fallback, and derivedFrom streamIds/lastEventId/lastSequence/eventCount."
     }
   ],
   "goal_fit": {
-    "status": "pending",
-    "summary": "Pending execution and verification of the v0 event stream contract docs/examples.",
-    "open_gaps": [
-      "Implementation has not yet updated the spec or examples.",
-      "No verifier evidence has been recorded yet."
-    ]
+    "status": "complete",
+    "summary": "Execution complete for the v0 event stream contract docs/examples. Formal verification remains a separate verify-work gate.",
+    "open_gaps": []
   }
 }

@@ -1,6 +1,6 @@
 # Kontour Console Event And Projection Schema
 
-Status: first pass
+Status: v0.1 draft
 
 Kontour Console composes product-owned event streams and projections. It does not replace Surface Claims, Flow Runs, Survey records, Veritas readiness, Flow Agents runtime state, or vertical product records.
 
@@ -33,9 +33,46 @@ Event-first gives the suite-level console:
 - auditability for decisions, exceptions, and route-backs
 - replayable state when projections need to be rebuilt
 - clearer separation between source events and derived read models
-- support for both local files and hosted streams
+- support for local files without a hosted dependency
 
 Snapshot/projection files are still useful. They are read models, not the durable source contract.
+
+## Local JSONL Stream Convention
+
+Kontour Console v0 starts with local JSONL event streams. A product can emit events without a hosted event bus, hosted ingestion service, auth layer, product adapter, or action execution endpoint.
+
+Recommended location:
+
+```text
+docs/examples/event-streams/<scenario>.jsonl
+.kontour/events/<producer-id>/<scope-kind>-<scope-id>.jsonl
+```
+
+The `docs/examples` path is for checked-in examples. The `.kontour/events` path is the recommended local working convention for product output when a repo wants replayable console state.
+
+Rules:
+
+| Rule | Convention |
+| --- | --- |
+| Encoding | Files are UTF-8 text. |
+| Line format | Each non-empty line is one complete JSON object matching `KontourConsoleEvent`. |
+| File naming | Use a stable producer or scenario name plus scope identity. Avoid timestamps in file names unless the file is a closed archive segment. |
+| Append-only writes | Producers append events. They do not rewrite prior lines to correct state; corrections are new events with causal links. |
+| Event IDs | `id` is globally stable and unique enough for idempotent replay. Re-emitting the same event keeps the same `id`. |
+| Ordering | Consumers sort by `sequence` within a producer and stream when present. Without `sequence`, consumers use `occurredAt`, then `observedAt`, then file order as a local tie-breaker. |
+| Sequence | `sequence` is producer-local and monotonically increasing for a stream. Gaps are allowed for segmented or backfilled streams and must not imply data loss by themselves. |
+| Correlation | `correlationId` groups events that belong to the same workflow, claim refresh, route-back, review, or backfill batch. |
+| Causation | `causationId` points to the prior event or action that directly caused this event. Use it for timelines and route-back chains, not for broad grouping. |
+| Identity links | `subject`, `payload.refs`, and `links` carry cross-product identity. Product-specific field names stay under `payload.data` or `extensions`. |
+| Backfill | Backfilled events keep the best known `occurredAt`; set `observedAt` to the collection time and use a shared `correlationId` for the backfill batch. |
+| Replay | Local replay reads JSONL files, ignores duplicate `id` values after the first accepted event, applies deterministic ordering, and folds events into projections. |
+| Snapshots | Projection snapshots may seed or speed local replay, but events remain the preferred durable contract when history exists. |
+
+Example sequences:
+
+- [Surface claim freshness](../examples/event-streams/surface-claim-freshness.jsonl)
+- [Flow gate route-back](../examples/event-streams/flow-gate-route-back.jsonl)
+- [Campfit field review](../examples/event-streams/campfit-field-review.jsonl)
 
 ## Event Envelope
 
@@ -61,6 +98,31 @@ type KontourConsoleEvent = {
 ```
 
 `occurredAt` is when the product says the event happened. `observedAt` is when Kontour Console or another collector saw it. `correlationId` groups related events across products; `causationId` points to the event or action that caused this event.
+
+### Event Envelope Fields
+
+| Field | Required | Type | Responsibility |
+| --- | --- | --- | --- |
+| `schema` | Yes | `"kontour.console.event"` | Identifies the record as a Kontour Console event envelope. |
+| `version` | Yes | `"0.1"` | Identifies this v0.1 contract version. |
+| `id` | Yes | `string` | Stable event identity for idempotency, duplicate handling, and causal references. |
+| `type` | Yes | `ConsoleEventType` | Product-neutral event vocabulary used for routing, filtering, and projection folding. |
+| `occurredAt` | Yes | ISO 8601 `string` | Time the producing product says the event happened. |
+| `producer` | Yes | `ConsoleProducer` | Product, vertical, agent, or run that emitted the event. |
+| `scope` | Yes | `ConsoleScope` | Boundary the event belongs to, such as repo, workspace, project, product, tenant, or domain. |
+| `subject` | Yes | `CrossProductRef` | Primary object changed or described by the event. |
+| `payload` | Yes | `ConsoleEventPayload` | State delta, summary, reason, refs, and product-specific data. |
+| `actor` | No | `ConsoleActor` | Human, agent, producer, or system that caused the transition when known. |
+| `observedAt` | No | ISO 8601 `string` | Time the event was collected or observed by a local collector or console process. |
+| `correlationId` | No | `string` | Workflow, review, route-back, claim refresh, or backfill grouping id. |
+| `causationId` | No | `string` | Direct parent event id or action id that caused this event. |
+| `sequence` | No | `number` | Producer-local stream order. Prefer monotonically increasing integers within a producer and scope. |
+| `links` | No | `CrossProductLink[]` | Explicit identity and relationship links across products. |
+| `extensions` | No | `Record<string, unknown>` | Namespaced product or deployment detail that is not part of the core v0 envelope. |
+
+`payload.data` and `extensions` are the only places for vertical-specific facts that Kontour Console does not need for core v0 behavior. For example, Campfit provider field names, source-specific confidence scores, and domain-specific review metadata belong there, not as new top-level envelope fields.
+
+Use `correlationId` when multiple events describe one user-visible workflow. Use `causationId` when one event follows another, such as `gate.routed_back` caused by `gate.failed`, or `review_item.approved` caused by a reviewer action. Use `links` when the relationship should survive projection rebuilding, such as a Flow gate controlling a Surface claim refresh or a Campfit provider field being reviewed by a review item.
 
 ## Event Types
 
@@ -95,6 +157,38 @@ type ConsoleEventType =
 ```
 
 Event types should be specific enough for routing and filtering but not so product-specific that Kontour Console must understand every vertical domain model.
+
+The `| string` extension point lets products emit additional names, but custom event types must not be required for Kontour Console v0 core behavior.
+
+### V0 Event Type Vocabulary
+
+| Category | Event type | Intended use |
+| --- | --- | --- |
+| Claims | `claim.status.changed` | A Surface or product claim changed trust/status, such as verified, stale, disputed, rejected, or superseded. |
+| Claims | `claim.freshness.changed` | Freshness changed because of time, policy, observation, or verification expiry without necessarily changing the claim value. |
+| Claims | `claim.reverification.requested` | A producer, actor, gate, or policy requested that a claim be checked again. |
+| Claims | `claim.reverification.completed` | Reverification finished and can be linked to resulting status, freshness, evidence, or decision events. |
+| Process | `process.started` | A Flow run, product workflow, agent session, crawl, review process, or readiness process began. |
+| Process | `process.progressed` | A process advanced to another step, updated percent complete, or reported meaningful progress. |
+| Process | `process.paused` | A process stopped temporarily by actor, policy, gate, or product control semantics. |
+| Process | `process.resumed` | A paused or waiting process resumed. |
+| Process | `process.blocked` | A process cannot continue until evidence, decision, action, exception, or external state changes. |
+| Process | `process.completed` | A process reached terminal completion. Failed or cancelled products may still use product-specific detail in `payload.data`. |
+| Gates | `gate.opened` | A Flow gate or product gate became active and needs evidence, decision, exception, or action. |
+| Gates | `gate.passed` | A gate passed under its owning product semantics. |
+| Gates | `gate.failed` | A gate failed and may cause a block, exception request, or route-back. |
+| Gates | `gate.routed_back` | Flow or another process owner routed work back to an earlier step or owning actor. |
+| Review items | `review_item.opened` | A review item was created for a claim, field change, candidate fact, gate exception, evidence gap, or readiness gap. |
+| Review items | `review_item.updated` | Assignment, priority, due date, subject, evidence, or other review metadata changed. |
+| Review items | `review_item.approved` | The owning product recorded an approval for a review item. |
+| Review items | `review_item.rejected` | The owning product recorded a rejection for a review item. |
+| Evidence | `evidence.attached` | Evidence, proof, source excerpt, observed result, or integrity metadata was attached to a subject. |
+| Decisions | `decision.recorded` | A durable approval, rejection, exception, route-back, refresh request, publish, or other decision was recorded. |
+| Actions | `action.requested` | A next action was requested or queued through the product that owns the authority. |
+| Actions | `action.completed` | A product-owned action completed, such as refresh, approve, apply, resume, route back, or attach evidence. |
+| Exceptions | `exception.requested` | A product or actor requested an exception to gate, readiness, policy, or process requirements. |
+| Exceptions | `exception.accepted` | The owning authority accepted an exception, optionally with expiry and trust implications. |
+| Exceptions | `exception.rejected` | The owning authority rejected an exception request. |
 
 ## Event Payload
 
@@ -155,6 +249,31 @@ type KontourConsoleProjection = {
 ```
 
 Projections should be rebuildable from events where possible. A product may also emit a projection snapshot directly when event history is unavailable, but the long-term integration contract should still prefer events.
+
+## Rebuilding Projections From Events
+
+Projection rebuilds are deterministic folds over accepted events. Given the same event set, duplicate-handling rules, and ordering rules, a rebuild should produce the same `KontourConsoleProjection` values except for `generatedAt` and explicitly producer-provided volatile summaries.
+
+Rebuild behavior:
+
+| Concern | Semantics |
+| --- | --- |
+| Input streams | Read one or more local JSONL streams for the projection scope. A stream id should be the stable file path, archive segment id, or producer-declared stream identity. |
+| Idempotency | Accept the first valid event for an `id` and ignore later duplicates with the same `id`. Re-emitted events must keep the same `id`; corrections are new events linked by `causationId`. |
+| Ordering | Sort by producer-local `sequence` when it is present for events from the same producer and stream. Events without usable sequence order by `occurredAt`, then `observedAt`, then file order as the final local tie-breaker. |
+| Folding | Apply events as state transitions into claims, processes, gates, review items, evidence, decisions, actions, exceptions, links, and summaries. The specific reducer is out of scope for v0; the fold must not invent product-owned semantics. |
+| Correlation and causation | Use `correlationId` to build user-visible timelines for one workflow, review, claim refresh, route-back, or backfill. Use `causationId` to show direct parent-child transitions such as a failed gate causing a route-back. |
+| Link accumulation | Accumulate explicit `links`, `payload.refs`, and subject relationships into projection `links` where they remain relevant to the current read model. Later events may supersede status, but historical links remain available for timelines when retained by the reducer. |
+| Snapshot fallback | A projection snapshot may seed replay or stand in when event history is unavailable. If events exist after the snapshot point, replay only the accepted events after the snapshot's recorded position. |
+
+`KontourConsoleProjection.derivedFrom` records replay provenance for the read model:
+
+- `streamIds` lists the local stream identities folded into the projection.
+- `lastEventId` records the final accepted event id after deterministic ordering.
+- `lastSequence` records the final accepted producer-local sequence when the folded stream has a single comparable sequence domain; omit it when streams cannot be compared safely.
+- `eventCount` records the count of accepted, non-duplicate events folded into the projection, not the number of physical JSONL lines read.
+
+These rules describe the rebuild contract only. They do not require a hosted event bus, product adapter, action endpoint, UI, or shared reducer implementation.
 
 ## Producer
 
@@ -468,7 +587,7 @@ The read model shown in Kontour Console can then be rebuilt from the event strea
 
 ## Open Questions
 
-- Should each product emit local JSONL event streams, hosted streams, or both?
+- After v0 local JSONL, should later versions add hosted stream ingestion as an optional transport?
 - Should each product emit one projection file, or should Kontour Console assemble projections from events and product-native APIs?
 - Should action authority start as CLI commands, local HTTP endpoints, or both?
 - Which identity links should be required for v0.1?

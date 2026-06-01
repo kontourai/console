@@ -3,7 +3,7 @@
 branch: main
 worktree: /Users/brian/dev/github/kontourai/kontour-console
 created: 2026-06-01
-status: planned
+status: executed
 type: plan-work
 
 ## Plan
@@ -39,3 +39,52 @@ Traceability:
 - Stop-short risks: missing required/optional distinction, examples without correlation/causation/links, vague replay guidance, leaking Campfit fields into core envelope, or implying a hosted service.
 - Durable docs target: `docs/specs/projection-schema.md` plus `docs/examples/event-streams/`.
 - Sandbox mode: `local-edit`.
+
+## Execution Progress
+
+### Wave 1 (complete)
+
+- [x] Formalize event envelope fields. Supports: R1, R2, R5, AC1.
+- [x] Document v0 event type vocabulary. Supports: R3, AC2.
+- [x] Define local JSONL stream convention. Supports: R2, R4, AC3, AC5.
+- [x] Add example event sequences. Supports: R2, R5, AC4.
+
+Modified files:
+
+- `docs/specs/projection-schema.md`
+- `docs/examples/event-streams/surface-claim-freshness.jsonl`
+- `docs/examples/event-streams/flow-gate-route-back.jsonl`
+- `docs/examples/event-streams/campfit-field-review.jsonl`
+- `.agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--plan-work.md`
+
+Validation:
+
+- `python3 -c '...'` parsed every non-empty line in `docs/examples/event-streams/*.jsonl` as JSON.
+- Result: `campfit-field-review.jsonl` 5 events OK, `flow-gate-route-back.jsonl` 5 events OK, `surface-claim-freshness.jsonl` 3 events OK.
+
+### Wave 2 (complete)
+
+- [x] Specify projection rebuild semantics. Supports: AC5, R2, R4.
+- [x] Final doc consistency pass across `docs/specs/projection-schema.md`, `docs/product-boundaries.md`, `CONTEXT.md`, and `README.md`. Supports: R1, R2, R3, R4, R5, AC1, AC2, AC3, AC4, AC5.
+
+Modified files:
+
+- `docs/specs/projection-schema.md`
+- `docs/product-boundaries.md`
+- `README.md`
+- `.agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--plan-work.md`
+
+Validation:
+
+- `python3 -c '...'` parsed every non-empty line in `docs/examples/event-streams/*.jsonl` as JSON after Wave 2 doc edits.
+- Result: `campfit-field-review.jsonl` 5 events OK, `flow-gate-route-back.jsonl` 5 events OK, `surface-claim-freshness.jsonl` 3 events OK.
+
+### Execution complete
+
+- [x] AC1 `event-required-fields`
+- [x] AC2 `v0-event-types`
+- [x] AC3 `local-jsonl-convention`
+- [x] AC4 `event-sequence-examples`
+- [x] AC5 `projection-rebuilds`
+
+Next gate: review-work, then verify-work.
