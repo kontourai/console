@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-event-stream-contract",
+  "summary": "Plan ready for GitHub issue #1. The work is docs/examples only: tighten docs/specs/projection-schema.md into the v0 event-stream contract, add three JSONL example sequences, and document projection rebuild semantics while preserving product authority boundaries and non-goals.",
+  "current_state_ref": ".agents/flow-agents/kontour-console-v0-event-stream-contract/state.json",
+  "next_steps": [
+    "Execute .agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--plan-work-plan.md.",
+    "Keep edits scoped to docs/specs/projection-schema.md and docs/examples/event-streams/ unless README or boundary docs need a small discoverability/terminology link.",
+    "Verify AC1-AC5 by doc inspection and JSONL example inspection."
+  ],
+  "blockers": [],
+  "warnings": [
+    "Do not overwrite the pull-work artifact.",
+    "Do not implement hosted event bus, auth/multi-tenant ingestion, UI, product-specific adapters, or a projection reducer.",
+    "Acceptance remains pending until execution and verification produce evidence."
+  ]
+}

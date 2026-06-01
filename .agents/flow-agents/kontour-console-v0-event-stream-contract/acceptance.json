@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-event-stream-contract",
+  "source_request": "Plan GitHub issue #1: Define Kontour Console V0 Event Stream Contract",
+  "criteria": [
+    {
+      "id": "AC1-event-required-fields",
+      "description": "A spec lists required fields for KontourConsoleEvent.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md"
+      ],
+      "notes": "Expected evidence: explicit required/optional field table covering schema, version, id, type, occurredAt, producer, scope, subject, and payload."
+    },
+    {
+      "id": "AC2-v0-event-types",
+      "description": "A spec lists v0 event types and their intended use.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md"
+      ],
+      "notes": "Expected evidence: event vocabulary table covering claim status/freshness, process progress, gates, review items, evidence, decisions, actions, and exceptions."
+    },
+    {
+      "id": "AC3-local-jsonl-convention",
+      "description": "A local JSONL file convention is documented.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md"
+      ],
+      "notes": "Expected evidence: local-first JSONL path, line format, append-only, ordering, idempotency, correlation, causation, backfill, and replay guidance."
+    },
+    {
+      "id": "AC4-event-sequence-examples",
+      "description": "At least three example event sequences exist: Surface claim freshness, Flow gate route-back, Campfit field review.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/examples/event-streams/surface-claim-freshness.jsonl",
+        "docs/examples/event-streams/flow-gate-route-back.jsonl",
+        "docs/examples/event-streams/campfit-field-review.jsonl",
+        "docs/specs/projection-schema.md"
+      ],
+      "notes": "Expected evidence: examples are linked from the spec and use the v0 envelope."
+    },
+    {
+      "id": "AC5-projection-rebuilds",
+      "description": "The spec states how projections are rebuilt from events.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md"
+      ],
+      "notes": "Expected evidence: deterministic replay/folding, event-id idempotency, ordering, derivedFrom metadata, link accumulation, and snapshot fallback are documented."
+    }
+  ],
+  "goal_fit": {
+    "status": "pending",
+    "summary": "Pending execution and verification of the v0 event stream contract docs/examples.",
+    "open_gaps": [
+      "Implementation has not yet updated the spec or examples.",
+      "No verifier evidence has been recorded yet."
+    ]
+  }
+}
