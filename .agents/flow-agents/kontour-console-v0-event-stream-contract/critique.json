@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-event-stream-contract",
+  "status": "pass",
+  "phase": "review",
+  "reviewers": [
+    {
+      "reviewer": "tool-code-reviewer",
+      "artifact": ".agents/flow-agents/kontour-console-v0-event-stream-contract/code-review.md",
+      "verdict": "pass",
+      "findings": []
+    },
+    {
+      "reviewer": "tool-security-reviewer",
+      "artifact": ".agents/flow-agents/kontour-console-v0-event-stream-contract/security-review.md",
+      "verdict": "fail",
+      "findings": [
+        {
+          "severity": "medium",
+          "id": "A03-local-stream-path-containment",
+          "file": "docs/specs/projection-schema.md",
+          "status": "remediated",
+          "summary": "Local stream path convention needed explicit sanitization, containment, and symlink escape constraints."
+        },
+        {
+          "severity": "medium",
+          "id": "A03-action-authority-descriptors",
+          "file": "docs/specs/projection-schema.md",
+          "status": "remediated",
+          "summary": "Action authority endpoint/command/externalUrl needed explicit warning against blind execution/use."
+        }
+      ]
+    },
+    {
+      "reviewer": "tool-security-reviewer",
+      "artifact": ".agents/flow-agents/kontour-console-v0-event-stream-contract/security-review-rerun.md",
+      "verdict": "pass",
+      "findings": []
+    }
+  ],
+  "summary": "Code review passed. Initial security review failed on two medium documentation contract risks; both were remediated and security rerun passed.",
+  "next_action": "Run verify-work for AC1-AC5 evidence."
+}
+

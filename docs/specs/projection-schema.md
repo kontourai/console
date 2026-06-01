@@ -50,13 +50,15 @@ docs/examples/event-streams/<scenario>.jsonl
 
 The `docs/examples` path is for checked-in examples. The `.kontour/events` path is the recommended local working convention for product output when a repo wants replayable console state.
 
+The path tokens in this convention are sanitized identifiers, not raw path fragments. Producers and consumers must reject `producer-id`, `scope-kind`, and `scope-id` values that are absolute paths, contain `..`, path separators, control characters, or otherwise escape identifier syntax. Consumers must resolve candidate stream files under an allowed stream root such as `.kontour/events`, verify the resolved path remains inside that root, and reject symlink escapes before opening a file.
+
 Rules:
 
 | Rule | Convention |
 | --- | --- |
 | Encoding | Files are UTF-8 text. |
 | Line format | Each non-empty line is one complete JSON object matching `KontourConsoleEvent`. |
-| File naming | Use a stable producer or scenario name plus scope identity. Avoid timestamps in file names unless the file is a closed archive segment. |
+| File naming | Use sanitized producer or scenario identifiers plus sanitized scope identity. Avoid timestamps in file names unless the file is a closed archive segment. |
 | Append-only writes | Producers append events. They do not rewrite prior lines to correct state; corrections are new events with causal links. |
 | Event IDs | `id` is globally stable and unique enough for idempotent replay. Re-emitting the same event keeps the same `id`. |
 | Ordering | Consumers sort by `sequence` within a producer and stream when present. Without `sequence`, consumers use `occurredAt`, then `observedAt`, then file order as a local tie-breaker. |
@@ -258,7 +260,7 @@ Rebuild behavior:
 
 | Concern | Semantics |
 | --- | --- |
-| Input streams | Read one or more local JSONL streams for the projection scope. A stream id should be the stable file path, archive segment id, or producer-declared stream identity. |
+| Input streams | Read one or more local JSONL streams for the projection scope. Candidate files must be resolved and containment-checked under an allowed stream root before reading. A stream id should be the stable file path, archive segment id, or producer-declared stream identity. |
 | Idempotency | Accept the first valid event for an `id` and ignore later duplicates with the same `id`. Re-emitted events must keep the same `id`; corrections are new events linked by `causationId`. |
 | Ordering | Sort by producer-local `sequence` when it is present for events from the same producer and stream. Events without usable sequence order by `occurredAt`, then `observedAt`, then file order as the final local tie-breaker. |
 | Folding | Apply events as state transitions into claims, processes, gates, review items, evidence, decisions, actions, exceptions, links, and summaries. The specific reducer is out of scope for v0; the fold must not invent product-owned semantics. |
@@ -268,7 +270,7 @@ Rebuild behavior:
 
 `KontourConsoleProjection.derivedFrom` records replay provenance for the read model:
 
-- `streamIds` lists the local stream identities folded into the projection.
+- `streamIds` lists the local stream identities folded into the projection. These values are provenance labels and must not be blindly reopened as filesystem paths unless each candidate is separately validated against the allowed stream root, identifier rules, and symlink containment checks.
 - `lastEventId` records the final accepted event id after deterministic ordering.
 - `lastSequence` records the final accepted producer-local sequence when the folded stream has a single comparable sequence domain; omit it when streams cannot be compared safely.
 - `eventCount` records the count of accepted, non-duplicate events folded into the projection, not the number of physical JSONL lines read.
@@ -481,6 +483,8 @@ type ConsoleActionProjection = {
 ```
 
 Actions are routed through the product that owns the authority. Kontour Console may present and initiate actions, but it should not bypass product-owned APIs, CLIs, or control semantics.
+
+`authority.endpoint`, `authority.command`, and `authority.externalUrl` are descriptors only. Consumers must not blindly call endpoints, execute commands, or open URLs from event or projection data. Action initiation must resolve through a trusted product adapter or registry, allowlist known commands and endpoints, avoid shell interpretation, require confirmation for sensitive actions, and treat URLs as untrusted until their scheme and host are validated.
 
 ## Exceptions
 

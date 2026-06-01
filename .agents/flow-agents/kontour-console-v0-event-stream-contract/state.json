@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0",
   "task_slug": "kontour-console-v0-event-stream-contract",
-  "status": "executed",
-  "phase": "execution",
+  "status": "verified",
+  "phase": "verification",
   "owner": "tool-planner",
   "created_at": "2026-06-01T00:00:00-06:00",
   "updated_at": "2026-06-01T00:00:00-06:00",
@@ -12,13 +12,15 @@
     ".agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--pull-work.md",
     ".agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--plan-work-plan.md",
     ".agents/flow-agents/kontour-console-v0-event-stream-contract/acceptance.json",
+    ".agents/flow-agents/kontour-console-v0-event-stream-contract/evidence.json",
+    ".agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--verify-work-review.md",
     ".agents/flow-agents/kontour-console-v0-event-stream-contract/handoff.json",
     ".agents/flow-agents/kontour-console-v0-event-stream-contract/state.json"
   ],
   "next_action": {
-    "status": "continue",
-    "summary": "Execution complete for issue #1 docs/examples; ready for review-work and verify-work.",
-    "target_phase": "review",
-    "target_artifact": ".agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--plan-work-plan.md"
+    "status": "done",
+    "summary": "Verification passed for AC1-AC5 with docs and JSONL evidence.",
+    "target_phase": "done",
+    "target_artifact": ".agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--verify-work-review.md"
   }
 }

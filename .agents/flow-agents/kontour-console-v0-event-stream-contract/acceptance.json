@@ -6,7 +6,7 @@
     {
       "id": "AC1-event-required-fields",
       "description": "A spec lists required fields for KontourConsoleEvent.",
-      "status": "complete",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ],
@@ -15,7 +15,7 @@
     {
       "id": "AC2-v0-event-types",
       "description": "A spec lists v0 event types and their intended use.",
-      "status": "complete",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ],
@@ -24,7 +24,7 @@
     {
       "id": "AC3-local-jsonl-convention",
       "description": "A local JSONL file convention is documented.",
-      "status": "complete",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ],
@@ -33,7 +33,7 @@
     {
       "id": "AC4-event-sequence-examples",
       "description": "At least three example event sequences exist: Surface claim freshness, Flow gate route-back, Campfit field review.",
-      "status": "complete",
+      "status": "pass",
       "evidence_refs": [
         "docs/examples/event-streams/surface-claim-freshness.jsonl",
         "docs/examples/event-streams/flow-gate-route-back.jsonl",
@@ -45,7 +45,7 @@
     {
       "id": "AC5-projection-rebuilds",
       "description": "The spec states how projections are rebuilt from events.",
-      "status": "complete",
+      "status": "pass",
       "evidence_refs": [
         "docs/specs/projection-schema.md"
       ],
@@ -53,8 +53,8 @@
     }
   ],
   "goal_fit": {
-    "status": "complete",
-    "summary": "Execution complete for the v0 event stream contract docs/examples. Formal verification remains a separate verify-work gate.",
+    "status": "pass",
+    "summary": "Verification passed for the v0 event stream contract docs/examples. AC1-AC5 have direct docs or JSONL evidence.",
     "open_gaps": []
   }
 }

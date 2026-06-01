@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-event-stream-contract",
+  "verdict": "pass",
+  "checks": [
+    {
+      "id": "build-docs-only",
+      "kind": "build",
+      "status": "skip",
+      "summary": "Docs/examples-only change; no buildable package or app source is present in this repository."
+    },
+    {
+      "id": "types-docs-only",
+      "kind": "types",
+      "status": "skip",
+      "summary": "Docs/examples-only change; no typecheck target is present."
+    },
+    {
+      "id": "lint-docs-only",
+      "kind": "lint",
+      "status": "skip",
+      "summary": "Docs/examples-only change; no lint target is present."
+    },
+    {
+      "id": "jsonl-event-envelope-parse",
+      "kind": "test",
+      "status": "pass",
+      "command": "node - <<'NODE' ...",
+      "summary": "Parsed every non-empty line in docs/examples/event-streams/*.jsonl and checked required envelope fields schema, version, id, type, occurredAt, producer, scope, subject, and payload. Checked 13 events with exit code 0.",
+      "artifact_refs": [
+        "docs/examples/event-streams/campfit-field-review.jsonl",
+        "docs/examples/event-streams/flow-gate-route-back.jsonl",
+        "docs/examples/event-streams/surface-claim-freshness.jsonl"
+      ]
+    },
+    {
+      "id": "security-remediation-language",
+      "kind": "security",
+      "status": "pass",
+      "summary": "projection-schema.md includes path containment and symlink escape constraints for local streams, plus warnings that action authority endpoint/command/externalUrl values are descriptors only and must not be blindly executed or opened.",
+      "artifact_refs": [
+        "docs/specs/projection-schema.md",
+        ".agents/flow-agents/kontour-console-v0-event-stream-contract/security-review-rerun.md"
+      ]
+    },
+    {
+      "id": "provider-docs-only",
+      "kind": "external",
+      "status": "skip",
+      "summary": "Local docs/examples verification only; no provider, PR, deployment, or hosted service evidence is required for this docs-only issue."
+    },
+    {
+      "id": "diff-scope-docs-examples-only",
+      "kind": "diff",
+      "status": "pass",
+      "command": "git status --short && git diff --name-only && find . -maxdepth 4 -type f ...",
+      "summary": "Reviewed specified modified files and repository file list. Product changes remain docs/examples only; no hosted service, UI, adapter, reducer, app, or package implementation files were added.",
+      "artifact_refs": [
+        "docs/specs/projection-schema.md",
+        "docs/product-boundaries.md",
+        "README.md",
+        "docs/examples/event-streams/campfit-field-review.jsonl",
+        "docs/examples/event-streams/flow-gate-route-back.jsonl",
+        "docs/examples/event-streams/surface-claim-freshness.jsonl"
+      ]
+    }
+  ],
+  "not_verified_gaps": []
+}

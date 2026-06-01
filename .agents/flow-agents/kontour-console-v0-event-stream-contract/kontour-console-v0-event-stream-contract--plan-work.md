@@ -3,7 +3,7 @@
 branch: main
 worktree: /Users/brian/dev/github/kontourai/kontour-console
 created: 2026-06-01
-status: executed
+status: verified
 type: plan-work
 
 ## Plan
@@ -88,3 +88,46 @@ Validation:
 - [x] AC5 `projection-rebuilds`
 
 Next gate: review-work, then verify-work.
+
+### Security review remediation (complete)
+
+- [x] Remediated local stream path ambiguity by documenting sanitized stream identifiers, rejection of absolute paths, `..`, path separators, control characters, and symlink escapes, plus allowed-root resolution under `.kontour/events`.
+- [x] Remediated action authority ambiguity by documenting that `endpoint`, `command`, and `externalUrl` are descriptors only and must be resolved through trusted adapters/registries with allowlists, no shell interpretation, sensitive-action confirmation, and URL scheme/host validation.
+
+Modified files:
+
+- `docs/specs/projection-schema.md`
+- `.agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--plan-work.md`
+
+## Review Report
+
+- `tool-code-reviewer`: PASS with no findings. Artifact: `.agents/flow-agents/kontour-console-v0-event-stream-contract/code-review.md`.
+- `tool-security-reviewer`: initial FAIL with two medium findings. Artifact: `.agents/flow-agents/kontour-console-v0-event-stream-contract/security-review.md`.
+- Security remediation completed in `docs/specs/projection-schema.md`.
+- `tool-security-reviewer` rerun: PASS with no new findings. Artifact: `.agents/flow-agents/kontour-console-v0-event-stream-contract/security-review-rerun.md`.
+
+Next gate: verify-work.
+
+## Verification Report
+
+Verdict: PASS
+
+Artifact:
+
+`.agents/flow-agents/kontour-console-v0-event-stream-contract/kontour-console-v0-event-stream-contract--verify-work-review.md`
+
+Results:
+
+- [x] AC1 `event-required-fields`
+- [x] AC2 `v0-event-types`
+- [x] AC3 `local-jsonl-convention`
+- [x] AC4 `event-sequence-examples`
+- [x] AC5 `projection-rebuilds`
+
+Evidence:
+
+- JSONL parse and required-envelope check passed for 13 events across the three example streams.
+- Security remediation language is present for local stream path containment and action authority descriptors.
+- Scope remains docs/examples only; no hosted service, UI, adapter, reducer, app, or package implementation was added.
+
+Status: verified.
