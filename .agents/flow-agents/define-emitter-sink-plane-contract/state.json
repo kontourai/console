@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "define-emitter-sink-plane-contract",
+  "status": "planned",
+  "phase": "planning",
+  "owner": "tool-planner",
+  "created_at": "2026-06-01T09:55:04-06:00",
+  "updated_at": "2026-06-01T09:55:04-06:00",
+  "source_request": "Plan GitHub issue #4 in /Users/brian/dev/github/kontourai/kontour-console: Define Kontour emitter, sink, and plane contracts.",
+  "artifact_paths": [
+    ".agents/flow-agents/define-emitter-sink-plane-contract/define-emitter-sink-plane-contract--pull-work.md",
+    ".agents/flow-agents/define-emitter-sink-plane-contract/define-emitter-sink-plane-contract--plan-work.md",
+    ".agents/flow-agents/define-emitter-sink-plane-contract/define-emitter-sink-plane-contract--plan-work-plan.md",
+    ".agents/flow-agents/define-emitter-sink-plane-contract/acceptance.json",
+    ".agents/flow-agents/define-emitter-sink-plane-contract/state.json",
+    ".agents/flow-agents/define-emitter-sink-plane-contract/handoff.json"
+  ],
+  "next_action": {
+    "status": "continue",
+    "summary": "Execute the docs/spec-only plan from define-emitter-sink-plane-contract--plan-work-plan.md.",
+    "target_phase": "execution",
+    "target_artifact": ".agents/flow-agents/define-emitter-sink-plane-contract/define-emitter-sink-plane-contract--plan-work-plan.md"
+  }
+}

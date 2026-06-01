@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "define-emitter-sink-plane-contract",
+  "source_request": "Plan GitHub issue #4 in /Users/brian/dev/github/kontourai/kontour-console: Define Kontour emitter, sink, and plane contracts.",
+  "criteria": [
+    {
+      "id": "AC1",
+      "description": "Docs define control-plane vs telemetry-plane data types and authority boundaries.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/emitter-sink-plane-contract.md"
+      ],
+      "notes": "Expected evidence: explicit control-plane and telemetry-plane record category sections, shared correlation guidance, and non-authority wording for telemetry."
+    },
+    {
+      "id": "AC2",
+      "description": "Docs define `KontourEmitter`, `LocalFileSink`, `CompositeSink`, future `HttpApiSink`, and future telemetry/Otel sink roles.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/emitter-sink-plane-contract.md"
+      ],
+      "notes": "Expected evidence: role table or normative prose covering each named emitter/sink role without implementing network or telemetry sinks."
+    },
+    {
+      "id": "AC3",
+      "description": "Docs define multi-output fanout with stable event/projection ids and independent per-sink results.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/emitter-sink-plane-contract.md"
+      ],
+      "notes": "Expected evidence: same semantic record id across sinks and per-sink delivery result fields/outcomes."
+    },
+    {
+      "id": "AC4",
+      "description": "Docs define local-first fallback and at-least-once/dedupe semantics.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/emitter-sink-plane-contract.md",
+        "docs/specs/projection-schema.md"
+      ],
+      "notes": "Expected evidence: local file output remains first-class, future sink failures do not erase local output, retries may re-deliver, and consumers dedupe by stable record id."
+    },
+    {
+      "id": "AC5",
+      "description": "Docs explicitly state no generic sink executes action descriptors, opens URLs, or mutates product state.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/emitter-sink-plane-contract.md",
+        "docs/specs/projection-schema.md"
+      ],
+      "notes": "Expected evidence: security-sensitive prose covering action descriptors, URLs, endpoints, commands, backend fetching, and product-state mutation."
+    }
+  ],
+  "goal_fit": {
+    "status": "pending",
+    "summary": "Pending execution: issue #4 should deliver a durable docs/spec-only producer contract that preserves R1-R6 and AC1-AC5 without adding hosted API, network sink, emitter code, product integration, or UI.",
+    "open_gaps": [
+      "Docs not yet authored.",
+      "Security-sensitive wording not yet reviewed.",
+      "Scope diff not yet verified."
+    ]
+  }
+}
