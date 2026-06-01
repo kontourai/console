@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "implement-local-composite-sink-skeleton",
+  "status": "planned",
+  "phase": "planning",
+  "owner": "codex-planner",
+  "created_at": "2026-06-01T10:37:36-06:00",
+  "updated_at": "2026-06-01T10:37:36-06:00",
+  "source_request": "Plan implementation for GitHub issue #5 in /Users/brian/dev/github/kontourai/kontour-console: add a dependency-free Kontour emitter plus local and composite sink skeleton.",
+  "artifact_paths": [
+    ".agents/flow-agents/implement-local-composite-sink-skeleton/implement-local-composite-sink-skeleton--pull-work.md",
+    ".agents/flow-agents/implement-local-composite-sink-skeleton/implement-local-composite-sink-skeleton--plan-work-plan.md",
+    ".agents/flow-agents/implement-local-composite-sink-skeleton/state.json",
+    ".agents/flow-agents/implement-local-composite-sink-skeleton/acceptance.json",
+    ".agents/flow-agents/implement-local-composite-sink-skeleton/handoff.json"
+  ],
+  "next_action": {
+    "status": "continue",
+    "summary": "Execute the plan artifact with local-edit sandbox scope, then verify AC1-AC5.",
+    "target_phase": "execution",
+    "target_artifact": ".agents/flow-agents/implement-local-composite-sink-skeleton/implement-local-composite-sink-skeleton--plan-work-plan.md"
+  }
+}

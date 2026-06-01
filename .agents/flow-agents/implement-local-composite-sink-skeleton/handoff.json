@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "implement-local-composite-sink-skeleton",
+  "summary": "Planning is complete for GitHub issue #5. Implement a dependency-free KontourEmitter, LocalFileSink, CompositeSink, and InMemorySink in the CommonJS console foundation package, with local .kontour event/projection writes and per-sink delivery results preserving required recordId semantics.",
+  "current_state_ref": ".agents/flow-agents/implement-local-composite-sink-skeleton/state.json",
+  "next_steps": [
+    "Use .agents/flow-agents/implement-local-composite-sink-skeleton/implement-local-composite-sink-skeleton--plan-work-plan.md as the implementation source of truth.",
+    "Add the emitter/sink module under src/console-foundation/ and re-export from src/console-foundation/index.js.",
+    "Add tests for composite event fanout, local projection loader compatibility, simulated sink failure result shape, path safety, projection identity not based on generatedAt, and action descriptor inertness.",
+    "Update README.md with local plus future API fanout usage, making clear no API sink is implemented.",
+    "Verify with npm test, npm run inspect:fixtures, forbidden API scan, and generatedAt identity review."
+  ],
+  "blockers": [],
+  "warnings": [
+    "Do not implement HTTP/API, OTLP, product adapters, background retries, auth, hosted ingestion, UI, or action execution.",
+    "LocalFileSink must sanitize path tokens and verify resolved paths stay under the configured .kontour root.",
+    "Delivery results must include recordId for every sink result, including failures.",
+    "Projection identity must not use generatedAt as the dedupe key or filename identity.",
+    "Generic sinks must persist action descriptors only as inert data and must not open URLs, fetch endpoints, or run commands."
+  ]
+}
