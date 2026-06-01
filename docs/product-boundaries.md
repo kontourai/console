@@ -36,7 +36,7 @@ Kontour primitives must remain useful without Kontour Console:
 
 - Surface trust state remains portable, schema-first, and inspectable without a hosted service.
 - Flow Runs and Flow Reports remain local, file-backed, and useful without a hosted service.
-- Survey fact-review records remain producer-side contracts.
+- Survey fact-review records remain product-side contracts.
 - Veritas readiness and evidence checks remain repo/change governance.
 - Flow Agents runtime adapters and kits remain usable outside a suite-level console.
 
@@ -91,6 +91,12 @@ The shared foundation should be contracts first:
 - freshness, refresh, and reverification semantics
 - event and decision timelines
 
+## Console Producers
+
+For Kontour Console contracts, a producer is the Kontour product or product runtime emitting control-plane records for suite-level visibility. Surface, Flow, Survey, Veritas, Flow Agents, and vertical products such as Campfit can all act as Console producers.
+
+That meaning is separate from product-native producers inside each product. A crawler, extractor, verifier, importer, workflow runner, agent, or policy clock should be preserved as an actor/source/provenance detail, but it does not replace the top-level product authority boundary.
+
 Shared UI code can come later, after Surface Console and Flow Console prove which primitives are actually common.
 
-See [Event And Projection Schema](specs/projection-schema.md) for the v0.1 local event stream and projection envelope, and [Emitter, Sink, And Plane Contract](specs/emitter-sink-plane-contract.md) for the producer-side boundary between semantic records, required local file output, future sinks, and telemetry.
+See [Event And Projection Schema](specs/projection-schema.md) for the v0.1 local event stream and projection envelope, and [Emitter, Sink, And Plane Contract](specs/emitter-sink-plane-contract.md) for the Console producer boundary between semantic records, required local file output, future sinks, and telemetry.

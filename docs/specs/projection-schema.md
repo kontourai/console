@@ -6,7 +6,15 @@ Kontour Console composes product-owned event streams and projections. It does no
 
 The event stream is the durable integration contract. Projections are cached read models derived from events so the suite-level console can render claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions quickly.
 
-See [Emitter, Sink, And Plane Contract](emitter-sink-plane-contract.md) for the producer-side delivery boundary, including control-plane versus telemetry-plane records, required local file output, multi-sink fanout, and inert action descriptor rules.
+See [Emitter, Sink, And Plane Contract](emitter-sink-plane-contract.md) for the Console producer delivery boundary, including control-plane versus telemetry-plane records, required local file output, multi-sink fanout, and inert action descriptor rules.
+
+## Producer Terminology
+
+The top-level `producer` field identifies the **Console producer**: the Kontour product or product runtime that emitted the event or projection for Kontour Console. Examples include `surface`, `flow`, `survey`, `veritas`, `flow-agents`, and vertical products such as `campfit`.
+
+This is intentionally separate from product-native producer concepts. A crawler, extractor, verifier, importer, workflow runner, agent, or policy clock inside a product is a **domain producer** or actor/source. Put that lower-level source in `actor`, `derivedFrom`, `evidence`, `payload.data`, or product-specific `extensions` as appropriate.
+
+The JSON field remains named `producer`; in this schema, unqualified "producer" means Console producer unless a section explicitly says domain producer, actor, source, or projector.
 
 ## Principle
 
@@ -27,7 +35,7 @@ The event and projection schemas compose those objects without making Kontour Co
 
 ## Event-First Contract
 
-Products should emit append-only events for meaningful state changes and decisions. Kontour Console can fold those events into snapshots/projections for fast rendering.
+Console producers should emit append-only events for meaningful state changes and decisions. Kontour Console can fold those events into snapshots/projections for fast rendering.
 
 Event-first gives the suite-level console:
 
@@ -41,7 +49,7 @@ Snapshot/projection files are still useful. They are read models, not the durabl
 
 ## Local JSONL Stream Convention
 
-Kontour Console v0 starts with local JSONL event streams. A product can emit events without a hosted event bus, hosted ingestion service, auth layer, product adapter, or action execution endpoint.
+Kontour Console v0 starts with local JSONL event streams. A Console producer can emit events without a hosted event bus, hosted ingestion service, auth layer, product adapter, or action execution endpoint.
 
 Recommended location:
 
@@ -50,9 +58,9 @@ docs/examples/event-streams/<scenario>.jsonl
 .kontour/events/<producer-id>/<scope-kind>-<scope-id>.jsonl
 ```
 
-The `docs/examples` path is for checked-in examples. The `.kontour/events` path is the recommended local working convention for product output when a repo wants replayable console state.
+The `docs/examples` path is for checked-in examples. The `.kontour/events` path is the recommended local working convention for Console producer output when a repo wants replayable console state.
 
-The path tokens in this convention are sanitized identifiers, not raw path fragments. Producers and consumers must reject `producer-id`, `scope-kind`, and `scope-id` values that are absolute paths, contain `..`, path separators, control characters, or otherwise escape identifier syntax. Consumers must resolve candidate stream files under an allowed stream root such as `.kontour/events`, verify the resolved path remains inside that root, and reject symlink escapes before opening a file.
+The path tokens in this convention are sanitized identifiers, not raw path fragments. Console producers and consumers must reject `producer-id`, `scope-kind`, and `scope-id` values that are absolute paths, contain `..`, path separators, control characters, or otherwise escape identifier syntax. Consumers must resolve candidate stream files under an allowed stream root such as `.kontour/events`, verify the resolved path remains inside that root, and reject symlink escapes before opening a file.
 
 Rules:
 
@@ -60,8 +68,8 @@ Rules:
 | --- | --- |
 | Encoding | Files are UTF-8 text. |
 | Line format | Each non-empty line is one complete JSON object matching `KontourConsoleEvent`. |
-| File naming | Use sanitized producer or scenario identifiers plus sanitized scope identity. Avoid timestamps in file names unless the file is a closed archive segment. |
-| Append-only writes | Producers append events. They do not rewrite prior lines to correct state; corrections are new events with causal links. |
+| File naming | Use sanitized Console producer or scenario identifiers plus sanitized scope identity. Avoid timestamps in file names unless the file is a closed archive segment. |
+| Append-only writes | Console producers append events. They do not rewrite prior lines to correct state; corrections are new events with causal links. |
 | Event IDs | `id` is globally stable and unique enough for idempotent replay. Re-emitting the same event keeps the same `id`. |
 | Ordering | Consumers sort by `sequence` within a producer and stream when present. Without `sequence`, consumers use `occurredAt`, then `observedAt`, then file order as a local tie-breaker. |
 | Sequence | `sequence` is producer-local and monotonically increasing for a stream. Gaps are allowed for segmented or backfilled streams and must not imply data loss by themselves. |
@@ -117,7 +125,7 @@ type KontourConsoleEvent = {
 | `id` | Yes | `string` | Stable event identity for idempotency, duplicate handling, and causal references. |
 | `type` | Yes | `ConsoleEventType` | Product-neutral event vocabulary used for routing, filtering, and projection folding. |
 | `occurredAt` | Yes | ISO 8601 `string` | Time the producing product says the event happened. |
-| `producer` | Yes | `ConsoleProducer` | Product, vertical, agent, or run that emitted the event. |
+| `producer` | Yes | `ConsoleProducer` | Kontour product, vertical, or product runtime that emitted the event for Console consumption. |
 | `scope` | Yes | `ConsoleScope` | Boundary the event belongs to, such as repo, workspace, project, product, tenant, or domain. |
 | `subject` | Yes | `CrossProductRef` | Primary object changed or described by the event. |
 | `payload` | Yes | `ConsoleEventPayload` | State delta, summary, reason, refs, and product-specific data. |
@@ -345,7 +353,9 @@ type ConsoleProducer = {
 };
 ```
 
-The producer identifies the product or vertical emitting the projection. A vertical product such as Campfit may emit both product-native objects and links to Surface/Flow objects.
+The producer identifies the Console producer: the Kontour product, vertical, or product runtime emitting the event or projection for Console consumption. A vertical product such as Campfit may emit both product-native objects and links to Surface/Flow objects.
+
+Use `actor`, `derivedFrom`, `evidence.producerRef`, `payload.data`, or product-specific `extensions` to preserve product-native source detail. For example, Surface may be the Console producer while `actor` identifies a Surface verifier agent, or Flow may be the Console producer while `derivedFrom` identifies a specific run.
 
 ## Scope
 

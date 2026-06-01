@@ -24,9 +24,11 @@ npm run inspect:fixtures
 
 The command reads checked-in files under `docs/examples/event-streams/` and `docs/examples/projections/`, validates the local v0 envelopes, and prints event counts plus current claim, process, gate, review, action, and link summaries. Actions are shown as inert descriptors only; the inspector does not execute product commands, follow URLs, or mutate product-owned state.
 
-## Local Producer Emission
+## Local Console Producer Emission
 
-Products can also write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under a configured `.kontour` root, appending events below `.kontour/events/` and writing current projection snapshots below `.kontour/projections/`.
+A Console producer is the Kontour product or product runtime that emits control-plane records for Kontour Console. Surface, Flow, Survey, Veritas, Flow Agents, and vertical products such as Campfit can all be Console producers. This is separate from any product-native "producer" concept inside those products, such as a crawler, verifier, importer, workflow runner, or agent.
+
+Products can write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under a configured `.kontour` root, appending events below `.kontour/events/` and writing current projection snapshots below `.kontour/projections/`.
 
 ```js
 const {
@@ -50,7 +52,7 @@ const result = await emitter.emitEvent({
   id: "event-provider-directory-updated",
   type: "claim.updated",
   occurredAt: "2026-06-01T16:00:00Z",
-  producer: { product: "surface", id: "surface-producer" },
+  producer: { product: "surface", id: "surface-console-producer" },
   scope: { product: "surface", kind: "tenant", id: "acme" },
   subject: { product: "surface", kind: "claim", id: "claim-provider-directory-current" },
   payload: {}

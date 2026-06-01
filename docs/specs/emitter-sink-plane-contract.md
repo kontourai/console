@@ -2,9 +2,17 @@
 
 Status: v0.1 draft
 
-Kontour products emit product-owned records into Kontour Console without making the console, a hosted service, or a generic sink the authority for product semantics. This contract defines the producer-side boundary between semantic records and delivery adapters.
+Kontour products emit product-owned records into Kontour Console without making the console, a hosted service, or a generic sink the authority for product semantics. This contract defines the Console producer boundary between semantic records and delivery adapters.
 
-The event and projection schemas remain the record shape contract. This spec defines how those records move from a producer to local files now and to future hosted or telemetry destinations later.
+The event and projection schemas remain the record shape contract. This spec defines how those records move from a Console producer to local files now and to future hosted or telemetry destinations later.
+
+## Terminology
+
+A **Console producer** is the Kontour product or product runtime that emits control-plane records for Kontour Console. Surface, Flow, Survey, Veritas, Flow Agents, and vertical products such as Campfit can all be Console producers.
+
+A **domain producer** is a product-native source inside one of those products, such as a crawler, extractor, verifier, importer, workflow runner, agent, or policy clock. Domain producers may appear as `actor`, `derivedFrom`, `evidence`, `payload.data`, or product-specific `extensions`, but they do not replace the top-level `producer` field's Console meaning.
+
+The JSON field remains named `producer` for compatibility and brevity. In this spec, unqualified "producer" means Console producer unless explicitly described as a domain producer, actor, source, projector, or product-native component.
 
 ## Goals
 
@@ -36,7 +44,7 @@ Control-plane records answer what a product says is true, in progress, blocked, 
 - cross-product identity links
 - action descriptors carried by events or projections
 
-Telemetry-plane records answer how producers, emitters, sinks, and consumers behaved operationally. They may include:
+Telemetry-plane records answer how Console producers, emitters, sinks, and consumers behaved operationally. They may include:
 
 - traces and spans for emission, fanout, replay, or projection work
 - metrics such as delivery latency, queue depth, retry count, duplicate count, and bytes written
@@ -59,7 +67,7 @@ Re-emitting the same semantic record keeps the same identity. Sinks may wrap or 
 
 | Role | Plane | Responsibility | Status |
 | --- | --- | --- | --- |
-| `KontourEmitter` | Control plane first; may emit telemetry about delivery. | Producer-facing boundary that accepts a semantic Kontour record, validates the minimum envelope expected by this contract, assigns or preserves stable identity from the producer, and delegates delivery to configured sinks. It does not own product domain meaning or execute actions. | Contract role. |
+| `KontourEmitter` | Control plane first; may emit telemetry about delivery. | Console-producer-facing boundary that accepts a semantic Kontour record, validates the minimum envelope expected by this contract, assigns or preserves stable identity from the Console producer, and delegates delivery to configured sinks. It does not own product domain meaning or execute actions. | Contract role. |
 | `LocalFileSink` | Control plane. | Required first-class sink that writes local JSONL event streams and local projection artifacts under a configured output root using sanitized producer/scope identifiers. It is the baseline local-first output and must remain useful without hosted infrastructure. | Required first sink role. |
 | `CompositeSink` | Control plane fanout; may summarize telemetry. | Fanout coordinator that sends one semantic source record to multiple configured sinks and returns independent per-sink delivery results. It preserves the record identity across sinks and does not collapse network failure into local failure or local success into network success. | Contract role for multi-sink delivery. |
 | Future `HttpApiSink` | Control plane delivery transport. | Future hosted/org delivery adapter that serializes semantic control-plane records to an authenticated API when configured. It adapts transport format, batching, headers, and response handling; it does not change product domain meaning, ids, action authority, or trust semantics. | Future role, not implemented here. |
@@ -69,7 +77,7 @@ Sinks adapt delivery format and transport. They do not adapt product meaning. A 
 
 ## Local-First Output
 
-`LocalFileSink` is required because Kontour primitives must remain portable and useful without a hosted dependency. A producer that supports this contract must be able to emit control-plane records locally even when future hosted, org, telemetry, or network sinks are absent or failing.
+`LocalFileSink` is required because Kontour primitives must remain portable and useful without a hosted dependency. A Console producer that supports this contract must be able to emit control-plane records locally even when future hosted, org, telemetry, or network sinks are absent or failing.
 
 Local file output follows the local JSONL and projection conventions in [Event And Projection Schema](projection-schema.md). Path tokens such as producer id, scope kind, and scope id are sanitized identifiers, not trusted path fragments. A local sink must resolve candidate paths under its configured output root, reject absolute paths, `..`, path separators inside identifier tokens, control characters, and symlink escapes, and must not read local paths from semantic records as write destinations.
 
@@ -79,7 +87,7 @@ Local success and future network success are separate results. A hosted/API sink
 
 Fanout starts with one semantic source record:
 
-1. The producer creates or supplies one stable semantic record.
+1. The Console producer creates or supplies one stable semantic record.
 2. `KontourEmitter` passes that record to its configured sink, often a `CompositeSink`.
 3. `CompositeSink` sends the same semantic record, or a destination-specific encoding that preserves semantic identity, to each child sink.
 4. Each sink returns its own delivery result.
@@ -121,7 +129,7 @@ Delivery is at least once unless a sink explicitly documents stronger behavior. 
 Consumers must dedupe control-plane records by stable semantic identity:
 
 - events by `id`
-- projection snapshots by an explicit projection record id when one is provided by the producer or emitter; otherwise by the deterministic tuple of `schema`, `version`, `producer.id`, `producer.product`, `scope.kind`, `scope.id`, and `derivedFrom` identity fields such as `mode`, `eventHistory`, `streamIds`, `lastAcceptedEventId`, `lastComparableSequence`, `acceptedEventCount`, and `directSnapshot.id` when present
+- projection snapshots by an explicit projection record id when one is provided by the Console producer or emitter; otherwise by the deterministic tuple of `schema`, `version`, `producer.id`, `producer.product`, `scope.kind`, `scope.id`, and `derivedFrom` identity fields such as `mode`, `eventHistory`, `streamIds`, `lastAcceptedEventId`, `lastComparableSequence`, `acceptedEventCount`, and `directSnapshot.id` when present
 - links by stable `from`, `to`, and `rel` identity where a consumer materializes link sets
 
 `generatedAt` is display and freshness metadata, not a dedupe key by itself. Rebuilding the same projection from the same accepted event/provenance position may produce a different `generatedAt`; that must not force a consumer to treat the snapshot as a distinct semantic projection record.
