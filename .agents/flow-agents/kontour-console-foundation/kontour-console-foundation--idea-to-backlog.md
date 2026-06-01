@@ -368,11 +368,13 @@ Doc review against Surface glossary and console docs.
 
 ## backlog_links
 
-- No GitHub issues created yet.
 - GitHub sync attempted on 2026-06-01.
-- Blocker: `kontour-console` has no GitHub remote configured.
-- Blocker: `gh auth status` reports the active `briananderson1222` token is invalid.
-- Decision: W1-W3 are committed as the first executable backlog slice under milestone `Kontour Console V0 Contract`; issue sync is blocked only on remote/auth setup.
+- GitHub repo created: https://github.com/kontourai/kontour-console
+- Milestone created: https://github.com/kontourai/kontour-console/milestone/1
+- W1: https://github.com/kontourai/kontour-console/issues/1
+- W2: https://github.com/kontourai/kontour-console/issues/2
+- W3: https://github.com/kontourai/kontour-console/issues/3
+- Decision: W1-W3 are committed as the first executable backlog slice under milestone `Kontour Console V0 Contract`.
 
 ## issue_drafts
 
@@ -522,8 +524,6 @@ Source Artifact:
 
 ## open_questions
 
-- Owner: user / product lead. Configure GitHub remote for `kontour-console`.
-- Owner: user / product lead. Refresh GitHub CLI auth.
 - Owner: user / product lead. Should GitHub milestones be used for `Kontour Console V0 Contract`?
 - Owner: user / product lead. Should action authority v0 prefer local HTTP endpoints, CLI commands, or both?
 - Owner: implementation lead. Which exact local JSONL path convention should products use?
@@ -532,5 +532,5 @@ Source Artifact:
 ## next_gate
 
 Gate: Backlog Gate
-Status: BLOCKED
-Reason: W1-W3 are committed as issue drafts for milestone `Kontour Console V0 Contract`, but GitHub issue sync is blocked because the repo has no remote and GitHub CLI auth is invalid. W4-W5 remain shaped follow-ups.
+Status: PASS
+Reason: W1-W3 are synced as GitHub issues under milestone `Kontour Console V0 Contract`. W4-W5 remain shaped follow-ups.
