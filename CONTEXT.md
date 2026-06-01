@@ -1,0 +1,83 @@
+# Kontour Console
+
+Kontour Console is the suite-level management and visibility product for Kontour. It brings portable primitives from Surface, Flow, Survey, Veritas, Flow Agents, and vertical products into one operating plane.
+
+## Language
+
+**Kontour Console**:
+The comprehensive cross-product workspace for understanding what is true, what is in progress, what is stale, what is blocked, what proof exists, what decisions were made, and what should happen next across Kontour products.
+_Avoid_: Shared component library only, product-specific admin screen, required hosted service for primitives
+
+**Primitive**:
+A portable product capability that remains useful without Kontour Console, such as Surface claim status, Flow Runs, Survey fact-review records, Veritas readiness evidence, or Flow Agents runtime state.
+_Avoid_: Console-only data, proprietary backend dependency, hidden hosted requirement
+
+**Management Plane**:
+The suite-level layer that aggregates, correlates, filters, routes, and manages cross-product state. The management plane may host collaboration and monitoring, but it must not own the core semantics of the products it observes.
+_Avoid_: Product kernel, replacement for Surface or Flow, hidden workflow authority
+
+**Console Projection**:
+A product-owned read model shaped for console display and action. Surface, Flow, Veritas, Survey, Flow Agents, and vertical products may each publish projections; Kontour Console composes them without redefining their core meaning. Projections are cached views; product event streams are the durable integration contract when available.
+_Avoid_: New source of truth, arbitrary BI model, direct database dependency
+
+**Product Event Stream**:
+An append-only stream of product-owned events describing meaningful state changes, decisions, actions, proof attachment, freshness changes, process progress, review updates, and exceptions. Kontour Console consumes event streams to build or refresh projections without becoming the authority for the events.
+_Avoid_: Console-only audit log, mutable snapshot, hidden product database
+
+**Cross-Product Identity Link**:
+A portable reference connecting related objects across products, such as Surface claim IDs, Flow Run IDs, Review Item IDs, evidence IDs, producer run IDs, domain entity IDs, repository changes, and agent session IDs.
+_Avoid_: UI-only join, implicit path convention, lossy correlation
+
+**Unified Work Queue**:
+A suite-level queue that brings together stale claims, evidence gaps, open Flow gates, Review Items, producer reverification requests, Veritas readiness gaps, Survey candidate reviews, and Flow Agents continuation needs.
+_Avoid_: Replacing product-owned queues, generic task board, hiding product authority
+
+**Suite-Level Action**:
+A cross-product action exposed by Kontour Console, such as refresh a claim, request producer reverification, approve a Review Item, resume a Flow Run, route a gate back, attach proof, or open a product-native detail view. The product that owns the action remains the authority.
+_Avoid_: Console bypass, unaudited mutation, action without product authority
+
+**Current Operating State**:
+The cross-product view of claim status, process status, freshness, proof, gates, decisions, exceptions, and next actions at a point in time.
+_Avoid_: Final truth, run-only status, single score
+
+## Product Promise
+
+Kontour primitives make transparency portable. Kontour Console makes transparency operable.
+
+Users can adopt Surface, Flow, Survey, Veritas, or Flow Agents without Kontour Console. Kontour Console is the suite-level product that makes those primitives easier to manage together: one place for claim state, workflow state, proof, queues, decisions, freshness, exceptions, and next actions.
+
+## Boundary
+
+Kontour Console owns:
+
+- suite-level navigation and workspace structure
+- cross-product aggregation and correlation
+- unified queues and action routing
+- operator and producer management views
+- hosted collaboration and monitoring, when present
+- identity links across product objects
+- extension composition across products and verticals
+
+Kontour Console does not own:
+
+- Surface trust derivation
+- Flow gate or transition semantics
+- Survey fact-review record semantics
+- Veritas repo/change governance policy
+- Flow Agents runtime adapter behavior
+- vertical product domain truth
+- a requirement that primitives depend on hosted infrastructure
+
+## Implementation Stance
+
+Start with contracts and composition before a shared UI package:
+
+- product event streams
+- projection/read-model boundaries
+- identity links
+- queue and action vocabulary
+- extension metadata
+- route conventions
+- refresh and reverification semantics
+
+A shared shell or component package can emerge after Surface Console and Flow Console prove which primitives are truly common.
