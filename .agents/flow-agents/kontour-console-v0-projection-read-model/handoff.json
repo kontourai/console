@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-projection-read-model",
+  "summary": "Plan complete for GitHub issue #2. Execute docs/specs-only changes that tighten the KontourConsoleProjection read-model contract on top of the verified event stream and identity-link contracts.",
+  "current_state_ref": ".agents/flow-agents/kontour-console-v0-projection-read-model/state.json",
+  "next_steps": [
+    "Use .agents/flow-agents/kontour-console-v0-projection-read-model/kontour-console-v0-projection-read-model--plan-work-plan.md as the source of truth for execution.",
+    "Update docs/specs/projection-schema.md to make projection envelope, object types, derivedFrom provenance, rebuild semantics, and direct snapshot fallback explicit.",
+    "Add optional docs/examples/projections fixtures for Campfit field review and Surface current claim status if that makes AC3/AC4 evidence clearer.",
+    "Verify by doc inspection, JSON parsing for any examples/fixtures, and diff scope review confirming docs/examples-only changes."
+  ],
+  "blockers": [],
+  "warnings": [
+    "Do not implement a reducer, UI, hosted cache/storage, hosted ingestion, adapters, or product action execution.",
+    "Preserve product authority boundaries: Surface owns trust/freshness semantics, Flow owns gate/action/run-control semantics, and Campfit owns vertical domain truth."
+  ]
+}

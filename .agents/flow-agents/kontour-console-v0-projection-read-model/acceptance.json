@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "kontour-console-v0-projection-read-model",
+  "source_request": "Plan GitHub issue #2: Define Kontour Console V0 Projection Read Model.",
+  "criteria": [
+    {
+      "id": "AC1",
+      "description": "Projection envelope and object types are documented.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md",
+        ".agents/flow-agents/kontour-console-v0-projection-read-model/evidence.json"
+      ],
+      "notes": "Expected evidence: doc citations for KontourConsoleProjection plus summary, claims, processes, gates, reviewItems, evidence, decisions, actions, exceptions, and links."
+    },
+    {
+      "id": "AC2",
+      "description": "The relationship between event stream and projection snapshot is explicit.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md",
+        ".agents/flow-agents/kontour-console-v0-projection-read-model/evidence.json"
+      ],
+      "notes": "Expected evidence: doc citations for event replay, deterministic folding, derivedFrom metadata, snapshot seeding, and direct snapshot fallback."
+    },
+    {
+      "id": "AC3",
+      "description": "The projection schema can represent the Campfit mapping example.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md",
+        "docs/examples/projections/campfit-field-review.json",
+        ".agents/flow-agents/kontour-console-v0-projection-read-model/evidence.json"
+      ],
+      "notes": "Expected evidence: inline JSON or fixture inspection showing Campfit provider field, Surface claim, Flow review item, evidence, decision/action, and links."
+    },
+    {
+      "id": "AC4",
+      "description": "The projection schema can represent Surface current claim status independent of run picker state.",
+      "status": "pending",
+      "evidence_refs": [
+        "docs/specs/projection-schema.md",
+        "docs/examples/projections/surface-current-claim-status.json",
+        ".agents/flow-agents/kontour-console-v0-projection-read-model/evidence.json"
+      ],
+      "notes": "Expected evidence: current claim status/freshness projection can render without selected Flow run while retaining optional process/action/evidence links."
+    }
+  ],
+  "goal_fit": {
+    "status": "pending",
+    "summary": "Pending execution and verification. The plan preserves R1-R4 and AC1-AC4, limits scope to docs/specs plus optional examples/fixtures, and excludes reducer, UI, hosted cache/storage, hosted ingestion, and adapters.",
+    "open_gaps": []
+  }
+}
