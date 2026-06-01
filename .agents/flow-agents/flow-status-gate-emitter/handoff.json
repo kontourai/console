@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "flow-status-gate-emitter",
+  "summary": "Implementation plan is ready for GitHub issue #8. Build a dependency-free Flow helper/example mirroring the Surface helper pattern, add exports and a Flow status read helper, prove local Kontour round trips with validators, and document helper-only semantics in README.",
+  "current_state_ref": ".agents/flow-agents/flow-status-gate-emitter/state.json",
+  "next_steps": [
+    "Create src/console-foundation/flow-process-helper.js with flowProcessStateToProjection() and flowGateTransitionToEvent().",
+    "Update src/console-foundation/index.js with getFlowProcessStatus() and helper exports.",
+    "Create test/flow-process-helper.test.js covering projection/status and gate event local round trips.",
+    "Update README.md to mark the Flow helper as example-only with no real Flow integration or run-control execution.",
+    "Run npm test, npm run inspect:fixtures, the forbidden API scan, and git diff --check."
+  ],
+  "blockers": [],
+  "warnings": [
+    "Do not add network, process execution, URL fetch/open, or action execution behavior.",
+    "Do not couple the read helper to selected Surface claims, Campfit review items, or live Flow runtime state.",
+    "If README text matches the forbidden API regex, rephrase the documentation rather than weakening the verification command."
+  ]
+}

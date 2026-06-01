@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "task_slug": "flow-status-gate-emitter",
+  "source_request": "Plan implementation for GitHub issue #8 in /Users/brian/dev/github/kontourai/kontour-console: add a dependency-free Flow process/gate status emitter helper/example.",
+  "criteria": [
+    {
+      "id": "AC1",
+      "description": "A test maps Flow process/gate state into a projection, emits it locally, discovers it with inspectLocalKontour(), and verifies getFlowProcessStatus() returns process status, current step, percent complete, open gate refs, gate statuses, next action refs, and inert action descriptors.",
+      "status": "pending",
+      "evidence_refs": [
+        "test/flow-process-helper.test.js",
+        "npm test"
+      ],
+      "notes": "Round trip must use KontourEmitter, LocalFileSink, inspectLocalKontour(), validators, and the read helper."
+    },
+    {
+      "id": "AC2",
+      "description": "A test maps a gate transition into a valid event, emits it locally, discovers it with inspectLocalKontour(), and verifies event id/type/subject/payload refs.",
+      "status": "pending",
+      "evidence_refs": [
+        "test/flow-process-helper.test.js",
+        "npm test"
+      ]
+    },
+    {
+      "id": "AC3",
+      "description": "Helper output validates through existing validateProjection() and validateEvent() with no validation errors.",
+      "status": "pending",
+      "evidence_refs": [
+        "validateProjection() assertions",
+        "validateEvent() assertions",
+        "npm run inspect:fixtures"
+      ]
+    },
+    {
+      "id": "AC4",
+      "description": "README or docs show this as a Flow Console producer helper/example and explicitly say it is not real Flow integration or run-control execution.",
+      "status": "pending",
+      "evidence_refs": [
+        "README.md"
+      ]
+    },
+    {
+      "id": "AC5",
+      "description": "Forbidden API scan finds no command execution, URL open/fetch, network imports, or action execution in the changed helper/test/doc scope.",
+      "status": "pending",
+      "evidence_refs": [
+        "rg -n \"child_process|exec\\\\(|execFile\\\\(|spawn\\\\(|fork\\\\(|open\\\\(|fetch\\\\(|node:http|node:https|require\\\\(['\\\\\\\"]node:net|require\\\\(['\\\\\\\"]node:tls\" src/console-foundation/flow-process-helper.js test/flow-process-helper.test.js README.md"
+      ]
+    }
+  ],
+  "goal_fit": {
+    "status": "pending",
+    "summary": "The delivered work should let Flow implementers emit and inspect local process/gate status and gate events as helper/example code only, without live Flow integration or action execution.",
+    "open_gaps": []
+  }
+}
