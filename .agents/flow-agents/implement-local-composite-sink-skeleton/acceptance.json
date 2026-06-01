@@ -6,54 +6,54 @@
     {
       "id": "AC1",
       "description": "A test emits one control event through CompositeSink([LocalFileSink, InMemorySink]) and verifies the same event.id reaches both sinks.",
-      "status": "pending",
+      "status": "passed",
       "evidence_refs": [
         "npm test",
         "test/emitter-sinks.test.js or test/console-foundation.test.js"
       ],
-      "notes": "Expected evidence: assertions over the local JSONL event line and InMemorySink accepted record/result showing identical event.id."
+      "notes": "PASS: test/emitter-sinks.test.js emits through CompositeSink([LocalFileSink, InMemorySink]) and asserts the same event.id in JSONL and memory records with accepted child outcomes."
     },
     {
       "id": "AC2",
       "description": "A test emits one projection snapshot through the local sink and verifies it can be read by the existing inspector/loader.",
-      "status": "pending",
+      "status": "passed",
       "evidence_refs": [
         "npm test",
         "src/console-foundation/index.js loader functions"
       ],
-      "notes": "Expected evidence: emitted .kontour projection JSON is loaded by loadProjectionSnapshots or inspectFixtures with no validation errors."
+      "notes": "PASS: test/emitter-sinks.test.js writes a projection through LocalFileSink and reads it via loadProjectionSnapshots with no validation errors."
     },
     {
       "id": "AC3",
       "description": "Per-sink delivery result includes sink id/name, status, and error details when simulated failure occurs.",
-      "status": "pending",
+      "status": "passed",
       "evidence_refs": [
         "npm test"
       ],
-      "notes": "Expected evidence: failing sink test asserts sinkId, sinkRole/name, outcome/status failed, recordId, recordKind, errorCode, safeMessage, observedAt, and visible sibling results."
+      "notes": "PASS: sync and async failing sink tests assert sinkId, sinkRole, failed outcome, partial aggregate status, recordId, recordKind, errorCode, safeMessage, observedAt, sibling success visibility, no raw exception leakage, normalization of unsupported outcomes to the contract vocabulary, and nested failure propagation."
     },
     {
       "id": "AC4",
       "description": "Security/scope scan finds no child_process, command execution, URL open/fetch, or network imports.",
-      "status": "pending",
+      "status": "passed",
       "evidence_refs": [
         "rg -n \"child_process|execFile|exec\\\\(|spawn\\\\(|fork\\\\(|open\\\\(|fetch\\\\(|http:|https:|node:http|node:https|net\\\\b|tls\\\\b\" src test README.md docs"
       ],
-      "notes": "Expected evidence: no implementation/test usage of forbidden APIs; any doc-only mentions are confirmed as prohibitions or future non-implemented roles."
+      "notes": "PASS: implementation-level scan over src/test/README finds no child_process, command execution, fetch/open, or network imports. Tests also cover unsafe token rejection, symlink root rejection, final destination symlink rejection, and intermediate directory symlink rejection before outside paths are created."
     },
     {
       "id": "AC5",
       "description": "README or docs show local+future API fanout concept without implementing the API.",
-      "status": "pending",
+      "status": "passed",
       "evidence_refs": [
         "README.md"
       ],
-      "notes": "Expected evidence: usage snippet shows LocalFileSink plus CompositeSink and clearly labels API fanout as future-only."
+      "notes": "PASS: README Local Producer Emission section shows LocalFileSink, CompositeSink, InMemorySink, .kontour paths, independent child results, and future API fanout as not implemented."
     }
   ],
   "goal_fit": {
-    "status": "pending",
-    "summary": "Pending execution and verification: the implementation should provide a dependency-free local-first emitter/sink skeleton preserving issue #4 delivery and identity contracts.",
+    "status": "passed",
+    "summary": "Implemented and verified dependency-free local-first emitter/sink skeleton preserving required recordId delivery results and stable projection identity.",
     "open_gaps": []
   }
 }

@@ -389,6 +389,8 @@ function arrayOf(value) {
   return Array.isArray(value) ? value : [];
 }
 
+const emitter = require("./emitter");
+
 module.exports = {
   inspectFixtures,
   loadEventStreams,
@@ -397,5 +399,11 @@ module.exports = {
   getCampfitFieldReviewState,
   extractActionDescriptors,
   validateEvent,
-  validateProjection
+  validateProjection,
+  KontourEmitter: emitter.KontourEmitter,
+  LocalFileSink: emitter.LocalFileSink,
+  CompositeSink: emitter.CompositeSink,
+  InMemorySink: emitter.InMemorySink,
+  classifyRecord: emitter.classifyRecord,
+  formatDeliveryResult: emitter.formatDeliveryResult
 };

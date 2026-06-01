@@ -24,6 +24,47 @@ npm run inspect:fixtures
 
 The command reads checked-in files under `docs/examples/event-streams/` and `docs/examples/projections/`, validates the local v0 envelopes, and prints event counts plus current claim, process, gate, review, action, and link summaries. Actions are shown as inert descriptors only; the inspector does not execute product commands, follow URLs, or mutate product-owned state.
 
+## Local Producer Emission
+
+Products can also write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under a configured `.kontour` root, appending events below `.kontour/events/` and writing current projection snapshots below `.kontour/projections/`.
+
+```js
+const {
+  KontourEmitter,
+  LocalFileSink,
+  CompositeSink,
+  InMemorySink
+} = require("./src/console-foundation");
+
+const memory = new InMemorySink();
+const emitter = new KontourEmitter({
+  sink: new CompositeSink([
+    new LocalFileSink({ root: ".kontour" }),
+    memory
+  ])
+});
+
+const result = await emitter.emitEvent({
+  schema: "kontour.console.event",
+  version: "0.1",
+  id: "event-provider-directory-updated",
+  type: "claim.updated",
+  occurredAt: "2026-06-01T16:00:00Z",
+  producer: { product: "surface", id: "surface-producer" },
+  scope: { product: "surface", kind: "tenant", id: "acme" },
+  subject: { product: "surface", kind: "claim", id: "claim-provider-directory-current" },
+  payload: {}
+});
+
+console.log(result.children.map((child) => ({
+  sinkId: child.sinkId,
+  outcome: child.outcome,
+  recordId: child.recordId
+})));
+```
+
+`CompositeSink` returns one child result per sink, so a local `accepted` result can remain visible even when another sink fails. A future hosted API sink can be added as another child sink role in this fanout model, but this package does not implement an API, network transport, background retries, or remote ingestion.
+
 ## Docs
 
 - [Product Boundaries](docs/product-boundaries.md)
