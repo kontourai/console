@@ -76,6 +76,11 @@ Example sequences:
 - [Flow gate route-back](../examples/event-streams/flow-gate-route-back.jsonl)
 - [Campfit field review](../examples/event-streams/campfit-field-review.jsonl)
 
+Example projection snapshots:
+
+- [Campfit field review projection](../examples/projections/campfit-field-review.json)
+- [Surface current claim status projection](../examples/projections/surface-current-claim-status.json)
+
 ## Event Envelope
 
 ```ts
@@ -228,12 +233,7 @@ type KontourConsoleProjection = {
   schema: "kontour.console.projection";
   version: "0.1";
   generatedAt: string;
-  derivedFrom?: {
-    streamIds?: string[];
-    lastEventId?: string;
-    lastSequence?: number;
-    eventCount?: number;
-  };
+  derivedFrom: ProjectionProvenance;
   producer: ConsoleProducer;
   scope: ConsoleScope;
   summary?: ConsoleSummary;
@@ -248,9 +248,32 @@ type KontourConsoleProjection = {
   links?: CrossProductLink[];
   extensions?: Record<string, unknown>;
 };
+
+type ProjectionProvenance = {
+  mode: "event_replay" | "direct_snapshot" | "snapshot_plus_events";
+  eventHistory: "complete" | "partial" | "unavailable";
+  streamIds?: string[];
+  lastAcceptedEventId?: string;
+  lastAcceptedEventOccurredAt?: string;
+  lastComparableSequence?: {
+    producerId: string;
+    streamId: string;
+    sequence: number;
+  };
+  acceptedEventCount?: number;
+  directSnapshot?: {
+    id: string;
+    emittedAt: string;
+    producer: ConsoleProducer;
+    reason: "event_history_unavailable" | "event_history_partial" | "seed_replay" | string;
+    sourceRef?: CrossProductRef;
+  };
+};
 ```
 
-Projections should be rebuildable from events where possible. A product may also emit a projection snapshot directly when event history is unavailable, but the long-term integration contract should still prefer events.
+Projections are current read models. They are optimized for rendering the latest suite-level operating state, not for replacing product event logs, Surface trust records, Flow runs, Campfit records, or other product-owned sources of truth.
+
+`derivedFrom` is required for v0 projection snapshots. It tells a consumer whether the snapshot was rebuilt from events, emitted directly because event history is unavailable or partial, or seeded from a prior snapshot and then advanced with later accepted events. Direct snapshots are allowed only as read-model input or fallback. They must not become a new authority for claim truth, run-control state, vertical domain values, decisions, or action execution.
 
 ## Rebuilding Projections From Events
 
@@ -266,16 +289,47 @@ Rebuild behavior:
 | Folding | Apply events as state transitions into claims, processes, gates, review items, evidence, decisions, actions, exceptions, links, and summaries. The specific reducer is out of scope for v0; the fold must not invent product-owned semantics. |
 | Correlation and causation | Use `correlationId` to build user-visible timelines for one workflow, review, claim refresh, route-back, or backfill. Use `causationId` to show direct parent-child transitions such as a failed gate causing a route-back. |
 | Link accumulation | Accumulate explicit `links`, `payload.refs`, and subject relationships into projection `links` where they remain relevant to the current read model. Later events may supersede status, but historical links remain available for timelines when retained by the reducer. |
-| Snapshot fallback | A projection snapshot may seed replay or stand in when event history is unavailable. If events exist after the snapshot point, replay only the accepted events after the snapshot's recorded position. |
+| Snapshot fallback | A projection snapshot may seed replay or stand in when event history is unavailable or partial. If events exist after the snapshot point, replay only the accepted events after the snapshot's recorded position and set `derivedFrom.mode` to `snapshot_plus_events`. |
 
 `KontourConsoleProjection.derivedFrom` records replay provenance for the read model:
 
+- `mode` records whether the snapshot came from accepted event replay, direct snapshot emission, or a direct snapshot plus later events.
+- `eventHistory` records whether the producer or projector believes the event history used for the read model is complete, partial, or unavailable.
 - `streamIds` lists the local stream identities folded into the projection. These values are provenance labels and must not be blindly reopened as filesystem paths unless each candidate is separately validated against the allowed stream root, identifier rules, and symlink containment checks.
-- `lastEventId` records the final accepted event id after deterministic ordering.
-- `lastSequence` records the final accepted producer-local sequence when the folded stream has a single comparable sequence domain; omit it when streams cannot be compared safely.
-- `eventCount` records the count of accepted, non-duplicate events folded into the projection, not the number of physical JSONL lines read.
+- `lastAcceptedEventId` records the final accepted event id after deterministic ordering.
+- `lastAcceptedEventOccurredAt` records the producer-reported time for the final accepted event when available.
+- `lastComparableSequence` records the final accepted producer-local sequence only when the folded events share one comparable sequence domain. Omit it when multiple producers or streams cannot be compared safely.
+- `acceptedEventCount` records the count of accepted, non-duplicate events folded into the projection, not the number of physical JSONL lines read.
+- `directSnapshot` records the direct snapshot identity, emitter, time, reason, and optional source object when a snapshot is used as the starting point or full read-model input.
+
+Event history remains preferred when available. A direct snapshot with `eventHistory: "unavailable"` or `eventHistory: "partial"` is a display fallback: it may tell the console what to render, but it does not prove historical transitions and does not grant Kontour Console authority to make product-owned decisions.
 
 These rules describe the rebuild contract only. They do not require a hosted event bus, product adapter, action endpoint, UI, or shared reducer implementation.
+
+## Projection Object Catalogue
+
+The v0 projection envelope carries arrays of product-owned objects plus explicit links between them:
+
+| Object | Field | Authority boundary | Intended console use |
+| --- | --- | --- | --- |
+| Summary | `summary` | The projector may compute it from included objects or label it producer-provided. | Counts, freshness of the read model, and top-level scan state. |
+| Claims | `claims` | Surface owns trust status, freshness, validity windows, and claim semantics. Vertical products may emit domain-derived claims through Surface refs. | Current trust state, stale/disputed queues, and claim detail panels. |
+| Processes | `processes` | Flow or the emitting product owns run lifecycle and transition semantics. | Running, blocked, completed, or waiting work. |
+| Gates | `gates` | Flow owns gate evaluation, route-back, exception, and run-control semantics. | Blocking reasons, missing evidence, and route-back visibility. |
+| Review items | `reviewItems` | Flow, Campfit, Survey, Veritas, or another owner defines review lifecycle and decision semantics. | Unified review queues and subject navigation. |
+| Evidence | `evidence` | The producer or Surface owns evidence integrity, availability, and privacy semantics. | Proof summaries, source navigation, and missing/stale evidence display. |
+| Decisions | `decisions` | The product or actor that recorded the decision owns the durable decision meaning. | Timeline entries and rationale display. |
+| Actions | `actions` | The authority descriptor identifies the owning product; Kontour Console must route execution through trusted product control paths. | Available next actions, disabled reasons, and pending/completed action state. |
+| Exceptions | `exceptions` | Flow or the product governance layer owns exception acceptance, rejection, expiry, and trust implications. | Exception requests and accepted exception visibility. |
+| Links | `links` | Emitting products own explicit identity and relationship assertions. | Cross-product navigation and correlation without global id minting. |
+| Extensions | `extensions` | Namespaced product or deployment detail remains product-owned. | Optional vertical fields that are not required for core v0 behavior. |
+
+Each object should retain `CrossProductRef` fields for the product objects it describes or depends on. Product-specific facts that are not needed for core v0 rendering belong under object-level `extensions` or event `payload.data`.
+
+The checked-in projection examples demonstrate two required v0 shapes:
+
+- The Campfit example maps a Campfit `provider_field` to a Surface `claim`, a Flow-owned process/gate, a Campfit review item, Surface evidence, a Campfit decision/action, and explicit `links`.
+- The Surface example keeps current claim `status`, `freshness`, `validFrom`, `validUntil`, and `lastUpdatedAt` directly on `claims[]`, so a console can render current claim status without selecting a Flow run. It still retains optional links to the Flow refresh definition/action and Surface evidence.
 
 ## Producer
 
@@ -441,6 +495,8 @@ type EvidenceProjection = {
 ```
 
 Evidence may point at Surface Evidence, Flow Gate Evidence, Veritas evidence checks, Survey source excerpts, or product-native proof records.
+
+`sourceUrl` is a navigation descriptor only. Consumers must treat it as untrusted producer data, validate scheme and host through a trusted adapter or allowlist before rendering a link, reject dangerous schemes such as `javascript:` and local file access, and avoid backend fetching unless a separate trusted product path authorizes it.
 
 ## Decisions
 

@@ -1,0 +1,452 @@
+{
+  "schema": "kontour.console.projection",
+  "version": "0.1",
+  "generatedAt": "2026-05-31T17:09:05Z",
+  "derivedFrom": {
+    "mode": "event_replay",
+    "eventHistory": "complete",
+    "streamIds": [
+      "docs/examples/event-streams/campfit-field-review.jsonl"
+    ],
+    "lastAcceptedEventId": "evt-campfit-field-review-005",
+    "lastAcceptedEventOccurredAt": "2026-05-31T17:09:00Z",
+    "lastComparableSequence": {
+      "producerId": "campfit-local",
+      "streamId": "docs/examples/event-streams/campfit-field-review.jsonl",
+      "sequence": 5
+    },
+    "acceptedEventCount": 5
+  },
+  "producer": {
+    "id": "campfit-local-projector",
+    "product": "campfit",
+    "name": "Campfit local projection"
+  },
+  "scope": {
+    "kind": "workspace",
+    "id": "campfit-demo",
+    "label": "Campfit demo workspace"
+  },
+  "summary": {
+    "claimCount": 1,
+    "activeProcessCount": 0,
+    "openGateCount": 0,
+    "reviewItemCount": 1,
+    "pendingActionCount": 0,
+    "lastUpdatedAt": "2026-05-31T17:09:02Z"
+  },
+  "claims": [
+    {
+      "id": "claim-provider-118-npi",
+      "subject": "Provider 118 NPI",
+      "claimType": "provider_field_verified",
+      "label": "Provider 118 NPI is verified",
+      "status": "verified",
+      "currentValue": "1234567890",
+      "validFrom": "2026-05-31T17:09:00Z",
+      "lastUpdatedAt": "2026-05-31T17:09:02Z",
+      "lastVerifiedAt": "2026-05-31T17:08:00Z",
+      "freshness": {
+        "status": "fresh",
+        "lastCheckedAt": "2026-05-31T17:08:00Z",
+        "source": "producer"
+      },
+      "materiality": "medium",
+      "evidenceRefs": [
+        {
+          "product": "surface",
+          "kind": "evidence",
+          "id": "evidence-provider-118-npi-source",
+          "label": "Provider 118 NPI source"
+        }
+      ],
+      "actionRefs": [
+        {
+          "product": "campfit",
+          "kind": "action",
+          "id": "action-apply-provider-118-npi",
+          "label": "Apply approved NPI"
+        }
+      ],
+      "sourceRef": {
+        "product": "campfit",
+        "kind": "provider_field",
+        "id": "provider-118:npi",
+        "label": "Provider 118 NPI"
+      },
+      "extensions": {
+        "authority": {
+          "product": "surface",
+          "note": "Surface owns claim status and freshness semantics."
+        },
+        "campfit": {
+          "providerId": "provider-118",
+          "fieldName": "npi"
+        }
+      }
+    }
+  ],
+  "processes": [
+    {
+      "id": "run-campfit-provider-118-field-review",
+      "definitionId": "campfit-provider-field-review",
+      "label": "Campfit provider field review",
+      "status": "completed",
+      "currentStep": "apply-approved-field",
+      "startedAt": "2026-05-31T17:01:00Z",
+      "updatedAt": "2026-05-31T17:09:02Z",
+      "completedAt": "2026-05-31T17:09:02Z",
+      "percentComplete": 100,
+      "reviewItemRefs": [
+        {
+          "product": "campfit",
+          "kind": "review_item",
+          "id": "review-provider-118-npi",
+          "label": "Review Provider 118 NPI"
+        }
+      ],
+      "claimRefs": [
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-118-npi",
+          "label": "Provider 118 NPI is verified"
+        }
+      ],
+      "nextActionRefs": [
+        {
+          "product": "campfit",
+          "kind": "action",
+          "id": "action-apply-provider-118-npi",
+          "label": "Apply approved NPI"
+        }
+      ],
+      "extensions": {
+        "authority": {
+          "product": "flow",
+          "note": "Flow owns run lifecycle and route-control semantics."
+        }
+      }
+    }
+  ],
+  "gates": [
+    {
+      "id": "gate-provider-field-evidence",
+      "processRef": {
+        "product": "flow",
+        "kind": "run",
+        "id": "run-campfit-provider-118-field-review",
+        "label": "Campfit provider field review"
+      },
+      "label": "Provider field evidence present",
+      "status": "passed",
+      "expectationRefs": [
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-118-npi",
+          "label": "Provider 118 NPI is verified"
+        }
+      ],
+      "evidenceRefs": [
+        {
+          "product": "surface",
+          "kind": "evidence",
+          "id": "evidence-provider-118-npi-source",
+          "label": "Provider 118 NPI source"
+        }
+      ],
+      "updatedAt": "2026-05-31T17:08:01Z",
+      "extensions": {
+        "authority": {
+          "product": "flow",
+          "note": "Flow owns gate pass/fail semantics."
+        }
+      }
+    }
+  ],
+  "reviewItems": [
+    {
+      "id": "review-provider-118-npi",
+      "label": "Review Provider 118 NPI",
+      "kind": "field_change",
+      "status": "approved",
+      "priority": "medium",
+      "subjectRef": {
+        "product": "campfit",
+        "kind": "provider_field",
+        "id": "provider-118:npi",
+        "label": "Provider 118 NPI"
+      },
+      "claimRefs": [
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-118-npi",
+          "label": "Provider 118 NPI is verified"
+        }
+      ],
+      "processRefs": [
+        {
+          "product": "flow",
+          "kind": "run",
+          "id": "run-campfit-provider-118-field-review",
+          "label": "Campfit provider field review"
+        }
+      ],
+      "evidenceRefs": [
+        {
+          "product": "surface",
+          "kind": "evidence",
+          "id": "evidence-provider-118-npi-source",
+          "label": "Provider 118 NPI source"
+        }
+      ],
+      "actionRefs": [
+        {
+          "product": "campfit",
+          "kind": "action",
+          "id": "action-apply-provider-118-npi",
+          "label": "Apply approved NPI"
+        }
+      ],
+      "createdAt": "2026-05-31T17:01:00Z",
+      "updatedAt": "2026-05-31T17:08:01Z",
+      "extensions": {
+        "authority": {
+          "product": "campfit",
+          "note": "Campfit owns provider field review semantics."
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence-provider-118-npi-source",
+      "label": "Provider 118 NPI source",
+      "kind": "source_excerpt",
+      "status": "available",
+      "summary": "Source evidence shows NPI 1234567890 for provider 118.",
+      "observedResult": "NPI: 1234567890",
+      "sourceUrl": "https://example.test/providers/118",
+      "sourceExcerpt": "NPI: 1234567890",
+      "capturedAt": "2026-05-31T17:00:00Z",
+      "producerRef": {
+        "product": "campfit",
+        "kind": "crawler",
+        "id": "campfit-crawler",
+        "label": "Campfit crawler"
+      },
+      "claimRefs": [
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-118-npi",
+          "label": "Provider 118 NPI is verified"
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "id": "decision-provider-118-npi-approved",
+      "label": "Approve Provider 118 NPI",
+      "kind": "approval",
+      "decidedAt": "2026-05-31T17:08:05Z",
+      "decidedBy": "reviewer-7",
+      "rationale": "Reviewed source evidence supports the field value.",
+      "subjectRefs": [
+        {
+          "product": "campfit",
+          "kind": "review_item",
+          "id": "review-provider-118-npi",
+          "label": "Review Provider 118 NPI"
+        },
+        {
+          "product": "campfit",
+          "kind": "provider_field",
+          "id": "provider-118:npi",
+          "label": "Provider 118 NPI"
+        }
+      ],
+      "evidenceRefs": [
+        {
+          "product": "surface",
+          "kind": "evidence",
+          "id": "evidence-provider-118-npi-source",
+          "label": "Provider 118 NPI source"
+        }
+      ],
+      "result": "approved"
+    }
+  ],
+  "actions": [
+    {
+      "id": "action-apply-provider-118-npi",
+      "label": "Apply approved NPI",
+      "kind": "approve",
+      "status": "completed",
+      "authority": {
+        "product": "campfit",
+        "command": "campfit.providerField.applyApproved"
+      },
+      "subjectRefs": [
+        {
+          "product": "campfit",
+          "kind": "provider_field",
+          "id": "provider-118:npi",
+          "label": "Provider 118 NPI"
+        },
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-118-npi",
+          "label": "Provider 118 NPI is verified"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "from": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-118-npi",
+        "label": "Provider 118 NPI is verified"
+      },
+      "to": {
+        "product": "campfit",
+        "kind": "provider_field",
+        "id": "provider-118:npi",
+        "label": "Provider 118 NPI"
+      },
+      "relation": "derived_from",
+      "strength": "direct",
+      "createdAt": "2026-05-31T17:09:02Z"
+    },
+    {
+      "from": {
+        "product": "campfit",
+        "kind": "provider_field",
+        "id": "provider-118:npi",
+        "label": "Provider 118 NPI"
+      },
+      "to": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-118-npi",
+        "label": "Provider 118 NPI is verified"
+      },
+      "relation": "updates",
+      "strength": "direct",
+      "createdAt": "2026-05-31T17:09:02Z"
+    },
+    {
+      "from": {
+        "product": "flow",
+        "kind": "gate",
+        "id": "gate-provider-field-evidence",
+        "label": "Provider field evidence present"
+      },
+      "to": {
+        "product": "flow",
+        "kind": "run",
+        "id": "run-campfit-provider-118-field-review",
+        "label": "Campfit provider field review"
+      },
+      "relation": "controls",
+      "strength": "direct",
+      "createdAt": "2026-05-31T17:08:01Z"
+    },
+    {
+      "from": {
+        "product": "campfit",
+        "kind": "review_item",
+        "id": "review-provider-118-npi",
+        "label": "Review Provider 118 NPI"
+      },
+      "to": {
+        "product": "flow",
+        "kind": "run",
+        "id": "run-campfit-provider-118-field-review",
+        "label": "Campfit provider field review"
+      },
+      "relation": "produced_by",
+      "strength": "direct",
+      "createdAt": "2026-05-31T17:01:03Z"
+    },
+    {
+      "from": {
+        "product": "campfit",
+        "kind": "review_item",
+        "id": "review-provider-118-npi",
+        "label": "Review Provider 118 NPI"
+      },
+      "to": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-118-npi",
+        "label": "Provider 118 NPI is verified"
+      },
+      "relation": "reviews",
+      "strength": "direct",
+      "createdAt": "2026-05-31T17:01:03Z"
+    },
+    {
+      "from": {
+        "product": "campfit",
+        "kind": "review_item",
+        "id": "review-provider-118-npi",
+        "label": "Review Provider 118 NPI"
+      },
+      "to": {
+        "product": "campfit",
+        "kind": "provider_field",
+        "id": "provider-118:npi",
+        "label": "Provider 118 NPI"
+      },
+      "relation": "reviews",
+      "strength": "direct",
+      "createdAt": "2026-05-31T17:01:03Z"
+    },
+    {
+      "from": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-118-npi",
+        "label": "Provider 118 NPI is verified"
+      },
+      "to": {
+        "product": "surface",
+        "kind": "evidence",
+        "id": "evidence-provider-118-npi-source",
+        "label": "Provider 118 NPI source"
+      },
+      "relation": "evidenced_by",
+      "strength": "direct",
+      "createdAt": "2026-05-31T17:08:01Z"
+    },
+    {
+      "from": {
+        "product": "campfit",
+        "kind": "action",
+        "id": "action-apply-provider-118-npi",
+        "label": "Apply approved NPI"
+      },
+      "to": {
+        "product": "campfit",
+        "kind": "decision",
+        "id": "decision-provider-118-npi-approved",
+        "label": "Approve Provider 118 NPI"
+      },
+      "relation": "produced_by",
+      "strength": "direct",
+      "createdAt": "2026-05-31T17:09:02Z"
+    }
+  ],
+  "extensions": {
+    "campfit": {
+      "vertical": "provider_directory"
+    }
+  }
+}

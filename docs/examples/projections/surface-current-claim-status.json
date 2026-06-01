@@ -1,0 +1,206 @@
+{
+  "schema": "kontour.console.projection",
+  "version": "0.1",
+  "generatedAt": "2026-05-31T15:12:05Z",
+  "derivedFrom": {
+    "mode": "snapshot_plus_events",
+    "eventHistory": "partial",
+    "streamIds": [
+      "docs/examples/event-streams/surface-claim-freshness.jsonl"
+    ],
+    "lastAcceptedEventId": "evt-surface-claim-freshness-003",
+    "lastAcceptedEventOccurredAt": "2026-05-31T15:12:00Z",
+    "lastComparableSequence": {
+      "producerId": "surface-local",
+      "streamId": "docs/examples/event-streams/surface-claim-freshness.jsonl",
+      "sequence": 3
+    },
+    "acceptedEventCount": 3,
+    "directSnapshot": {
+      "id": "surface-snapshot-provider-directory-current-2026-05-31",
+      "emittedAt": "2026-05-31T15:00:00Z",
+      "producer": {
+        "id": "surface-local",
+        "product": "surface",
+        "name": "Surface local projector"
+      },
+      "reason": "event_history_partial",
+      "sourceRef": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-directory-current",
+        "label": "Provider directory is current"
+      }
+    }
+  },
+  "producer": {
+    "id": "surface-local-projector",
+    "product": "surface",
+    "name": "Surface local projection"
+  },
+  "scope": {
+    "kind": "repo",
+    "id": "kontourai/kontour-console",
+    "label": "Kontour Console"
+  },
+  "summary": {
+    "claimCount": 1,
+    "staleClaimCount": 0,
+    "activeProcessCount": 0,
+    "pendingActionCount": 1,
+    "lastUpdatedAt": "2026-05-31T15:12:02Z"
+  },
+  "claims": [
+    {
+      "id": "claim-provider-directory-current",
+      "subject": "Provider directory",
+      "claimType": "directory_current",
+      "label": "Provider directory is current",
+      "status": "verified",
+      "currentValue": true,
+      "validFrom": "2026-05-31T15:12:00Z",
+      "validUntil": "2026-06-30T15:12:00Z",
+      "lastUpdatedAt": "2026-05-31T15:12:02Z",
+      "lastVerifiedAt": "2026-05-31T15:12:00Z",
+      "freshness": {
+        "status": "fresh",
+        "lastCheckedAt": "2026-05-31T15:12:00Z",
+        "nextCheckAt": "2026-06-29T15:12:00Z",
+        "expiresAt": "2026-06-30T15:12:00Z",
+        "source": "policy"
+      },
+      "materiality": "high",
+      "evidenceRefs": [
+        {
+          "product": "surface",
+          "kind": "evidence",
+          "id": "evidence-provider-directory-crawl-2026-05-31",
+          "label": "Provider directory crawl"
+        }
+      ],
+      "actionRefs": [
+        {
+          "product": "flow",
+          "kind": "action",
+          "id": "action-refresh-provider-directory",
+          "label": "Refresh provider directory"
+        }
+      ],
+      "extensions": {
+        "authority": {
+          "product": "surface",
+          "note": "Renderable current claim status is owned by Surface and does not require selecting a Flow run."
+        },
+        "rendering": {
+          "requiresSelectedFlowRun": false
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence-provider-directory-crawl-2026-05-31",
+      "label": "Provider directory crawl",
+      "kind": "verification_result",
+      "status": "available",
+      "summary": "Surface verifier observed the provider directory during the May 31 crawl.",
+      "capturedAt": "2026-05-31T15:12:00Z",
+      "producerRef": {
+        "product": "surface",
+        "kind": "verifier",
+        "id": "surface-verifier",
+        "label": "Surface verifier"
+      },
+      "claimRefs": [
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-directory-current",
+          "label": "Provider directory is current"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "action-refresh-provider-directory",
+      "label": "Refresh provider directory",
+      "kind": "refresh",
+      "status": "available",
+      "reason": "Manual refresh remains available even while the current Surface claim is fresh.",
+      "authority": {
+        "product": "flow",
+        "command": "flow.run.start",
+        "externalUrl": "https://example.test/flow/definitions/refresh-provider-directory"
+      },
+      "subjectRefs": [
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-directory-current",
+          "label": "Provider directory is current"
+        },
+        {
+          "product": "flow",
+          "kind": "definition",
+          "id": "refresh-provider-directory",
+          "label": "Refresh provider directory"
+        }
+      ],
+      "requiresConfirmation": true
+    }
+  ],
+  "links": [
+    {
+      "from": {
+        "product": "flow",
+        "kind": "definition",
+        "id": "refresh-provider-directory",
+        "label": "Refresh provider directory"
+      },
+      "to": {
+        "product": "flow",
+        "kind": "action",
+        "id": "action-refresh-provider-directory",
+        "label": "Refresh provider directory"
+      },
+      "relation": "controls",
+      "strength": "direct",
+      "createdAt": "2026-05-31T15:01:04Z"
+    },
+    {
+      "from": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-directory-current",
+        "label": "Provider directory is current"
+      },
+      "to": {
+        "product": "surface",
+        "kind": "evidence",
+        "id": "evidence-provider-directory-crawl-2026-05-31",
+        "label": "Provider directory crawl"
+      },
+      "relation": "evidenced_by",
+      "strength": "direct",
+      "createdAt": "2026-05-31T15:12:02Z"
+    },
+    {
+      "from": {
+        "product": "flow",
+        "kind": "action",
+        "id": "action-refresh-provider-directory",
+        "label": "Refresh provider directory"
+      },
+      "to": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-directory-current",
+        "label": "Provider directory is current"
+      },
+      "relation": "updates",
+      "strength": "direct",
+      "createdAt": "2026-05-31T15:12:05Z"
+    }
+  ]
+}

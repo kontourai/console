@@ -1,22 +1,24 @@
 {
   "schema_version": "1.0",
   "task_slug": "kontour-console-v0-projection-read-model",
-  "status": "planned",
-  "phase": "planning",
-  "owner": "tool-planner",
+  "status": "verified",
+  "phase": "verification",
+  "owner": "codex-orchestrator",
   "created_at": "2026-06-01T13:33:01Z",
-  "updated_at": "2026-06-01T13:33:01Z",
+  "updated_at": "2026-06-01T13:54:07Z",
   "source_request": "Plan GitHub issue #2 in /Users/brian/dev/github/kontourai/kontour-console: Define Kontour Console V0 Projection Read Model.",
   "artifact_paths": [
     ".agents/flow-agents/kontour-console-v0-projection-read-model/kontour-console-v0-projection-read-model--pull-work.md",
     ".agents/flow-agents/kontour-console-v0-projection-read-model/kontour-console-v0-projection-read-model--plan-work-plan.md",
     ".agents/flow-agents/kontour-console-v0-projection-read-model/acceptance.json",
+    ".agents/flow-agents/kontour-console-v0-projection-read-model/evidence.json",
+    ".agents/flow-agents/kontour-console-v0-projection-read-model/kontour-console-v0-projection-read-model--verify-work-review.md",
     ".agents/flow-agents/kontour-console-v0-projection-read-model/handoff.json"
   ],
   "next_action": {
-    "status": "continue",
-    "summary": "Execute the plan by tightening docs/specs/projection-schema.md and adding optional projection examples/fixtures, then verify AC1-AC4.",
-    "target_phase": "execution",
-    "target_artifact": ".agents/flow-agents/kontour-console-v0-projection-read-model/kontour-console-v0-projection-read-model--plan-work-plan.md"
+    "status": "done",
+    "summary": "Verification passed for AC1-AC4 and Goal Fit.",
+    "target_phase": "done",
+    "target_artifact": ".agents/flow-agents/kontour-console-v0-projection-read-model/kontour-console-v0-projection-read-model--verify-work-review.md"
   }
 }
