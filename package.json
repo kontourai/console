@@ -8,6 +8,7 @@
   },
   "scripts": {
     "inspect:fixtures": "node bin/kontour-console-inspect.js",
-    "test": "node --test"
+    "test": "node scripts/check-content-boundary.cjs && node --test",
+    "check:content-boundary": "node scripts/check-content-boundary.cjs"
   }
 }
