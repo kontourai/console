@@ -113,6 +113,8 @@ Sinks adapt delivery format and transport. They do not adapt product meaning. A 
 
 Local file output follows the local JSONL and projection conventions in [Event And Projection Schema](projection-schema.md). Path tokens such as producer id, scope kind, and scope id are sanitized identifiers, not trusted path fragments. A local sink must resolve candidate paths under its configured output root, reject absolute paths, `..`, path separators inside identifier tokens, control characters, and symlink escapes, and must not read local paths from semantic records as write destinations.
 
+`LocalConsoleHub` is the local-first server-shaped adapter for this same contract. It is intentionally in-process for v0: products can append `KontourConsoleEvent` and projection records to it, the hub persists them through `LocalFileSink` under `.kontour`, `inspect` reads the local store, and `currentOperatingState` folds accepted local events with deterministic replay. This keeps local files as the default user experience while giving producers a stable hub-shaped integration point that can later map to a hosted Console Sink without changing the semantic record shape.
+
 Local success and future network success are separate results. A hosted/API sink failure must not erase a successful local write. A local write failure must be reported directly and must not be hidden by success from another sink.
 
 ## Fanout Contract
