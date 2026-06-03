@@ -24,9 +24,13 @@ _Avoid_: New source of truth, arbitrary BI model, direct database dependency
 An append-only stream of product-owned events describing meaningful state changes, decisions, actions, proof attachment, freshness changes, process progress, review updates, and exceptions. Kontour Console consumes event streams to build or refresh projections without becoming the authority for the events.
 _Avoid_: Console-only audit log, mutable snapshot, hidden product database
 
+**Portable Product Record**:
+A product-owned durable record with consistent resource identity, status, and proof shape that remains meaningful outside Kontour Console. Console events and projections may carry, reference, or derive from Portable Product Records, but they do not replace the product-owned record.
+_Avoid_: Console record, shared database row, generic telemetry event
+
 **Cross-Product Identity Link**:
-A portable reference connecting related objects across products, such as Surface claim IDs, Flow Run IDs, Review Item IDs, evidence IDs, producer run IDs, domain entity IDs, repository changes, and agent session IDs.
-_Avoid_: UI-only join, implicit path convention, lossy correlation
+A portable reference connecting related objects across products, using product, kind, and id as the minimum stable identity. When the referenced object is a Portable Product Record, the link may also carry resource identity such as apiVersion, name, and uid.
+_Avoid_: UI-only join, implicit path convention, lossy correlation, unrelated ref systems
 
 **Unified Work Queue**:
 A suite-level queue that brings together stale claims, evidence gaps, open Flow gates, Survey Review Items, producer reverification requests, Veritas readiness gaps, Survey candidate reviews, and Flow Agents continuation needs.
@@ -39,6 +43,10 @@ _Avoid_: vertical products depending on `.kontour`, vertical products redefining
 **Suite-Level Action**:
 A cross-product action exposed by Kontour Console, such as refresh a claim, request producer reverification, approve a Review Item, resume a Flow Run, route a gate back, attach proof, or open a product-native detail view. The product that owns the action remains the authority.
 _Avoid_: Console bypass, unaudited mutation, action without product authority
+
+**Surface Drill-Through**:
+A Kontour Console path from an operating view into Surface-backed claim, evidence, freshness, and trust-gap detail. Kontour Console may embed enough Surface data for immediate context, while deeper inspection routes to Surface Console or product-native Surface data when available.
+_Avoid_: Reimplementing Surface Console, hiding Surface provenance, link-only context
 
 **Current Operating State**:
 The cross-product view of claim status, process status, freshness, proof, gates, decisions, exceptions, and next actions at a point in time.

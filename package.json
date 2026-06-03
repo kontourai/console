@@ -8,6 +8,7 @@
   },
   "scripts": {
     "inspect:fixtures": "node bin/kontour-console-inspect.js",
+    "prototype:handoff": "node scripts/serve-prototype.cjs docs/prototypes/handoff-replay",
     "test": "node scripts/check-content-boundary.cjs && node --test",
     "check:content-boundary": "node scripts/check-content-boundary.cjs",
     "setup:repo-hooks": "node scripts/setup-repo-hooks.cjs",
