@@ -38,6 +38,41 @@ test("local hub server accepts records and exposes current state", async () => {
   }
 });
 
+test("local hub server streams accepted record updates over SSE", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  const streamClient = { request: null };
+  try {
+    const baseUrl = serverUrl(app);
+    const eventStream = connectSse(`${baseUrl}/events`, streamClient);
+    const ready = await eventStream.nextEvent();
+    const initialState = await eventStream.nextEvent();
+    const stream = surfaceFlowHandoffStream();
+    const invalid = await requestJson("POST", `${baseUrl}/records`, {
+      schema: "kontour.console.event",
+      version: "0.1",
+      id: "bad-event"
+    });
+    const result = await requestJson("POST", `${baseUrl}/records`, stream.events[0]);
+    const update = await eventStream.nextEvent();
+
+    assert.equal(ready.event, "ready");
+    assert.equal(initialState.event, "state");
+    assert.equal(initialState.data.source.acceptedEventCount, 0);
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(result.statusCode, 202);
+    assert.equal(update.event, "record.accepted");
+    assert.equal(update.data.delivery.outcome, "accepted");
+    assert.equal(update.data.delivery.recordId, "evt-surface-flow-handoff-001");
+    assert.equal(update.data.state.source.acceptedEventCount, 1);
+    assert.equal(update.data.state.timeline[0].id, "evt-surface-flow-handoff-001");
+  } finally {
+    if (streamClient.request) streamClient.request.destroy();
+    await close(app);
+  }
+});
+
 test("local hub server rejects malformed requests safely", async () => {
   const rootDir = tempRoot();
   const app = createConsoleHubServer({ rootDir, port: 0 });
@@ -130,6 +165,53 @@ function rawRequest(method, url, body) {
     if (body !== undefined) request.write(body);
     request.end();
   });
+}
+
+function connectSse(url, holder = {}) {
+  const queue = [];
+  const waiting = [];
+  let buffer = "";
+  let currentEvent = null;
+  let currentData = [];
+
+  const request = http.request(url, { method: "GET" }, (response) => {
+    response.setEncoding("utf8");
+    response.on("data", (chunk) => {
+      buffer += chunk;
+      let boundary = buffer.indexOf("\n\n");
+      while (boundary !== -1) {
+        const frame = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        for (const line of frame.split(/\r?\n/)) {
+          if (line.startsWith("event: ")) currentEvent = line.slice("event: ".length);
+          if (line.startsWith("data: ")) currentData.push(line.slice("data: ".length));
+        }
+        if (currentEvent) {
+          enqueueEvent({
+            event: currentEvent,
+            data: JSON.parse(currentData.join("\n") || "{}")
+          });
+        }
+        currentEvent = null;
+        currentData = [];
+        boundary = buffer.indexOf("\n\n");
+      }
+    });
+  });
+  holder.request = request;
+  request.end();
+
+  return {
+    nextEvent() {
+      if (queue.length) return Promise.resolve(queue.shift());
+      return new Promise((resolve) => waiting.push(resolve));
+    }
+  };
+
+  function enqueueEvent(event) {
+    if (waiting.length) waiting.shift()(event);
+    else queue.push(event);
+  }
 }
 
 function tempRoot() {

@@ -27,7 +27,7 @@ function serve(options) {
   app.listen({}, () => {
     const address = app.server.address();
     console.log(`Kontour local hub: http://${address.address}:${address.port}`);
-    console.log("POST /records  GET /state  GET /inspect");
+    console.log("POST /records  GET /state  GET /inspect  GET /events");
   });
 }
 

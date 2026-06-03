@@ -12,7 +12,7 @@ The primitives remain portable:
 
 Kontour Console brings those products together into one operating plane for claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.
 
-This repo ships a small local read-only fixture inspector package alongside the product context and architecture decisions; it is not an app or hosted service.
+This repo ships local-first Console foundation code alongside the product context and architecture decisions. It includes fixture inspection, local file sinks, deterministic replay, and a loopback-only development server; it is not a hosted production service.
 
 ## Contributor Hook Tooling
 
@@ -107,6 +107,23 @@ console.log(report.eventStreams.length, report.projections.length);
 `inspectLocalKontour` recursively reads `.kontour/events/**/*.jsonl` and `.kontour/projections/**/*.json`, labels records as `local`, and treats action descriptors as read-only data. `npm run inspect:fixtures` remains fixture-only for checked-in examples under `docs/examples`.
 
 `CompositeSink` returns one child result per sink, so a local `accepted` result can remain visible even when another sink fails. A future hosted API sink can be added as another child sink role in this fanout model, but this package does not implement an API, network transport, background retries, or remote ingestion.
+
+## Local Hub Server
+
+Run the local development hub from the repo root:
+
+```sh
+npm run serve
+```
+
+The `kontour serve` command binds to `127.0.0.1:3737` by default and exposes:
+
+- `POST /records`
+- `GET /state`
+- `GET /inspect`
+- `GET /events`
+
+`GET /events` is a server-sent event stream. It sends an initial `ready` event, an initial `state` event, and a `record.accepted` event after an accepted `POST /records`. The local hub persists through `.kontour` files and does not add a database, auth model, remote execution channel, product API fetcher, or action executor.
 
 ### Surface Claim Status/Freshness Producer Helper
 
