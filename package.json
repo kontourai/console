@@ -4,11 +4,13 @@
   "private": true,
   "type": "commonjs",
   "bin": {
+    "kontour": "bin/kontour.js",
     "kontour-console-inspect": "bin/kontour-console-inspect.js"
   },
   "scripts": {
     "inspect:fixtures": "node bin/kontour-console-inspect.js",
     "prototype:handoff": "node scripts/serve-prototype.cjs docs/prototypes/handoff-replay",
+    "serve": "node bin/kontour.js serve",
     "test": "node scripts/check-content-boundary.cjs && node --test",
     "check:content-boundary": "node scripts/check-content-boundary.cjs",
     "setup:repo-hooks": "node scripts/setup-repo-hooks.cjs",

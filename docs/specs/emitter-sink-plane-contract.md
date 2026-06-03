@@ -115,6 +115,8 @@ Local file output follows the local JSONL and projection conventions in [Event A
 
 `LocalConsoleHub` is the local-first server-shaped adapter for this same contract. It is intentionally in-process for v0: products can append `KontourConsoleEvent` and projection records to it, the hub persists them through `LocalFileSink` under `.kontour`, `inspect` reads the local store, and `currentOperatingState` folds accepted local events with deterministic replay. This keeps local files as the default user experience while giving producers a stable hub-shaped integration point that can later map to a hosted Console Sink without changing the semantic record shape.
 
+`kontour serve` exposes that local hub over a loopback HTTP server for development. Its v0 boundary is deliberately narrow: bind locally by default, accept `POST /records`, expose `GET /state` and `GET /inspect`, persist through local files, and do not introduce a database, auth model, remote execution channel, product API fetcher, or action executor. Hosted Console work must add those concerns explicitly instead of treating the local dev server as production security or storage architecture.
+
 Local success and future network success are separate results. A hosted/API sink failure must not erase a successful local write. A local write failure must be reported directly and must not be hidden by success from another sink.
 
 ## Fanout Contract

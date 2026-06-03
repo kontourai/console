@@ -600,6 +600,7 @@ const surfaceClaimHelper = require("./surface-claim-helper");
 const flowProcessHelper = require("./flow-process-helper");
 const currentOperatingState = require("./current-operating-state");
 const consoleHub = require("./console-hub");
+const consoleHubServer = require("./console-hub-server");
 
 module.exports = {
   inspectFixtures,
@@ -612,6 +613,7 @@ module.exports = {
   buildCurrentOperatingState: currentOperatingState.buildCurrentOperatingState,
   LocalConsoleHub: consoleHub.LocalConsoleHub,
   createLocalConsoleHub: consoleHub.createLocalConsoleHub,
+  createConsoleHubServer: consoleHubServer.createConsoleHubServer,
   extractActionDescriptors,
   validateEvent,
   validateProjection,
