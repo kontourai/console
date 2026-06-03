@@ -8,11 +8,43 @@ The event and projection schemas remain the record shape contract. This spec def
 
 ## Terminology
 
+A **Portable Product Record** is a product-owned durable record shaped for reuse across Kontour products, agents, consoles, APIs, and exported evidence packages. It usually follows the shared Kontour Resource Shape (`apiVersion`, `kind`, `metadata`, `spec`, `status`, and optional `proof`). Portable Product Records remain meaningful without Kontour Console.
+
+A **Console handoff record** is the management-plane event or projection a Console producer emits so Kontour Console can aggregate, replay, correlate, display, and route through product authority. Console handoff records may carry, reference, or be derived from Portable Product Records, but they do not replace the product-owned record.
+
 A **Console producer** is the Kontour product or product runtime that emits control-plane records for Kontour Console. Surface, Flow, Survey, Veritas, and Flow Agents are the primary Console producers. Vertical products usually contribute through those primitives as extension metadata and refs, rather than depending on `.kontour` or Kontour Console directly.
 
 A **domain producer** is a product-native source inside one of those products, such as a crawler, extractor, verifier, importer, workflow runner, agent, or policy clock. Domain producers may appear as `actor`, `derivedFrom`, `evidence`, `payload.data`, or product-specific `extensions`, but they do not replace the top-level `producer` field's Console meaning.
 
 The JSON field remains named `producer` for compatibility and brevity. In this spec, unqualified "producer" means Console producer unless explicitly described as a domain producer, actor, source, projector, or product-native component.
+
+## Product Records And Console Handoffs
+
+Kontour uses a layered contract:
+
+| Layer | Shape | Owner | Purpose |
+| --- | --- | --- | --- |
+| Portable product record | Shared Kontour Resource Shape or product-native durable record. | The product that owns the domain semantics. | Durable product state, proof, review history, gate/run records, trust snapshots, and exported evidence packages. |
+| Console event | `kontour.console.event` | The Console producer, under the producing product's authority. | Append-only "what happened" stream for replay, timeline, correlation, and live operating views. |
+| Console projection | `kontour.console.projection` | The Console producer or projector, under the producing product's authority. | Current read model for fast local rendering and server ingest compatibility. |
+| Sink delivery result | `SinkDeliveryResult` | The sink attempting delivery. | Operational delivery status for local files, fanout, future hosted API, or telemetry correlation. |
+
+The consistent product record shape has value because it gives every product a predictable place for identity, observed state, and proof. The Console handoff shape has value because it gives the management plane a predictable stream/snapshot contract. They should map cleanly, but they are not the same authority.
+
+Console handoff records must not require every product to migrate all internal records to the shared resource shape before emitting useful local Console state. During adoption, a producer may emit lightweight Console refs with `product`, `kind`, and `id`. When the referenced object is a Portable Product Record, the producer should enrich the ref with the resource's `apiVersion`, `name`, and `uid`.
+
+### Mapping Rules
+
+| Product-owned concept | Console handoff mapping | Authority |
+| --- | --- | --- |
+| Surface claim freshness changed | `claim.freshness.changed` event with the claim as `subject`; projection `claims[]` carries current status/freshness. | Surface owns freshness and trust semantics. |
+| Surface claim verified with evidence | `claim.status.changed`, `claim.reverification.completed`, or `evidence.attached` events; projection `claims[]` and `evidence[]` carry current read model. | Surface owns claim status and evidence trust semantics. |
+| Flow run progressed | `process.started` or `process.progressed` event with the Flow run as `subject`; projection `processes[]` carries current step and percent. | Flow owns process lifecycle semantics. |
+| Flow gate opened, blocked, passed, failed, or routed back | `gate.opened`, `gate.failed`, `gate.passed`, or `gate.routed_back` event with the gate as `subject`; projection `gates[]` carries current gate state and refs. | Flow owns gate evaluation and route-control semantics. |
+| Flow gate depends on a Surface claim | Event/projection `links` and refs connect the Flow gate/run to the Surface claim with `controls`, `blocks`, `updates`, or `evidenced_by` as appropriate. | The emitting products own the relationship assertions they emit; Console uses them for correlation. |
+| Available refresh/resume/review action | Projection `actions[]` carries an inert descriptor and subject refs. | The authority product owns execution; sinks and generic Console consumers do not execute descriptors. |
+
+The first proof pair is Surface plus Flow because it exercises both sides of the management plane: Surface trust state and Flow process/gate state. Survey, Veritas, Flow Agents, and vertical products should adopt the same mapping after the Surface/Flow path proves the contract.
 
 ## Goals
 

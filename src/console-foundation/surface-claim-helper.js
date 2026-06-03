@@ -7,19 +7,24 @@ function surfaceClaimStateToProjection(state, options = {}) {
   const generatedAt = options.generatedAt || state.generatedAt || state.lastUpdatedAt;
   const producer = clone(options.producer || state.producer || DEFAULT_PRODUCER);
   const scope = clone(options.scope || state.scope || { product: "surface", kind: "claim_set", id: claimId });
-  const evidenceRefs = cloneArray(state.evidenceRefs);
+  const claimRef = refWithResource(
+    clone(state.claimRef || { product: "surface", kind: "claim", id: claimId }),
+    options.claimResource || state.claimResource,
+    {
+      apiVersion: options.claimApiVersion || state.claimApiVersion,
+      name: options.claimName || state.claimName,
+      uid: options.claimUid || state.claimUid,
+      scope: options.claimScope || state.claimScope
+    }
+  );
+  const evidenceRefs = cloneArray(state.evidenceRefs).map((ref) => refWithResource(ref, ref && ref.resource));
   const actionDescriptors = cloneArray(options.actions || state.actions);
-  const actionRefs = cloneArray(state.actionRefs).concat(
+  const actionRefs = mergeRefs(
+    cloneArray(state.actionRefs).map((ref) => refWithResource(ref, ref && ref.resource)),
     actionDescriptors
       .filter((action) => action && action.id)
-      .map((action) => ({
-        product: action.product || action.authority && action.authority.product || "surface",
-        kind: "action",
-        id: action.id
-      }))
-      .filter((ref) => !hasRef(cloneArray(state.actionRefs), ref))
+      .map(actionToRef)
   );
-  const claimRef = clone(state.claimRef || { product: "surface", kind: "claim", id: claimId });
 
   const claim = {
     id: claimId,
@@ -47,7 +52,7 @@ function surfaceClaimStateToProjection(state, options = {}) {
     scope,
     claims: [compactObject(claim)],
     evidence: cloneArray(state.evidence),
-    actions: actionDescriptors.map(compactObject),
+    actions: actionDescriptors.map(cleanActionDescriptor),
     links: cloneArray(state.links),
     extensions: clone(options.extensions || state.projectionExtensions)
   });
@@ -59,8 +64,17 @@ function surfaceFreshnessTransitionToEvent(transition, options = {}) {
   const occurredAt = options.occurredAt || transition.occurredAt || transition.changedAt;
   const producer = clone(options.producer || transition.producer || DEFAULT_PRODUCER);
   const scope = clone(options.scope || transition.scope || { product: "surface", kind: "claim_set", id: claimId });
-  const subject = clone(transition.subject || transition.claimRef || { product: "surface", kind: "claim", id: claimId });
-  const refs = cloneArray(transition.refs);
+  const subject = refWithResource(
+    clone(transition.subject || transition.claimRef || { product: "surface", kind: "claim", id: claimId }),
+    options.claimResource || transition.claimResource,
+    {
+      apiVersion: options.claimApiVersion || transition.claimApiVersion,
+      name: options.claimName || transition.claimName,
+      uid: options.claimUid || transition.claimUid,
+      scope: options.claimScope || transition.claimScope
+    }
+  );
+  const refs = cloneArray(transition.refs).map((ref) => refWithResource(ref, ref && ref.resource));
 
   if (!hasRef(refs, subject)) refs.unshift(clone(subject));
 
@@ -105,6 +119,61 @@ function cloneArray(value) {
 function clone(value) {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
+}
+
+function actionToRef(action) {
+  return refWithResource(clone(action.ref || {
+    product: action.product || action.authority && action.authority.product || "surface",
+    kind: "action",
+    id: action.id
+  }), action.resource, {
+    apiVersion: action.apiVersion,
+    name: action.name,
+    uid: action.uid,
+    scope: action.scope
+  });
+}
+
+function cleanActionDescriptor(action) {
+  const copy = compactObject(clone(action));
+  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key) => delete copy[key]);
+  return copy;
+}
+
+function refWithResource(ref, resource, fields = {}) {
+  if (!ref) return ref;
+  const copy = clone(ref);
+  const metadata = resource && resource.metadata || {};
+  const enriched = {
+    apiVersion: firstDefined(fields.apiVersion, resource && resource.apiVersion),
+    name: firstDefined(fields.name, metadata.name, resource && resource.name),
+    uid: firstDefined(fields.uid, metadata.uid, resource && resource.uid),
+    scope: firstDefined(fields.scope, resource && resource.scope)
+  };
+  for (const [key, value] of Object.entries(enriched)) {
+    if (value !== undefined && copy[key] === undefined) copy[key] = clone(value);
+  }
+  delete copy.resource;
+  return copy;
+}
+
+function mergeRefs(primary, secondary) {
+  const merged = primary.map(clone);
+  for (const ref of secondary) {
+    const existing = merged.find((item) => hasRef([item], ref));
+    if (existing) {
+      for (const key of ["apiVersion", "name", "uid", "scope", "label", "url"]) {
+        if (existing[key] === undefined && ref[key] !== undefined) existing[key] = clone(ref[key]);
+      }
+    } else {
+      merged.push(clone(ref));
+    }
+  }
+  return merged;
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined);
 }
 
 function hasRef(refs, ref) {

@@ -3,6 +3,7 @@ const test = require("node:test");
 const {
   inspectFixtures,
   getSurfaceClaimStatus,
+  getFlowProcessStatus,
   getSurveyReviewState,
   validateProjection
 } = require("../src/console-foundation");
@@ -12,12 +13,12 @@ const rootDir = process.cwd();
 test("inspects checked-in event streams and projections", () => {
   const report = inspectFixtures({ rootDir });
 
-  assert.equal(report.eventStreams.length, 3);
-  assert.equal(report.projections.length, 2);
+  assert.equal(report.eventStreams.length, 4);
+  assert.equal(report.projections.length, 3);
   assert.equal(report.validation.errors.length, 0);
 
   const eventCount = report.eventStreams.reduce((sum, stream) => sum + stream.events.length, 0);
-  assert.equal(eventCount, 13);
+  assert.equal(eventCount, 19);
 
   const surface = report.projections.find((projection) => projection.relativePath.endsWith("surface-current-claim-status.json"));
   assert.equal(report.eventStreams[0].sourceKind, "fixture");
@@ -26,6 +27,30 @@ test("inspects checked-in event streams and projections", () => {
   assert.equal(surface.summary.objectCounts.claims, 1);
   assert.equal(surface.summary.objectCounts.actions, 1);
   assert.equal(surface.summary.objectCounts.links, 3);
+});
+
+test("surface and flow handoff fixture preserves enriched refs and inert actions", () => {
+  const report = inspectFixtures({ rootDir });
+  const stream = report.eventStreams.find((item) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+  const projection = report.projections.find((item) => item.relativePath.endsWith("surface-flow-handoff-current.json"));
+  const statuses = getFlowProcessStatus(report.projections, { processId: "run-provider-directory-refresh" });
+  const action = projection.actions[0];
+
+  assert.equal(stream.events.length, 6);
+  assert.equal(stream.events[0].subject.uid, "flow-run-provider-directory-refresh");
+  assert.equal(stream.events[1].subject.scope.id, "run-provider-directory-refresh");
+  assert.equal(stream.events[2].payload.refs[0].uid, "flow-gate-provider-directory-freshness");
+  assert.equal(projection.snapshot.claims[0].sourceRef.apiVersion, "surface.kontour.ai/v1alpha1");
+  assert.equal(projection.snapshot.claims[0].sourceRef.uid, "surface-claim-provider-directory-current");
+  assert.equal(projection.snapshot.gates[0].processRef.uid, "flow-run-provider-directory-refresh");
+  assert.equal(projection.snapshot.gates[0].expectationRefs[0].uid, "surface-claim-provider-directory-current");
+  assert.equal(statuses.length, 1);
+  assert.equal(statuses[0].status, "running");
+  assert.equal(statuses[0].gates[0].status, "passed");
+  assert.equal(action.id, "action-resume-provider-directory-refresh");
+  assert.equal(action.readOnly, true);
+  assert.equal(action.authority.command, "flow.run.resume");
+  assert.equal(action.warnings[0].message, "authority.command is an inert descriptor only");
 });
 
 test("projection loading preserves v0 boundaries and original objects", () => {
@@ -186,4 +211,37 @@ test("projection validation reports malformed nested object refs", () => {
   assert.equal(paths.has("invalid-projection.json.decisions[0].evidenceRefs[0].id"), true);
   assert.equal(paths.has("invalid-projection.json.exceptions[0].subjectRefs[0].id"), true);
   assert.equal(paths.has("invalid-projection.json.exceptions[0].evidenceRefs[0].id"), true);
+});
+
+test("projection validation reports malformed enriched ref fields", () => {
+  const invalidProjection = {
+    schema: "kontour.console.projection",
+    version: "0.1",
+    generatedAt: "2026-06-03T10:01:45Z",
+    derivedFrom: {},
+    producer: { product: "flow", id: "flow-local" },
+    scope: { kind: "project", id: "provider-directory-refresh" },
+    claims: [
+      {
+        id: "claim-provider-directory-current",
+        status: "verified",
+        evidenceRefs: [
+          {
+            product: "surface",
+            kind: "evidence",
+            id: "evidence-provider-directory-crawl",
+            uid: "",
+            scope: "project"
+          }
+        ]
+      }
+    ]
+  };
+
+  const errors = validateProjection(invalidProjection, "invalid-enriched.json")
+    .filter((item) => item.severity === "error");
+  const paths = new Set(errors.map((item) => item.path));
+
+  assert.equal(paths.has("invalid-enriched.json.claims[0].evidenceRefs[0].uid"), true);
+  assert.equal(paths.has("invalid-enriched.json.claims[0].evidenceRefs[0].scope"), true);
 });

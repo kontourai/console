@@ -1,0 +1,256 @@
+{
+  "schema": "kontour.console.projection",
+  "version": "0.1",
+  "generatedAt": "2026-06-03T10:01:45Z",
+  "derivedFrom": {
+    "mode": "event_replay",
+    "eventHistory": "complete",
+    "streamIds": [
+      "docs/examples/event-streams/surface-flow-handoff.jsonl"
+    ],
+    "lastAcceptedEventId": "evt-surface-flow-handoff-006",
+    "lastAcceptedEventOccurredAt": "2026-06-03T10:01:41Z",
+    "lastComparableSequence": {
+      "producerId": "surface-flow-local",
+      "streamId": "docs/examples/event-streams/surface-flow-handoff.jsonl",
+      "sequence": 6
+    },
+    "acceptedEventCount": 6
+  },
+  "producer": {
+    "id": "surface-flow-local-projector",
+    "product": "flow",
+    "name": "Surface and Flow local projection"
+  },
+  "scope": {
+    "kind": "project",
+    "id": "provider-directory-refresh",
+    "label": "Provider directory refresh"
+  },
+  "summary": {
+    "claimCount": 1,
+    "activeProcessCount": 1,
+    "openGateCount": 0,
+    "pendingActionCount": 1,
+    "lastUpdatedAt": "2026-06-03T10:01:45Z"
+  },
+  "claims": [
+    {
+      "id": "claim-provider-directory-current",
+      "label": "Provider directory is current",
+      "status": "verified",
+      "freshness": {
+        "status": "fresh",
+        "lastCheckedAt": "2026-06-03T10:01:39Z",
+        "expiresAt": "2026-07-03T10:01:39Z",
+        "source": "policy"
+      },
+      "lastVerifiedAt": "2026-06-03T10:01:39Z",
+      "evidenceRefs": [
+        {
+          "product": "surface",
+          "kind": "evidence",
+          "id": "evidence-provider-directory-crawl-2026-06-03",
+          "apiVersion": "surface.kontour.ai/v1alpha1",
+          "name": "provider-directory-crawl-2026-06-03",
+          "uid": "surface-evidence-provider-directory-crawl-2026-06-03",
+          "label": "Provider directory crawl"
+        }
+      ],
+      "sourceRef": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-directory-current",
+        "apiVersion": "surface.kontour.ai/v1alpha1",
+        "name": "provider-directory-current",
+        "uid": "surface-claim-provider-directory-current",
+        "label": "Provider directory is current"
+      }
+    }
+  ],
+  "processes": [
+    {
+      "id": "run-provider-directory-refresh",
+      "definitionId": "provider-directory-refresh",
+      "label": "Provider directory refresh",
+      "status": "running",
+      "currentStep": {
+        "id": "publish-refreshed-operating-state",
+        "label": "Publish refreshed operating state"
+      },
+      "startedAt": "2026-06-03T10:00:00Z",
+      "updatedAt": "2026-06-03T10:01:41Z",
+      "percentComplete": 74,
+      "claimRefs": [
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-directory-current",
+          "apiVersion": "surface.kontour.ai/v1alpha1",
+          "name": "provider-directory-current",
+          "uid": "surface-claim-provider-directory-current",
+          "label": "Provider directory is current"
+        }
+      ],
+      "nextActionRefs": [
+        {
+          "product": "flow",
+          "kind": "action",
+          "id": "action-resume-provider-directory-refresh",
+          "apiVersion": "flow.kontour.ai/v1alpha1",
+          "name": "resume-provider-directory-refresh",
+          "uid": "flow-action-resume-provider-directory-refresh",
+          "label": "Resume provider directory refresh"
+        }
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "id": "gate-provider-directory-freshness",
+      "label": "Provider directory freshness",
+      "status": "passed",
+      "processRef": {
+        "product": "flow",
+        "kind": "run",
+        "id": "run-provider-directory-refresh",
+        "apiVersion": "flow.kontour.ai/v1alpha1",
+        "name": "provider-directory-refresh",
+        "uid": "flow-run-provider-directory-refresh",
+        "label": "Provider directory refresh"
+      },
+      "expectationRefs": [
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-directory-current",
+          "apiVersion": "surface.kontour.ai/v1alpha1",
+          "name": "provider-directory-current",
+          "uid": "surface-claim-provider-directory-current",
+          "label": "Provider directory is current"
+        }
+      ],
+      "evidenceRefs": [
+        {
+          "product": "surface",
+          "kind": "evidence",
+          "id": "evidence-provider-directory-crawl-2026-06-03",
+          "apiVersion": "surface.kontour.ai/v1alpha1",
+          "name": "provider-directory-crawl-2026-06-03",
+          "uid": "surface-evidence-provider-directory-crawl-2026-06-03",
+          "label": "Provider directory crawl"
+        }
+      ],
+      "updatedAt": "2026-06-03T10:01:41Z"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "evidence-provider-directory-crawl-2026-06-03",
+      "label": "Provider directory crawl",
+      "kind": "verification_result",
+      "status": "available",
+      "summary": "Surface verifier observed fresh provider directory data.",
+      "capturedAt": "2026-06-03T10:01:35Z",
+      "producerRef": {
+        "product": "surface",
+        "kind": "verifier",
+        "id": "surface-verifier",
+        "label": "Surface verifier"
+      },
+      "claimRefs": [
+        {
+          "product": "surface",
+          "kind": "claim",
+          "id": "claim-provider-directory-current",
+          "apiVersion": "surface.kontour.ai/v1alpha1",
+          "name": "provider-directory-current",
+          "uid": "surface-claim-provider-directory-current",
+          "label": "Provider directory is current"
+        }
+      ],
+      "processRefs": [
+        {
+          "product": "flow",
+          "kind": "run",
+          "id": "run-provider-directory-refresh",
+          "apiVersion": "flow.kontour.ai/v1alpha1",
+          "name": "provider-directory-refresh",
+          "uid": "flow-run-provider-directory-refresh",
+          "label": "Provider directory refresh"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "action-resume-provider-directory-refresh",
+      "label": "Resume provider directory refresh",
+      "kind": "resume",
+      "status": "available",
+      "authority": {
+        "product": "flow",
+        "command": "flow.run.resume"
+      },
+      "subjectRefs": [
+        {
+          "product": "flow",
+          "kind": "run",
+          "id": "run-provider-directory-refresh",
+          "apiVersion": "flow.kontour.ai/v1alpha1",
+          "name": "provider-directory-refresh",
+          "uid": "flow-run-provider-directory-refresh",
+          "label": "Provider directory refresh"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "from": {
+        "product": "flow",
+        "kind": "gate",
+        "id": "gate-provider-directory-freshness",
+        "apiVersion": "flow.kontour.ai/v1alpha1",
+        "name": "provider-directory-freshness",
+        "uid": "flow-gate-provider-directory-freshness",
+        "label": "Provider directory freshness"
+      },
+      "to": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-directory-current",
+        "apiVersion": "surface.kontour.ai/v1alpha1",
+        "name": "provider-directory-current",
+        "uid": "surface-claim-provider-directory-current",
+        "label": "Provider directory is current"
+      },
+      "relation": "controls",
+      "strength": "direct",
+      "createdAt": "2026-06-03T10:00:16Z"
+    },
+    {
+      "from": {
+        "product": "surface",
+        "kind": "claim",
+        "id": "claim-provider-directory-current",
+        "apiVersion": "surface.kontour.ai/v1alpha1",
+        "name": "provider-directory-current",
+        "uid": "surface-claim-provider-directory-current",
+        "label": "Provider directory is current"
+      },
+      "to": {
+        "product": "surface",
+        "kind": "evidence",
+        "id": "evidence-provider-directory-crawl-2026-06-03",
+        "apiVersion": "surface.kontour.ai/v1alpha1",
+        "name": "provider-directory-crawl-2026-06-03",
+        "uid": "surface-evidence-provider-directory-crawl-2026-06-03",
+        "label": "Provider directory crawl"
+      },
+      "relation": "evidenced_by",
+      "strength": "direct",
+      "createdAt": "2026-06-03T10:01:36Z"
+    }
+  ]
+}

@@ -8,9 +8,19 @@ function flowProcessStateToProjection(state, options = {}) {
   const generatedAt = options.generatedAt || state.generatedAt || state.updatedAt || stateProcess.updatedAt;
   const producer = clone(options.producer || state.producer || DEFAULT_PRODUCER);
   const scope = clone(options.scope || state.scope || { product: "flow", kind: "process_run", id: processId });
-  const processRef = clone(state.processRef || stateProcess.processRef || { product: "flow", kind: "run", id: processId });
-  const actions = cloneArray(options.actions || state.actions).map(compactObject);
-  const nextActionRefs = deriveNextActionRefs(state, actions);
+  const processRef = refWithResource(
+    clone(state.processRef || stateProcess.processRef || { product: "flow", kind: "run", id: processId }),
+    options.processResource || state.processResource || stateProcess.processResource,
+    {
+      apiVersion: options.processApiVersion || state.processApiVersion || stateProcess.processApiVersion,
+      name: options.processName || state.processName || stateProcess.processName,
+      uid: options.processUid || state.processUid || stateProcess.processUid,
+      scope: options.processScope || state.processScope || stateProcess.processScope
+    }
+  );
+  const rawActions = cloneArray(options.actions || state.actions);
+  const actions = rawActions.map(cleanActionDescriptor);
+  const nextActionRefs = deriveNextActionRefs(state, rawActions);
   const primaryProcess = buildPrimaryProcess(state, stateProcess, processId, nextActionRefs);
   const processes = mergePrimaryProcess(cloneArray(state.processes), primaryProcess);
   const gates = normalizeGates(state.gates, processRef);
@@ -51,12 +61,23 @@ function deriveNextActionRefs(state, actions) {
 }
 
 function actionToRef(action) {
-  return {
+  return refWithResource({
     product: action.product || action.authority && action.authority.product || "flow",
     kind: "action",
     id: action.id,
     label: action.label
-  };
+  }, action.resource, {
+    apiVersion: action.apiVersion,
+    name: action.name,
+    uid: action.uid,
+    scope: action.scope
+  });
+}
+
+function cleanActionDescriptor(action) {
+  const copy = compactObject(clone(action));
+  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key) => delete copy[key]);
+  return copy;
 }
 
 function buildPrimaryProcess(state, stateProcess, processId, nextActionRefs) {
@@ -79,10 +100,38 @@ function buildPrimaryProcess(state, stateProcess, processId, nextActionRefs) {
 }
 
 function normalizeGates(gates, processRef) {
-  return cloneArray(gates).map((gate) => compactObject({
-    ...gate,
-    processRef: clone(gate.processRef || processRef)
-  }));
+  return cloneArray(gates).map((gate) => {
+    const {
+      gateResource,
+      resource,
+      gateApiVersion,
+      apiVersion,
+      gateName,
+      name,
+      gateUid,
+      uid,
+      gateScope,
+      scope,
+      ...publicGate
+    } = gate;
+    const gateRef = refWithResource(
+      { product: "flow", kind: "gate", id: gate.id },
+      gateResource || resource,
+      {
+        apiVersion: gateApiVersion || apiVersion,
+        name: gateName || name,
+        uid: gateUid || uid,
+        scope: gateScope || scope
+      }
+    );
+    return compactObject({
+      ...publicGate,
+      gateRef,
+      processRef: clone(gate.processRef || processRef),
+      expectationRefs: cloneArray(gate.expectationRefs).map((ref) => refWithResource(ref, ref && ref.resource)),
+      evidenceRefs: cloneArray(gate.evidenceRefs).map((ref) => refWithResource(ref, ref && ref.resource))
+    });
+  });
 }
 
 function flowGateTransitionToEvent(transition, options = {}) {
@@ -96,12 +145,31 @@ function flowGateTransitionToEvent(transition, options = {}) {
   const processId = transition.processId || transition.processRef && transition.processRef.id;
   const producer = clone(options.producer || transition.producer || DEFAULT_PRODUCER);
   const scope = clone(options.scope || transition.scope || { product: "flow", kind: "process_run", id: processId || gateId });
-  const subject = clone(transition.subject || transition.gateRef || { product: "flow", kind: "gate", id: gateId });
-  const processRef = clone(transition.processRef || (processId ? { product: "flow", kind: "run", id: processId } : undefined));
-  const refs = cloneArray(transition.refs);
+  const subject = refWithResource(
+    clone(transition.subject || transition.gateRef || { product: "flow", kind: "gate", id: gateId }),
+    options.gateResource || transition.gateResource,
+    {
+      apiVersion: options.gateApiVersion || transition.gateApiVersion,
+      name: options.gateName || transition.gateName,
+      uid: options.gateUid || transition.gateUid,
+      scope: options.gateScope || transition.gateScope
+    }
+  );
+  const processRef = transition.processRef || (processId ? { product: "flow", kind: "run", id: processId } : undefined);
+  const enrichedProcessRef = processRef ? refWithResource(
+    clone(processRef),
+    options.processResource || transition.processResource,
+    {
+      apiVersion: options.processApiVersion || transition.processApiVersion,
+      name: options.processName || transition.processName,
+      uid: options.processUid || transition.processUid,
+      scope: options.processScope || transition.processScope
+    }
+  ) : undefined;
+  const refs = cloneArray(transition.refs).map((ref) => refWithResource(ref, ref && ref.resource));
 
   if (!hasRef(refs, subject)) refs.unshift(clone(subject));
-  if (processRef && !hasRef(refs, processRef)) refs.push(processRef);
+  if (enrichedProcessRef && !hasRef(refs, enrichedProcessRef)) refs.push(enrichedProcessRef);
 
   return compactObject({
     schema: "kontour.console.event",
@@ -181,6 +249,29 @@ function cloneArray(value) {
 function clone(value) {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
+}
+
+function refWithResource(ref, resource, fields = {}) {
+  if (!ref) return ref;
+  const copy = clone(ref);
+  const metadata = resource && resource.metadata || {};
+  const enriched = {
+    apiVersion: firstDefined(fields.apiVersion, resource && resource.apiVersion),
+    name: firstDefined(fields.name, metadata.name, resource && resource.name),
+    uid: firstDefined(fields.uid, metadata.uid, resource && resource.uid),
+    scope: firstDefined(fields.scope, resource && resource.scope)
+  };
+  for (const [key, value] of Object.entries(enriched)) {
+    if (value !== undefined && copy[key] === undefined) copy[key] = clone(value);
+  }
+  delete copy.resource;
+  delete copy.gateResource;
+  delete copy.processResource;
+  return copy;
+}
+
+function firstDefined(...values) {
+  return values.find((value) => value !== undefined);
 }
 
 function hasRef(refs, ref) {

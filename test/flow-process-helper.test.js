@@ -43,10 +43,15 @@ test("flow process helper emits local process and gate status without selected S
   assert.deepEqual(statuses[0].currentStep, { id: "review-provider-fields", label: "Review provider fields" });
   assert.equal(statuses[0].percentComplete, 62);
   assert.equal(statuses[0].openGateRefs[0].id, "gate-provider-review");
+  assert.equal(statuses[0].openGateRefs[0].uid, "flow-gate-provider-review");
   assert.equal(statuses[0].gates.length, 2);
   assert.deepEqual(statuses[0].gates.map((gate) => gate.status).sort(), ["open", "passed"]);
+  assert.equal(statuses[0].gates[0].gateRef.uid, "flow-gate-provider-review");
+  assert.equal(statuses[0].gates[0].processRef.uid, "flow-run-provider-onboarding-42");
+  assert.equal(statuses[0].gates[0].expectationRefs[0].uid, "surface-claim-provider-directory-current");
   assert.equal(statuses[0].openGates.length, 1);
   assert.equal(statuses[0].nextActionRefs[0].id, "action-resume-provider-onboarding");
+  assert.equal(statuses[0].nextActionRefs[0].uid, "flow-action-resume-provider-onboarding");
   assert.equal(statuses[0].claimRefs[0].product, "surface");
   assert.equal(statuses[0].reviewItemRefs[0].product, "survey");
   assert.equal(statuses[0].actions.length, 1);
@@ -61,6 +66,20 @@ test("flow gate transition helper emits a stable local gate event", async () => 
     processId: "run-provider-onboarding-42",
     gateId: "gate-provider-review",
     occurredAt: "2026-06-01T18:15:00Z",
+    gateResource: {
+      apiVersion: "flow.kontour.ai/v1alpha1",
+      metadata: {
+        name: "provider-review",
+        uid: "flow-gate-provider-review"
+      }
+    },
+    processResource: {
+      apiVersion: "flow.kontour.ai/v1alpha1",
+      metadata: {
+        name: "provider-onboarding-42",
+        uid: "flow-run-provider-onboarding-42"
+      }
+    },
     before: { status: "waiting", reason: "needs-review" },
     after: { status: "open", reason: "review-requested" },
     refs: [
@@ -87,16 +106,39 @@ test("flow gate transition helper emits a stable local gate event", async () => 
   assert.equal(report.eventStreams.length, 1);
   assert.equal(loaded.id, "flow:run-provider-onboarding-42:gate:gate-provider-review:gate.opened:waiting->open");
   assert.equal(loaded.type, "gate.opened");
-  assert.deepEqual(loaded.subject, { product: "flow", kind: "gate", id: "gate-provider-review" });
+  assert.equal(loaded.subject.id, "gate-provider-review");
+  assert.equal(loaded.subject.apiVersion, "flow.kontour.ai/v1alpha1");
+  assert.equal(loaded.subject.uid, "flow-gate-provider-review");
   assert.deepEqual(loaded.payload.before, { status: "waiting", reason: "needs-review" });
   assert.deepEqual(loaded.payload.after, { status: "open", reason: "review-requested" });
   assert.equal(loaded.payload.refs[0].id, "gate-provider-review");
   assert.equal(loaded.payload.refs[1].id, "claim-provider-directory-current");
   assert.equal(loaded.payload.refs[2].id, "evidence-provider-review-ready");
   assert.equal(loaded.payload.refs[3].id, "run-provider-onboarding-42");
+  assert.equal(loaded.payload.refs[3].uid, "flow-run-provider-onboarding-42");
   assert.equal(loaded.correlationId, "corr-provider-onboarding-42");
   assert.equal(loaded.causationId, "event-provider-fields-loaded");
   assert.equal(loaded.sequence, 7);
+});
+
+test("flow helpers preserve lightweight refs and validate malformed enriched refs", () => {
+  const lightweight = flowProcessStateToProjection({
+    processId: "run-lightweight",
+    status: "running",
+    generatedAt: "2026-06-01T18:00:00Z"
+  });
+  const invalid = flowGateTransitionToEvent({
+    processId: "run-invalid",
+    gateId: "gate-invalid",
+    occurredAt: "2026-06-01T18:15:00Z",
+    after: { status: "open" },
+    gateUid: ""
+  });
+
+  assert.deepEqual(lightweight.processes[0].nextActionRefs, []);
+  assert.deepEqual(lightweight.gates, []);
+  assert.equal(validateProjection(lightweight, "lightweight-flow").filter((item) => item.severity === "error").length, 0);
+  assert.equal(validateEvent(invalid, "invalid-flow").some((item) => item.path === "invalid-flow.subject.uid"), true);
 });
 
 function tempRoot() {
@@ -113,12 +155,33 @@ function flowProcessState() {
     startedAt: "2026-06-01T17:00:00Z",
     updatedAt: "2026-06-01T18:12:00Z",
     generatedAt: "2026-06-01T18:12:30Z",
+    processResource: {
+      apiVersion: "flow.kontour.ai/v1alpha1",
+      metadata: {
+        name: "provider-onboarding-42",
+        uid: "flow-run-provider-onboarding-42"
+      }
+    },
     percentComplete: 62,
     openGateRefs: [
-      { product: "flow", kind: "gate", id: "gate-provider-review" }
+      {
+        product: "flow",
+        kind: "gate",
+        id: "gate-provider-review",
+        apiVersion: "flow.kontour.ai/v1alpha1",
+        name: "provider-review",
+        uid: "flow-gate-provider-review"
+      }
     ],
     claimRefs: [
-      { product: "surface", kind: "claim", id: "claim-provider-directory-current" }
+      {
+        product: "surface",
+        kind: "claim",
+        id: "claim-provider-directory-current",
+        apiVersion: "surface.kontour.ai/v1alpha1",
+        name: "provider-directory-current",
+        uid: "surface-claim-provider-directory-current"
+      }
     ],
     reviewItemRefs: [
       { product: "survey", kind: "review_item", id: "review-provider-npi" }
@@ -128,8 +191,25 @@ function flowProcessState() {
         id: "gate-provider-review",
         label: "Provider review",
         status: "open",
+        gateResource: {
+          apiVersion: "flow.kontour.ai/v1alpha1",
+          metadata: {
+            name: "provider-review",
+            uid: "flow-gate-provider-review"
+          }
+        },
         expectationRefs: [
-          { product: "surface", kind: "claim", id: "claim-provider-directory-current" }
+          {
+            product: "surface",
+            kind: "claim",
+            id: "claim-provider-directory-current",
+            resource: {
+              apiVersion: "surface.kontour.ai/v1alpha1",
+              metadata: {
+                uid: "surface-claim-provider-directory-current"
+              }
+            }
+          }
         ],
         evidenceRefs: [
           { product: "flow", kind: "evidence", id: "evidence-provider-review-ready" }
@@ -171,6 +251,12 @@ function flowProcessState() {
         authority: {
           product: "flow",
           command: "flow.run.resume"
+        },
+        resource: {
+          apiVersion: "flow.kontour.ai/v1alpha1",
+          metadata: {
+            uid: "flow-action-resume-provider-onboarding"
+          }
         },
         subjectRefs: [
           { product: "flow", kind: "run", id: "run-provider-onboarding-42" },

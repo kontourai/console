@@ -551,6 +551,21 @@ function validateRef(ref, basePath, issues) {
   requireString(ref, "product", basePath, issues);
   requireString(ref, "kind", basePath, issues);
   requireString(ref, "id", basePath, issues);
+  ["apiVersion", "name", "uid", "label", "url"].forEach((key) => {
+    if (ref[key] !== undefined && (typeof ref[key] !== "string" || ref[key].length === 0)) {
+      issues.push(issue("error", `${basePath}.${key}`, "expected a non-empty string when present"));
+    }
+  });
+  if (ref.scope !== undefined) {
+    requireObject(ref, "scope", basePath, issues);
+    if (ref.scope && typeof ref.scope === "object" && !Array.isArray(ref.scope)) {
+      ["product", "kind", "id"].forEach((key) => {
+        if (ref.scope[key] !== undefined && (typeof ref.scope[key] !== "string" || ref.scope[key].length === 0)) {
+          issues.push(issue("error", `${basePath}.scope.${key}`, "expected a non-empty string when present"));
+        }
+      });
+    }
+  }
 }
 
 function requireString(object, key, basePath, issues) {
@@ -583,6 +598,7 @@ function arrayOf(value) {
 const emitter = require("./emitter");
 const surfaceClaimHelper = require("./surface-claim-helper");
 const flowProcessHelper = require("./flow-process-helper");
+const currentOperatingState = require("./current-operating-state");
 
 module.exports = {
   inspectFixtures,
@@ -592,6 +608,7 @@ module.exports = {
   getSurfaceClaimStatus,
   getFlowProcessStatus,
   getSurveyReviewState,
+  buildCurrentOperatingState: currentOperatingState.buildCurrentOperatingState,
   extractActionDescriptors,
   validateEvent,
   validateProjection,

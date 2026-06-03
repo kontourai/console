@@ -49,6 +49,40 @@ Event-first gives the suite-level console:
 
 Snapshot/projection files are still useful. They are read models, not the durable source contract.
 
+## Surface And Flow Handoff Example
+
+The first deterministic handoff proof pair is Surface plus Flow:
+
+- Surface says whether a claim is fresh, stale, verified, disputed, or supported by evidence.
+- Flow says where a process is, which gate is active, and whether work is blocked, routed back, or ready.
+- Kontour Console joins those records through refs and links so an operator can see the current stage without making Console the authority for either product.
+
+Concrete story:
+
+```text
+Flow says:   process run-provider-directory-refresh started.
+Flow says:   gate gate-provider-directory-freshness opened.
+Surface says: claim claim-provider-directory-current is stale.
+Console says: the Flow run is blocked because the linked Surface claim is stale.
+Surface says: fresh evidence was attached and the claim is verified.
+Flow says:   the gate passed and the process can continue.
+```
+
+The same story can be represented by local JSONL events and current projections:
+
+| Moment | Console event | Primary subject | Important refs/links | Projection effect |
+| --- | --- | --- | --- | --- |
+| Flow starts work | `process.started` | Flow run | Optional `updates` link to the Surface claim the run may refresh. | `processes[]` shows the run as `running`. |
+| Flow reaches a trust gate | `gate.opened` | Flow gate | Gate refs the Flow run and the Surface claim it expects. | `gates[]` shows the gate as `waiting` or `open`; `processes[].openGateRefs` points at the gate. |
+| Surface claim is stale | `claim.freshness.changed` | Surface claim | Claim may link to the Flow gate, run, definition, or refresh action. | `claims[]` shows `freshness.status: "stale"`; Console can explain the gate block. |
+| Surface attaches proof | `evidence.attached` | Surface evidence | Evidence refs/supports the Surface claim and may be linked to the Flow gate expectation. | `evidence[]` appears and claim/gate `evidenceRefs` can point to it. |
+| Surface verifies the claim | `claim.status.changed` or `claim.reverification.completed` | Surface claim | Claim remains linked to evidence and the Flow gate/run. | `claims[]` shows `status: "verified"` and `freshness.status: "fresh"`. |
+| Flow continues | `process.progressed` or `gate.passed` | Flow run or gate | Gate refs the verified claim/evidence. | `gates[]` shows `passed`; `processes[]` advances. |
+
+This handoff requires no hosted server, database, action endpoint, or product API call. A local producer can append the events under `.kontour/events/...` and write current snapshots under `.kontour/projections/...`. A later server Sink can receive the same semantic events/projections without changing their product meaning.
+
+The operator-facing Console view should prioritize the plain-language current stage, such as "checking provider directory freshness" or "still waiting on Surface claim." Raw event and projection detail should remain inspectable, but it is supporting evidence rather than the primary user experience.
+
 ## Local JSONL Stream Convention
 
 Kontour Console v0 starts with local JSONL event streams. A Console producer can emit events without a hosted event bus, hosted ingestion service, auth layer, product adapter, or action execution endpoint.
@@ -603,6 +637,14 @@ type CrossProductRef = {
   product: "surface" | "flow" | "survey" | "veritas" | "flow-agents" | string;
   kind: string;
   id: string;
+  apiVersion?: string;
+  name?: string;
+  uid?: string;
+  scope?: {
+    product?: string;
+    kind?: string;
+    id?: string;
+  };
   label?: string;
   url?: string;
 };
@@ -636,15 +678,62 @@ Identity links are the core of the suite-level console. They let Kontour Console
 
 ### CrossProductRef Minimum
 
-`product`, `kind`, and `id` form the stable identity tuple. The producing product owns the meaning and lifecycle of each tuple; Kontour Console stores and displays refs but does not mint global ids, normalize product ids, or become the authority for product-local semantics.
+`product`, `kind`, and `id` form the minimum stable identity tuple. The producing product owns the meaning and lifecycle of each tuple; Kontour Console stores and displays refs but does not mint global ids, normalize product ids, or become the authority for product-local semantics.
+
+When a referenced object is also a Portable Product Record, producers should enrich the same ref with `apiVersion`, `name`, and `uid` from that resource. This avoids creating two unrelated reference systems: lightweight Console handoffs can start with `product + kind + id`, while stricter product records can add resource identity as adoption matures.
 
 | Field | Required | Minimum meaning |
 | --- | --- | --- |
-| `product` | Yes | Product or vertical namespace that owns the referenced object, such as `surface`, `flow`, `survey`, `veritas`, `flow-agents`, or `survey`. |
+| `product` | Yes | Product or vertical namespace that owns the referenced object, such as `surface`, `flow`, `survey`, `veritas`, `flow-agents`, or a vertical product namespace. |
 | `kind` | Yes | Product-owned object kind, such as `claim`, `run`, `gate`, `review_item`, `evidence`, `decision`, `action`, or `provider_field`. |
 | `id` | Yes | Stable product-local object id. It must be stable enough for replay, deduplication, projection links, and external navigation. |
+| `apiVersion` | No | Versioned resource namespace when the referenced object is a Portable Product Record, such as `surface.kontour.ai/v1alpha1` or `flow.kontour.ai/v1alpha1`. |
+| `name` | No | Human-stable resource name when available. It is useful for debugging and provider-backed records, but it is not the dedupe identity by itself. |
+| `uid` | No | Durable resource identity when the referenced object is a Portable Product Record. Prefer it for long-lived resource correlation when present. |
+| `scope` | No | Optional disambiguating boundary, such as project, repo, workspace, tenant, or domain object set. Scope may narrow identity but should not replace a stable `id`. |
 | `label` | No | Display text only. Consumers must not parse it for identity or semantics. |
 | `url` | No | Navigation aid only. Consumers must treat it as untrusted until a trusted product adapter or URL allowlist validates it. |
+
+Identity guidance:
+
+- Use `product + kind + id` as the required minimum for every event `subject`, `payload.refs[]`, object ref, and link endpoint.
+- Use `apiVersion + kind + uid` as the stronger identity for Portable Product Records when `uid` is present. Keep `product + kind + id` on the same ref so Console consumers can still join lightweight records.
+- Treat `name`, `label`, and `url` as display/navigation metadata, not dedupe identity.
+- Keep event identity separate from referenced object identity: a `KontourConsoleEvent.id` identifies the event, while `subject.id` identifies the product object changed by that event.
+- Keep sink delivery identity separate from destination receipts: `SinkDeliveryResult.recordId` uses the semantic event/projection/resource identity, not a server receipt id.
+
+Example enriched Surface claim ref:
+
+```json
+{
+  "product": "surface",
+  "kind": "claim",
+  "id": "claim-provider-directory-current",
+  "apiVersion": "surface.kontour.ai/v1alpha1",
+  "name": "provider-directory-current",
+  "uid": "surface-claim-provider-directory-current",
+  "label": "Provider directory is current"
+}
+```
+
+Example enriched Flow gate ref:
+
+```json
+{
+  "product": "flow",
+  "kind": "gate",
+  "id": "gate-provider-directory-freshness",
+  "apiVersion": "flow.kontour.ai/v1alpha1",
+  "name": "provider-directory-freshness",
+  "uid": "flow-gate-provider-directory-freshness",
+  "scope": {
+    "product": "flow",
+    "kind": "run",
+    "id": "run-provider-directory-refresh"
+  },
+  "label": "Provider directory freshness"
+}
+```
 
 ### CrossProductLink Minimum
 

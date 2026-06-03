@@ -40,9 +40,15 @@ test("surface claim helper emits a local projection queryable without a Flow run
   assert.equal(claims[0].validUntil, "2026-06-30T16:00:00Z");
   assert.equal(claims[0].lastUpdatedAt, "2026-06-01T16:05:00Z");
   assert.equal(claims[0].evidenceRefs[0].id, "evidence-provider-directory-crawl-2026-06-01");
+  assert.equal(claims[0].evidenceRefs[0].apiVersion, "surface.kontour.ai/v1alpha1");
+  assert.equal(claims[0].evidenceRefs[0].uid, "surface-evidence-provider-directory-crawl-2026-06-01");
   assert.equal(claims[0].actionRefs[0].kind, "action");
   assert.equal(claims[0].actionRefs[0].id, "action-refresh-provider-directory");
+  assert.equal(claims[0].actionRefs[0].uid, "surface-action-refresh-provider-directory");
   assert.equal(claims[0].requiresSelectedFlowRun, false);
+  assert.equal(report.projections[0].snapshot.claims[0].sourceRef.apiVersion, "surface.kontour.ai/v1alpha1");
+  assert.equal(report.projections[0].snapshot.claims[0].sourceRef.name, "provider-directory-current");
+  assert.equal(report.projections[0].snapshot.claims[0].sourceRef.uid, "surface-claim-provider-directory-current");
   assert.equal(report.projections[0].actions[0].readOnly, true);
   assert.equal(report.projections[0].actions[0].authority.command, "surface.claim.refresh");
 });
@@ -83,6 +89,25 @@ test("surface freshness helper emits a stable local freshness changed event", as
   assert.equal(loaded.payload.refs[2].id, "action-refresh-provider-directory");
 });
 
+test("surface helpers preserve lightweight refs and validate malformed enriched refs", () => {
+  const lightweight = surfaceClaimStateToProjection({
+    claimId: "claim-lightweight",
+    status: "verified",
+    generatedAt: "2026-06-01T16:00:00Z"
+  });
+  const invalid = surfaceFreshnessTransitionToEvent({
+    claimId: "claim-invalid",
+    occurredAt: "2026-06-01T16:10:00Z",
+    before: { status: "fresh" },
+    after: { status: "stale" },
+    claimUid: ""
+  });
+
+  assert.deepEqual(lightweight.claims[0].sourceRef, { product: "surface", kind: "claim", id: "claim-lightweight" });
+  assert.equal(validateProjection(lightweight, "lightweight").filter((item) => item.severity === "error").length, 0);
+  assert.equal(validateEvent(invalid, "invalid").some((item) => item.path === "invalid.subject.uid"), true);
+});
+
 function tempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "kontour-console-surface-"));
 }
@@ -98,8 +123,25 @@ function surfaceClaimState() {
     validUntil: "2026-06-30T16:00:00Z",
     lastUpdatedAt: "2026-06-01T16:05:00Z",
     generatedAt: "2026-06-01T16:06:00Z",
+    claimResource: {
+      apiVersion: "surface.kontour.ai/v1alpha1",
+      metadata: {
+        name: "provider-directory-current",
+        uid: "surface-claim-provider-directory-current"
+      }
+    },
     evidenceRefs: [
-      { product: "surface", kind: "evidence", id: "evidence-provider-directory-crawl-2026-06-01" }
+      {
+        product: "surface",
+        kind: "evidence",
+        id: "evidence-provider-directory-crawl-2026-06-01",
+        resource: {
+          apiVersion: "surface.kontour.ai/v1alpha1",
+          metadata: {
+            uid: "surface-evidence-provider-directory-crawl-2026-06-01"
+          }
+        }
+      }
     ],
     actionRefs: [
       { product: "surface", kind: "action", id: "action-refresh-provider-directory" }
@@ -113,6 +155,12 @@ function surfaceClaimState() {
         authority: {
           product: "surface",
           command: "surface.claim.refresh"
+        },
+        resource: {
+          apiVersion: "surface.kontour.ai/v1alpha1",
+          metadata: {
+            uid: "surface-action-refresh-provider-directory"
+          }
         },
         subjectRefs: [
           { product: "surface", kind: "claim", id: "claim-provider-directory-current" }
