@@ -1,3 +1,8 @@
+// ============================================================
+//  KONTOUR HANDOFF REPLAY — PROTOTYPE.JS
+//  8-record fixture · state-merge model · DOM render contract
+// ============================================================
+
 const records = [
   {
     at: "10:00:00",
@@ -160,27 +165,35 @@ const records = [
   }
 ];
 
+// ── Graph layout ──────────────────────────────────────────────────────
+// viewBox is 0 0 900 320 — large coords so SVG text is readable at any size.
+// Lanes: flow row cy=90, surface row cy=220
+const FLOW_Y   = 90;
+const SURF_Y   = 220;
+const NODE_R   = 22;
+
 const graphNodes = [
-  { id: "start", lane: "flow", label: "Start refresh", x: 8, y: 28 },
-  { id: "check", lane: "flow", label: "Check freshness", x: 25, y: 28 },
-  { id: "gate", lane: "flow", label: "Freshness gate", x: 42, y: 28 },
-  { id: "claim", lane: "surface", label: "Surface claim", x: 42, y: 66 },
-  { id: "refresh", lane: "surface", label: "Refresh evidence", x: 61, y: 66 },
-  { id: "evidence", lane: "surface", label: "Attach evidence", x: 78, y: 66 },
-  { id: "continue", lane: "flow", label: "Continue process", x: 78, y: 28 }
+  { id: "start",    lane: "flow",    label: "Start refresh",    x: 80,  y: FLOW_Y },
+  { id: "check",    lane: "flow",    label: "Check freshness",  x: 230, y: FLOW_Y },
+  { id: "gate",     lane: "flow",    label: "Freshness gate",   x: 400, y: FLOW_Y },
+  { id: "claim",    lane: "surface", label: "Surface claim",    x: 400, y: SURF_Y },
+  { id: "refresh",  lane: "surface", label: "Refresh evidence", x: 570, y: SURF_Y },
+  { id: "evidence", lane: "surface", label: "Attach evidence",  x: 720, y: SURF_Y },
+  { id: "continue", lane: "flow",    label: "Continue process", x: 820, y: FLOW_Y }
 ];
 
 const graphEdges = [
-  ["start", "check"],
-  ["check", "gate"],
-  ["gate", "claim"],
-  ["claim", "refresh"],
-  ["refresh", "evidence"],
+  ["start",    "check"],
+  ["check",    "gate"],
+  ["gate",     "claim"],
+  ["claim",    "refresh"],
+  ["refresh",  "evidence"],
   ["evidence", "claim"],
-  ["claim", "gate"],
-  ["gate", "continue"]
+  ["claim",    "gate"],
+  ["gate",     "continue"]
 ];
 
+// ── Initial state ─────────────────────────────────────────────────────
 const initialState = {
   process: {
     id: "run-provider-directory-refresh",
@@ -204,46 +217,48 @@ const initialState = {
     lastVerifiedAt: "unknown",
     evidence: []
   },
-  actions: []
-  ,
+  actions: [],
   stage: "Replay local records to see where the process is."
 };
 
+// ── Runtime state ─────────────────────────────────────────────────────
 let index = 0;
 let playing = false;
 let timer = null;
 let recordMode = "happened";
 let visualMode = "diagram";
 
+// ── Element references ────────────────────────────────────────────────
 const els = {
-  playPause: document.getElementById("playPause"),
-  prevEvent: document.getElementById("prevEvent"),
-  nextEvent: document.getElementById("nextEvent"),
-  resetReplay: document.getElementById("resetReplay"),
-  eventScrubber: document.getElementById("eventScrubber"),
-  replayPosition: document.getElementById("replayPosition"),
-  replayClock: document.getElementById("replayClock"),
-  processTitle: document.getElementById("processTitle"),
+  playPause:        document.getElementById("playPause"),
+  prevEvent:        document.getElementById("prevEvent"),
+  nextEvent:        document.getElementById("nextEvent"),
+  resetReplay:      document.getElementById("resetReplay"),
+  eventScrubber:    document.getElementById("eventScrubber"),
+  replayPosition:   document.getElementById("replayPosition"),
+  replayClock:      document.getElementById("replayClock"),
+  processTitle:     document.getElementById("processTitle"),
   operatingSummary: document.getElementById("operatingSummary"),
-  stageStatement: document.getElementById("stageStatement"),
-  diagramView: document.getElementById("diagramView"),
-  showDiagram: document.getElementById("showDiagram"),
-  showSwimlanes: document.getElementById("showSwimlanes"),
-  processStatus: document.getElementById("processStatus"),
-  gateStatus: document.getElementById("gateStatus"),
-  claimStatus: document.getElementById("claimStatus"),
-  freshnessStatus: document.getElementById("freshnessStatus"),
-  flowTimeline: document.getElementById("flowTimeline"),
-  claimCard: document.getElementById("claimCard"),
-  surfaceDetail: document.getElementById("surfaceDetail"),
-  surfaceRoute: document.getElementById("surfaceRoute"),
-  joinExplanation: document.getElementById("joinExplanation"),
-  actionList: document.getElementById("actionList"),
-  recordView: document.getElementById("recordView"),
-  showHappened: document.getElementById("showHappened"),
-  showSnapshot: document.getElementById("showSnapshot")
+  stageStatement:   document.getElementById("stageStatement"),
+  diagramView:      document.getElementById("diagramView"),
+  showDiagram:      document.getElementById("showDiagram"),
+  showSwimlanes:    document.getElementById("showSwimlanes"),
+  processStatus:    document.getElementById("processStatus"),
+  gateStatus:       document.getElementById("gateStatus"),
+  claimStatus:      document.getElementById("claimStatus"),
+  freshnessStatus:  document.getElementById("freshnessStatus"),
+  flowTimeline:     document.getElementById("flowTimeline"),
+  claimCard:        document.getElementById("claimCard"),
+  surfaceDetail:    document.getElementById("surfaceDetail"),
+  surfaceRoute:     document.getElementById("surfaceRoute"),
+  joinExplanation:  document.getElementById("joinExplanation"),
+  actionList:       document.getElementById("actionList"),
+  recordView:       document.getElementById("recordView"),
+  showHappened:     document.getElementById("showHappened"),
+  showSnapshot:     document.getElementById("showSnapshot")
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -278,79 +293,122 @@ function currentRecords() {
   return records.slice(0, index + 1);
 }
 
-function render() {
-  const state = stateAt(index);
-  const current = records[index];
-  const happened = currentRecords();
+// ── Diagram rendering ─────────────────────────────────────────────────
+//
+// Nodes are rendered as SVG circles; labels are HTML <div> elements
+// positioned absolutely over the SVG so they render with full browser
+// font rendering (no more 3px SVG text hack).
+//
+function renderDiagram(state, current) {
+  const completedIds = new Set(records.slice(0, index + 1).map(r => r.activeNode));
+  const nodeById     = new Map(graphNodes.map(n => [n.id, n]));
+  const activeNode   = current.activeNode;
 
-  els.replayPosition.textContent = `Event ${index + 1} of ${records.length}`;
-  els.replayClock.textContent = current.at;
-  els.eventScrubber.value = String(index);
-  els.playPause.textContent = playing ? "Pause" : "Play";
+  const VW = 900;
+  const VH = 320;
 
-  els.processTitle.textContent = state.process.label;
-  els.stageStatement.textContent = state.stage;
-  els.processStatus.textContent = state.process.status;
-  els.gateStatus.textContent = state.gate.status;
-  els.claimStatus.textContent = state.claim.status;
-  els.freshnessStatus.textContent = state.claim.freshness;
+  // ── Lane band decorations ──────────────────────────────────────
+  const BAND_TOP    = 28;   // flow band top
+  const BAND_MID    = 154;  // divider y
+  const BAND_BOTTOM = VH - 10;
 
-  for (const element of [els.processStatus, els.gateStatus, els.claimStatus, els.freshnessStatus]) {
-    element.className = `pill ${statusClass(element.textContent)}`;
+  const flowBand    = `<rect class="flow-band"    x="0" y="${BAND_TOP}"  width="${VW}" height="${BAND_MID - BAND_TOP}"></rect>`;
+  const surfaceBand = `<rect class="surface-band" x="0" y="${BAND_MID}" width="${VW}" height="${BAND_BOTTOM - BAND_MID}"></rect>`;
+  const divider     = `<line class="lane-border" x1="0" y1="${BAND_MID}" x2="${VW}" y2="${BAND_MID}"></line>`;
+
+  // ── Swimlane labels in swimlane mode ───────────────────────────
+  let laneLabelsHtml = "";
+  if (visualMode === "swimlanes") {
+    const flowLabelY    = BAND_TOP + (BAND_MID - BAND_TOP) / 2;
+    const surfLabelY    = BAND_MID + (BAND_BOTTOM - BAND_MID) / 2;
+    laneLabelsHtml = `
+      <div class="lane-label flow-lane"    style="top:${flowLabelY * (100 / VH)}%">Flow — owns process &amp; gates</div>
+      <div class="lane-label surface-lane" style="top:${surfLabelY * (100 / VH)}%">Surface — owns claims &amp; evidence</div>
+    `;
   }
 
-  els.operatingSummary.textContent = summaryFor(state);
-  renderDiagram(state, current);
-  renderTimeline(happened);
-  renderClaim(state);
-  renderJoin(state, current);
-  renderActions(state.actions);
-  renderRecords(state, happened);
-}
+  // ── Determine which lane each edge belongs to ──────────────────
+  function edgeLane(fromId, toId) {
+    const fn = nodeById.get(fromId);
+    const tn = nodeById.get(toId);
+    if (fn.lane === "surface" && tn.lane === "surface") return "surface";
+    if (fn.lane === "flow"    && tn.lane === "flow")    return "flow";
+    return "cross";
+  }
 
-function renderDiagram(state, current) {
-  const completedIds = new Set(records.slice(0, index + 1).map((record) => record.activeNode));
-  const nodeById = new Map(graphNodes.map((node) => [node.id, node]));
-  const activeNode = current.activeNode;
-  const laneLabels = visualMode === "swimlanes"
-    ? `<div class="lane-label flow-lane">Flow owns process and gates</div><div class="lane-label surface-lane">Surface owns claims and evidence</div>`
-    : "";
-
+  // ── SVG edges ──────────────────────────────────────────────────
   const edges = graphEdges.map(([fromId, toId]) => {
-    const from = nodeById.get(fromId);
-    const to = nodeById.get(toId);
-    const edgeActive = completedIds.has(fromId) && completedIds.has(toId);
-    return `<line class="${edgeActive ? "edge active" : "edge"}" x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}"></line>`;
+    const from     = nodeById.get(fromId);
+    const to       = nodeById.get(toId);
+    const isActive = completedIds.has(fromId) && completedIds.has(toId);
+    const lane     = edgeLane(fromId, toId);
+
+    // Offset start/end so lines stop at node perimeter
+    const dx  = to.x - from.x;
+    const dy  = to.y - from.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const ux  = dx / len;
+    const uy  = dy / len;
+    const r   = NODE_R + 2;
+
+    const x1 = from.x + ux * r;
+    const y1 = from.y + uy * r;
+    const x2 = to.x   - ux * r;
+    const y2 = to.y   - uy * r;
+
+    let cls = "edge";
+    let markerId = "arrow";
+    if (isActive) {
+      if (lane === "flow")    { cls += " active flow-active flowing";    markerId = "arrow-flow"; }
+      else if (lane === "surface") { cls += " active surface-active flowing"; markerId = "arrow-surface"; }
+      else { cls += " active flowing"; markerId = "arrow-flow"; }
+    }
+
+    return `<line class="${cls}" x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" marker-end="url(#${markerId})"></line>`;
   }).join("");
 
-  const nodes = graphNodes.map((node) => {
+  // ── SVG nodes (circle + label, same coordinate space) ─────────
+  // Labels live INSIDE the SVG so they stay pinned to their node at
+  // every container width (no letterbox drift) and scale crisply.
+  // Flow labels sit above their node, Surface labels below, keeping
+  // text in the outer region of each band and clear of the edges.
+  const svgNodes = graphNodes.map(node => {
     const classes = [
       "graph-node",
       node.lane,
       completedIds.has(node.id) ? "seen" : "",
       node.id === activeNode ? "active" : ""
     ].filter(Boolean).join(" ");
-    return `
-      <g class="${classes}" transform="translate(${node.x} ${node.y})">
-        <circle r="4.8"></circle>
-        <text y="9">${node.label}</text>
-      </g>
-    `;
+
+    const labelDy = node.lane === "flow" ? -(NODE_R + 14) : (NODE_R + 26);
+
+    return `<g class="${classes}" transform="translate(${node.x},${node.y})">
+      <circle r="${NODE_R}"></circle>
+      <text class="node-text" y="${labelDy}">${node.label}</text>
+    </g>`;
   }).join("");
 
+  // ── Assemble ───────────────────────────────────────────────────
   els.diagramView.className = `diagram-view ${visualMode}`;
   els.diagramView.innerHTML = `
-    ${laneLabels}
-    <svg viewBox="0 0 100 92" role="img" aria-label="Flow and Surface process graph">
+    ${laneLabelsHtml}
+    <svg viewBox="0 0 ${VW} ${VH}" role="img" aria-label="Flow and Surface process graph" preserveAspectRatio="xMidYMid meet">
       <defs>
-        <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z"></path>
+        </marker>
+        <marker id="arrow-flow" class="flow-marker" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z"></path>
+        </marker>
+        <marker id="arrow-surface" class="surface-marker" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M 0 0 L 10 5 L 0 10 z"></path>
         </marker>
       </defs>
-      <rect class="lane flow-band" x="2" y="12" width="96" height="30"></rect>
-      <rect class="lane surface-band" x="2" y="50" width="96" height="30"></rect>
+      ${flowBand}
+      ${surfaceBand}
+      ${divider}
       ${edges}
-      ${nodes}
+      ${svgNodes}
     </svg>
     <div class="diagram-note">
       <strong>${current.label}</strong>
@@ -359,6 +417,39 @@ function renderDiagram(state, current) {
   `;
 }
 
+// ── Main render ───────────────────────────────────────────────────────
+function render() {
+  const state    = stateAt(index);
+  const current  = records[index];
+  const happened = currentRecords();
+
+  els.replayPosition.textContent = `Event ${index + 1} of ${records.length}`;
+  els.replayClock.textContent    = current.at;
+  els.eventScrubber.value        = String(index);
+  els.playPause.textContent      = playing ? "Pause" : "Play";
+
+  els.processTitle.textContent   = state.process.label;
+  els.stageStatement.textContent = state.stage;
+  els.processStatus.textContent  = state.process.status;
+  els.gateStatus.textContent     = state.gate.status;
+  els.claimStatus.textContent    = state.claim.status;
+  els.freshnessStatus.textContent = state.claim.freshness;
+
+  for (const el of [els.processStatus, els.gateStatus, els.claimStatus, els.freshnessStatus]) {
+    el.className = `pill ${statusClass(el.textContent)}`;
+  }
+
+  els.operatingSummary.textContent = summaryFor(state);
+
+  renderDiagram(state, current);
+  renderTimeline(happened);
+  renderClaim(state);
+  renderJoin(state, current);
+  renderActions(state.actions);
+  renderRecords(state, happened);
+}
+
+// ── Summary text ──────────────────────────────────────────────────────
 function summaryFor(state) {
   if (state.gate.status === "blocked") {
     return "Flow is blocked because the linked Surface claim is stale.";
@@ -372,24 +463,25 @@ function summaryFor(state) {
   return "Replay the local handoff records to watch Console build the operating view.";
 }
 
+// ── Timeline ──────────────────────────────────────────────────────────
 function renderTimeline(happened) {
   els.flowTimeline.innerHTML = happened
-    .filter((record) => record.product === "flow")
-    .map((record) => `
+    .filter(r => r.product === "flow")
+    .map(r => `
       <li>
-        <time>${record.at}</time>
+        <time>${r.at}</time>
         <div>
-          <strong>${record.label}</strong>
-          <span>${record.summary}</span>
+          <strong>${r.label}</strong>
+          <span>${r.summary}</span>
         </div>
       </li>
-    `)
-    .join("");
+    `).join("");
 }
 
+// ── Claim card ────────────────────────────────────────────────────────
 function renderClaim(state) {
   const evidence = state.claim.evidence.length
-    ? state.claim.evidence.map((item) => `<li>${item.label}<span>${item.capturedAt}</span></li>`).join("")
+    ? state.claim.evidence.map(item => `<li>${item.label}<span>${item.capturedAt}</span></li>`).join("")
     : "<li>No evidence attached yet<span>Waiting</span></li>";
 
   els.claimCard.innerHTML = `
@@ -412,9 +504,11 @@ function renderClaim(state) {
   els.surfaceDetail.textContent = state.claim.status === "unknown"
     ? "Surface detail appears when the claim is linked."
     : "Console embeds current Surface state here, then links to deeper Surface claim history and proof.";
+
   els.surfaceRoute.textContent = `surface://claims/${state.claim.id}`;
 }
 
+// ── Join / Console explanation ────────────────────────────────────────
 function renderJoin(state, current) {
   const linked = state.gate.linkedClaim || "No linked claim yet";
   els.joinExplanation.innerHTML = `
@@ -437,19 +531,21 @@ function renderJoin(state, current) {
   `;
 }
 
+// ── Actions ───────────────────────────────────────────────────────────
 function renderActions(actions) {
   if (!actions.length) {
     els.actionList.innerHTML = "<li>No actions available yet.</li>";
     return;
   }
-  els.actionList.innerHTML = actions.map((action) => `
+  els.actionList.innerHTML = actions.map(action => `
     <li>
       <strong>${action.label}</strong>
-      <span>${action.owner} authority - ${action.note}</span>
+      <span>${action.owner} authority — ${action.note}</span>
     </li>
   `).join("");
 }
 
+// ── Record viewer ─────────────────────────────────────────────────────
 function renderRecords(state, happened) {
   const snapshot = {
     plainLabel: "Current snapshot",
@@ -459,17 +555,18 @@ function renderRecords(state, happened) {
     actions: state.actions
   };
   const payload = recordMode === "happened"
-    ? happened.map((record) => ({
-      at: record.at,
-      product: record.product,
-      type: record.type,
-      ref: record.ref,
-      links: record.links || []
-    }))
+    ? happened.map(r => ({
+        at:      r.at,
+        product: r.product,
+        type:    r.type,
+        ref:     r.ref,
+        links:   r.links || []
+      }))
     : snapshot;
   els.recordView.textContent = JSON.stringify(payload, null, 2);
 }
 
+// ── Playback ──────────────────────────────────────────────────────────
 function setIndex(next) {
   index = Math.max(0, Math.min(records.length - 1, next));
   if (index === records.length - 1) stop();
@@ -496,6 +593,7 @@ function stop() {
   timer = null;
 }
 
+// ── Event wiring ──────────────────────────────────────────────────────
 els.playPause.addEventListener("click", () => {
   if (playing) {
     stop();
@@ -554,4 +652,5 @@ els.showSwimlanes.addEventListener("click", () => {
   render();
 });
 
+// ── Initial render ────────────────────────────────────────────────────
 render();

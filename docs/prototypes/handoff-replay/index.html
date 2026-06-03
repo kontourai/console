@@ -3,15 +3,20 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Kontour Handoff Replay Prototype</title>
+    <title>Kontour Handoff Replay — Console Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,700;12..96,800&family=Familjen+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
     <main class="app-shell">
+
+      <!-- ── Topbar ─────────────────────────────────────────────── -->
       <header class="topbar">
         <div>
-          <p class="eyebrow">Prototype - local fixture replay</p>
-          <h1>Flow progress + Surface trust state</h1>
+          <p class="eyebrow">Prototype · local fixture replay</p>
+          <h1 id="processTitle">Provider directory refresh</h1>
         </div>
         <div class="status-strip" aria-live="polite">
           <span id="replayPosition">Event 1 of 8</span>
@@ -19,6 +24,7 @@
         </div>
       </header>
 
+      <!-- ── Replay controls ────────────────────────────────────── -->
       <section class="control-row" aria-label="Replay controls">
         <button id="playPause" type="button">Play</button>
         <button id="prevEvent" type="button">Previous</button>
@@ -30,37 +36,38 @@
         </div>
       </section>
 
+      <!-- ── Status headline ───────────────────────────────────── -->
       <section class="operating-state" aria-label="Current operating state">
         <div>
           <p class="section-kicker">Current stage</p>
-          <h2 id="processTitle">Provider directory refresh</h2>
-          <p id="stageStatement">Checking provider directory freshness.</p>
+          <p id="stageStatement">Replay local records to see where the process is.</p>
         </div>
         <div class="state-metrics">
           <div>
             <span>Process</span>
-            <strong id="processStatus">not started</strong>
+            <strong id="processStatus" class="pill">not started</strong>
           </div>
           <div>
             <span>Gate</span>
-            <strong id="gateStatus">closed</strong>
+            <strong id="gateStatus" class="pill">closed</strong>
           </div>
           <div>
             <span>Claim</span>
-            <strong id="claimStatus">unknown</strong>
+            <strong id="claimStatus" class="pill">unknown</strong>
           </div>
           <div>
             <span>Freshness</span>
-            <strong id="freshnessStatus">unknown</strong>
+            <strong id="freshnessStatus" class="pill">unknown</strong>
           </div>
         </div>
       </section>
 
+      <!-- ── Diagram hero ──────────────────────────────────────── -->
       <section class="diagram-shell" aria-label="Process flow diagram">
         <div class="diagram-head">
           <div>
             <p class="section-kicker">Process map</p>
-            <h2>One live view of Flow + Surface</h2>
+            <h2>Flow + Surface — live signal path</h2>
           </div>
           <p id="operatingSummary">Replay the local handoff records to watch Console build the operating view.</p>
         </div>
@@ -71,10 +78,12 @@
         <div id="diagramView" class="diagram-view"></div>
       </section>
 
+      <!-- ── Secondary panels ──────────────────────────────────── -->
       <section class="grid">
+
         <article class="panel panel-flow">
           <div class="panel-head">
-            <p class="section-kicker">1. Flow timeline</p>
+            <p class="section-kicker">1 · Flow timeline</p>
             <h2>What the process is doing</h2>
           </div>
           <ol id="flowTimeline" class="timeline"></ol>
@@ -82,20 +91,20 @@
 
         <article class="panel panel-surface">
           <div class="panel-head">
-            <p class="section-kicker">2. Surface claims</p>
+            <p class="section-kicker">2 · Surface claims</p>
             <h2>What became trusted</h2>
           </div>
           <div id="claimCard" class="claim-card"></div>
           <div class="surface-detail">
             <h3>Surface drill-through</h3>
             <p id="surfaceDetail">Surface detail appears when the claim is linked.</p>
-            <a id="surfaceRoute" href="#" aria-disabled="true">Surface claim route placeholder</a>
+            <a id="surfaceRoute" href="#" aria-disabled="true" tabindex="-1">Surface claim route placeholder</a>
           </div>
         </article>
 
         <article class="panel panel-console">
           <div class="panel-head">
-            <p class="section-kicker">3. Joined Console view</p>
+            <p class="section-kicker">3 · Joined Console view</p>
             <h2>Why it is blocked or ready</h2>
           </div>
           <div id="joinExplanation" class="join-explanation"></div>
@@ -107,7 +116,7 @@
 
         <article class="panel panel-records">
           <div class="panel-head">
-            <p class="section-kicker">4. Under the hood</p>
+            <p class="section-kicker">4 · Under the hood</p>
             <h2>Records that built the view</h2>
           </div>
           <div class="record-tabs">
@@ -116,6 +125,7 @@
           </div>
           <pre id="recordView"></pre>
         </article>
+
       </section>
     </main>
     <script src="./prototype.js"></script>
