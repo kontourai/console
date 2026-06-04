@@ -137,11 +137,13 @@ function applyEvent(state, event, streamId) {
   arrayOf(event.links).forEach((link) => {
     state.links.set(linkKey(link), clone(link));
   });
-  arrayOf(payload.actions).concat(arrayOf(after.nextActionRefs).map((ref) => actionFromRef(ref)))
-    .filter(Boolean)
-    .forEach((action) => {
-      state.actions.set(action.id, compactObject(clone(action)));
-    });
+  if (!isLearningEvent(event)) {
+    arrayOf(payload.actions).concat(arrayOf(after.nextActionRefs).map((ref) => actionFromRef(ref)))
+      .filter(Boolean)
+      .forEach((action) => {
+        state.actions.set(action.id, compactObject(clone(action)));
+      });
+  }
 
   state.timeline.push({
     id: event.id,
@@ -300,6 +302,10 @@ function upsertLearning(state, event, subject, refs, payload, summary) {
   state.learnings.set(id, compactObject(next));
 }
 
+function isLearningEvent(event) {
+  return typeof event.type === "string" && event.type.startsWith("learning.");
+}
+
 function updateProcessFromGate(state, event, refs, after, gate) {
   if (!gate.processRef || !gate.processRef.id) return;
   const existing = state.processes.get(gate.processRef.id) || {
@@ -372,7 +378,9 @@ function describeCurrentStage(state) {
   const activeProcess = state.processes.find((process) => ["running", "active", "waiting"].includes(process.status));
   if (activeProcess) return `${activeProcess.label || activeProcess.id} is ${activeProcess.status}.`;
 
-  return state.timeline.length ? state.timeline[state.timeline.length - 1].summary || "Events replayed." : "No events replayed.";
+  const latestAuthoritativeEvent = [...state.timeline].reverse().find((item) => !isLearningEvent(item));
+  if (latestAuthoritativeEvent) return latestAuthoritativeEvent.summary || "Events replayed.";
+  return state.timeline.length ? "No authoritative events replayed." : "No events replayed.";
 }
 
 function statusFromGateEvent(type) {

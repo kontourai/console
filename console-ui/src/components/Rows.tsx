@@ -1,4 +1,4 @@
-import type { ConsoleAction, ConsoleClaim, ConsoleGate, TimelineItem } from "@kontour/console-core";
+import type { ConsoleAction, ConsoleClaim, ConsoleGate, ConsoleLearning, ConsoleRef, TimelineItem } from "@kontour/console-core";
 import { formatTime } from "../utils/format";
 import { Badge } from "./Badge";
 
@@ -14,7 +14,7 @@ export function GateRow({ gate }: { gate: ConsoleGate }) {
   );
 }
 
-export function ClaimRow({ claim }: { claim: ConsoleClaim }) {
+export function ClaimRow({ claim, advisoryLearnings = [] }: { claim: ConsoleClaim; advisoryLearnings?: ConsoleLearning[] }) {
   return (
     <article className="data-row">
       <div className="row-title">
@@ -22,6 +22,7 @@ export function ClaimRow({ claim }: { claim: ConsoleClaim }) {
         <Badge value={claim.status || "unknown"} />
       </div>
       <p>freshness: {claim.freshness?.status || "n/a"} · verified: {formatTime(claim.lastVerifiedAt)}</p>
+      <LearningNotes learnings={advisoryLearnings} />
     </article>
   );
 }
@@ -38,6 +39,37 @@ export function ActionRow({ action }: { action: ConsoleAction }) {
   );
 }
 
+export function LearningRow({ learning }: { learning: ConsoleLearning }) {
+  const refs = (learning.refs || []).map(formatRef).join(" · ");
+  const confidence = typeof learning.confidence === "number" ? `${Math.round(learning.confidence * 100)}%` : "confidence n/a";
+
+  return (
+    <article className="data-row learning-row">
+      <div className="row-title">
+        <strong>{learning.summary || learning.id}</strong>
+        <Badge value="advisory" />
+      </div>
+      <p>{learning.family || "learning"} · {confidence} · updated {formatTime(learning.updatedAt)}</p>
+      {refs ? <p className="learning-refs">{refs}</p> : null}
+    </article>
+  );
+}
+
+export function LearningNotes({ learnings }: { learnings: ConsoleLearning[] }) {
+  if (!learnings.length) return null;
+
+  return (
+    <div className="learning-notes" aria-label="Advisory learning context">
+      {learnings.map((learning) => (
+        <div className="learning-note" key={learning.id}>
+          <Badge value="advisory" />
+          <span>{learning.summary || learning.id}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function TimelineRow({ item }: { item: TimelineItem }) {
   return (
     <article className="timeline-row">
@@ -49,4 +81,9 @@ export function TimelineRow({ item }: { item: TimelineItem }) {
       <span>{item.producer?.product || "local"}</span>
     </article>
   );
+}
+
+function formatRef(ref: ConsoleRef) {
+  const identity = [ref.product, ref.kind, ref.id].filter(Boolean).join("/");
+  return ref.label ? `${ref.label} (${identity})` : identity;
 }

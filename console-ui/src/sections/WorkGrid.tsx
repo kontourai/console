@@ -2,11 +2,14 @@ import { Empty } from "../components/Empty";
 import { Panel } from "../components/Panel";
 import { ProcessFlowDiagram } from "../components/ProcessFlowDiagram";
 import { ProcessView } from "../components/ProcessView";
-import { ActionRow, ClaimRow, GateRow } from "../components/Rows";
-import { buildProcessFlow, type OperatingState } from "@kontour/console-core";
+import { ActionRow, ClaimRow, GateRow, LearningRow } from "../components/Rows";
+import { buildProcessFlow, selectLearningsBySubjectRef, type ConsoleRef, type OperatingState } from "@kontour/console-core";
 
 export function WorkGrid({ state }: { state: OperatingState }) {
   const flow = buildProcessFlow(state);
+  const activeProcessLearnings = flow.activeProcess
+    ? selectLearningsBySubjectRef(state, processRef(flow.activeProcess))
+    : [];
 
   return (
     <section className="work-grid">
@@ -23,7 +26,9 @@ export function WorkGrid({ state }: { state: OperatingState }) {
 
       <div className="side-stack">
         <Panel title="Active Process" count={flow.activeProcess ? 1 : 0}>
-          {flow.activeProcess ? <ProcessView process={flow.activeProcess} /> : <Empty label="No active process." />}
+          {flow.activeProcess
+            ? <ProcessView process={flow.activeProcess} advisoryLearnings={activeProcessLearnings} />
+            : <Empty label="No active process." />}
         </Panel>
 
         <Panel title="Gates" count={state.gates?.length || 0}>
@@ -37,7 +42,13 @@ export function WorkGrid({ state }: { state: OperatingState }) {
       <div className="bottom-grid">
         <Panel title="Claims" count={state.claims?.length || 0}>
           <div className="stack">
-            {(state.claims || []).map((claim) => <ClaimRow key={claim.id} claim={claim} />)}
+            {(state.claims || []).map((claim) => (
+              <ClaimRow
+                key={claim.id}
+                claim={claim}
+                advisoryLearnings={selectLearningsBySubjectRef(state, claim.sourceRef || { product: "surface", kind: "claim", id: claim.id })}
+              />
+            ))}
             {!state.claims?.length ? <Empty label="No claims replayed." /> : null}
           </div>
         </Panel>
@@ -48,7 +59,18 @@ export function WorkGrid({ state }: { state: OperatingState }) {
             {!state.actions?.length ? <Empty label="No inert actions available." /> : null}
           </div>
         </Panel>
+
+        <Panel title="Advisory Learnings" count={state.learnings?.length || 0}>
+          <div className="stack">
+            {(state.learnings || []).map((learning) => <LearningRow key={learning.id} learning={learning} />)}
+            {!state.learnings?.length ? <Empty label="No advisory learning context." /> : null}
+          </div>
+        </Panel>
       </div>
     </section>
   );
+}
+
+function processRef(process: { id: string; sourceRef?: ConsoleRef }): ConsoleRef {
+  return process.sourceRef || { product: "flow", kind: "run", id: process.id };
 }

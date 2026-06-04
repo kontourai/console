@@ -158,6 +158,156 @@ test("replay folds learning events as deduped non-authoritative context", () => 
   assert.equal(state.learnings[0].links[0].relation, "derived_from");
 });
 
+test("replay associates advisory learning with claim and run refs without mutating authoritative state", () => {
+  const baseEvents = [
+    {
+      schema: "kontour.console.event",
+      version: "0.1",
+      id: "evt-run-started",
+      type: "process.started",
+      sequence: 1,
+      occurredAt: "2026-06-04T12:00:00Z",
+      producer: { product: "flow", id: "flow-local" },
+      subject: { product: "flow", kind: "run", id: "run-learning-check", label: "Learning check" },
+      payload: {
+        summary: "Learning check started.",
+        refs: [{ product: "surface", kind: "claim", id: "claim-learning-check", label: "Learning claim" }],
+        after: { status: "running", currentStep: { id: "verify", label: "Verify" }, percentComplete: 25 }
+      }
+    },
+    {
+      schema: "kontour.console.event",
+      version: "0.1",
+      id: "evt-gate-opened",
+      type: "gate.opened",
+      sequence: 2,
+      occurredAt: "2026-06-04T12:01:00Z",
+      producer: { product: "flow", id: "flow-local" },
+      subject: {
+        product: "flow",
+        kind: "gate",
+        id: "gate-learning-check",
+        label: "Learning gate",
+        scope: { product: "flow", kind: "run", id: "run-learning-check", label: "Learning check" }
+      },
+      payload: {
+        summary: "Learning gate opened.",
+        refs: [{ product: "surface", kind: "claim", id: "claim-learning-check", label: "Learning claim" }],
+        after: {
+          processRef: { product: "flow", kind: "run", id: "run-learning-check", label: "Learning check" },
+          missingEvidence: ["provider evidence"]
+        }
+      }
+    },
+    {
+      schema: "kontour.console.event",
+      version: "0.1",
+      id: "evt-claim-status",
+      type: "claim.status.changed",
+      sequence: 3,
+      occurredAt: "2026-06-04T12:02:00Z",
+      producer: { product: "surface", id: "surface-local" },
+      subject: { product: "surface", kind: "claim", id: "claim-learning-check", label: "Learning claim" },
+      payload: {
+        summary: "Learning claim pending.",
+        refs: [{ product: "flow", kind: "run", id: "run-learning-check", label: "Learning check" }],
+        after: { status: "pending" }
+      }
+    }
+  ];
+  const learningEvent = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-learning-advisory",
+    type: "learning.recorded",
+    sequence: 4,
+    occurredAt: "2026-06-04T12:03:00Z",
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    subject: { product: "flow-agents", kind: "workflow-learning", id: "learning-gate-context" },
+    payload: {
+      summary: "Operators prefer the gate reason before retry guidance.",
+      refs: [
+        { product: "surface", kind: "claim", id: "claim-learning-check", label: "Learning claim" },
+        { product: "flow", kind: "run", id: "run-learning-check", label: "Learning check" }
+      ],
+      actions: [
+        {
+          id: "action-learning-should-not-project",
+          label: "Learning action should stay inert",
+          status: "available",
+          authority: { product: "flow-agents", command: "learning.apply" }
+        }
+      ],
+      after: {
+        nextActionRefs: [{ product: "flow", kind: "action", id: "action-learning-next-should-not-project" }]
+      },
+      data: {
+        id: "learning-gate-reason",
+        family: "workflow",
+        nonAuthority: true,
+        confidence: 0.77,
+        sourceRef: { product: "flow", kind: "run", id: "run-learning-check", label: "Learning check" }
+      }
+    }
+  };
+
+  const before = buildCurrentOperatingState([{ relativePath: "base.jsonl", events: baseEvents }]);
+  const after = buildCurrentOperatingState([{ relativePath: "learning.jsonl", events: [...baseEvents, learningEvent] }]);
+
+  assert.deepEqual(after.claims, before.claims);
+  assert.deepEqual(after.gates, before.gates);
+  assert.deepEqual(after.actions, before.actions);
+  assert.equal(after.currentStage, before.currentStage);
+  assert.equal(after.timeline.length, before.timeline.length + 1);
+  assert.equal(after.learnings.length, 1);
+  assert.equal(after.learnings[0].nonAuthority, true);
+  assert.equal(after.learnings[0].sourceRef.id, "run-learning-check");
+  assert.deepEqual(after.learnings[0].refs.map((ref) => `${ref.product}:${ref.kind}:${ref.id}`), [
+    "flow:run:run-learning-check",
+    "surface:claim:claim-learning-check"
+  ]);
+});
+
+test("learning-only replay does not promote advisory summary to current stage or actions", () => {
+  const state = buildCurrentOperatingState([{
+    relativePath: "learning-only.jsonl",
+    events: [
+      {
+        schema: "kontour.console.event",
+        version: "0.1",
+        id: "evt-learning-only",
+        type: "learning.recorded",
+        sequence: 1,
+        occurredAt: "2026-06-04T12:00:00Z",
+        producer: { product: "flow-agents", id: "flow-agents-local" },
+        subject: { product: "flow-agents", kind: "workflow-learning", id: "learning-only" },
+        payload: {
+          summary: "This advisory summary must not become the operating stage.",
+          actions: [
+            {
+              id: "action-learning-only-should-not-project",
+              status: "available",
+              authority: { product: "flow-agents", command: "learning.apply" }
+            }
+          ],
+          data: {
+            id: "learning-only",
+            family: "workflow",
+            nonAuthority: true
+          }
+        }
+      }
+    ]
+  }]);
+
+  assert.equal(state.currentStage, "No authoritative events replayed.");
+  assert.equal(state.timeline.length, 1);
+  assert.equal(state.learnings.length, 1);
+  assert.equal(state.claims.length, 0);
+  assert.equal(state.gates.length, 0);
+  assert.equal(state.actions.length, 0);
+});
+
 test("replay ignores unsafe learning id and sourceRef payload fields", () => {
   const learningEvent = {
     schema: "kontour.console.event",

@@ -6,6 +6,13 @@ export interface ConsoleRef {
   name?: string;
 }
 
+export interface ConsoleLink {
+  from?: ConsoleRef;
+  relation?: string;
+  to?: ConsoleRef;
+  createdAt?: string;
+}
+
 export interface ConsoleSource {
   mode?: string;
   streamIds?: string[];
@@ -17,6 +24,7 @@ export interface ConsoleSource {
 export interface ConsoleProcess {
   id: string;
   label?: string;
+  sourceRef?: ConsoleRef;
   status?: string;
   currentStep?: string | { id?: string; label?: string };
   percentComplete?: number;
@@ -45,6 +53,7 @@ export interface ConsoleGate {
 export interface ConsoleClaim {
   id: string;
   label?: string;
+  sourceRef?: ConsoleRef;
   status?: string;
   freshness?: {
     status?: string;
@@ -71,6 +80,20 @@ export interface ConsoleAction {
   subjectRefs?: ConsoleRef[];
 }
 
+export interface ConsoleLearning {
+  id: string;
+  sourceEventId?: string;
+  sourceRef?: ConsoleRef;
+  subjectRef?: ConsoleRef;
+  family?: string;
+  nonAuthority?: boolean;
+  summary?: string;
+  confidence?: number;
+  refs?: ConsoleRef[];
+  links?: ConsoleLink[];
+  updatedAt?: string;
+}
+
 export interface TimelineItem {
   id: string;
   type?: string;
@@ -93,6 +116,7 @@ export interface OperatingState {
   processes?: ConsoleProcess[];
   gates?: ConsoleGate[];
   claims?: ConsoleClaim[];
+  learnings?: ConsoleLearning[];
   actions?: ConsoleAction[];
   timeline?: TimelineItem[];
 }
@@ -104,4 +128,20 @@ export interface RecordAcceptedEvent {
     observedAt?: string;
   };
   state?: OperatingState;
+}
+
+export function selectLearningsBySubjectRef(state: OperatingState, subjectRef: ConsoleRef): ConsoleLearning[] {
+  const subjectKey = refKey(subjectRef);
+  if (!subjectKey) return [];
+
+  return (state.learnings || []).filter((learning) => {
+    if (refKey(learning.subjectRef) === subjectKey) return true;
+    if (refKey(learning.sourceRef) === subjectKey) return true;
+    return (learning.refs || []).some((ref) => refKey(ref) === subjectKey);
+  });
+}
+
+function refKey(ref?: ConsoleRef) {
+  if (!ref?.product || !ref.kind || !ref.id) return "";
+  return [ref.product, ref.kind, ref.id].join(":");
 }
