@@ -65,7 +65,7 @@ Kontour Console composes two related but separate planes:
 
 | Plane | Records | Authority |
 | --- | --- | --- |
-| Control plane | Product-owned events, projection snapshots, evidence refs, identity links, decisions, review items, gates, process state, and action descriptors. | The producing product or primitive owns domain meaning. Surface owns claim trust state; Flow owns gate, transition, exception, and run-control semantics; Survey owns fact-review records; Veritas owns repo/change governance; Flow Agents owns runtime adapter state; vertical products own their domain truth. Kontour Console may aggregate, correlate, display, and route through product authority, but it does not redefine product truth. |
+| Control plane | Product-owned events, projection snapshots, evidence refs, identity links, decisions, review items, gates, process state, learning records, and action descriptors. | The producing product or primitive owns domain meaning. Surface owns claim trust state; Flow owns gate, transition, exception, and run-control semantics; Survey owns fact-review records; Veritas owns repo/change governance; Flow Agents owns runtime adapter state and workflow-learning source records; vertical products own their domain truth. Kontour Console may aggregate, correlate, display, and route through product authority, but it does not redefine product truth. |
 | Telemetry plane | Traces, spans, metrics, logs, usage/cost observations, health checks, delivery diagnostics, and operational events. | Telemetry describes operation and performance. It is not authority for claims, gates, review decisions, product domain facts, product state transitions, or action execution. |
 
 Control-plane records answer what a product says is true, in progress, blocked, decided, evidenced, or available as a next action. They include:
@@ -74,6 +74,7 @@ Control-plane records answer what a product says is true, in progress, blocked, 
 - projection snapshots matching `KontourConsoleProjection`
 - evidence refs and proof summaries
 - cross-product identity links
+- `learning.*` semantic records that summarize or reference product-owned learnings
 - action descriptors carried by events or projections
 
 Telemetry-plane records answer how Console producers, emitters, sinks, and consumers behaved operationally. They may include:
@@ -84,6 +85,8 @@ Telemetry-plane records answer how Console producers, emitters, sinks, and consu
 - usage and cost observations for hosted or agentic workflows
 
 The planes may share `correlationId`, `causationId`, producer identity, scope identity, event id, projection provenance, or trace context so an operator can connect a product event to delivery and processing behavior. Shared correlation does not transfer authority between planes. A telemetry success does not prove a claim is true, a telemetry error does not revoke product state, and a generic sink does not become the decision maker for a product action.
+
+Learning records use the control plane when they are semantic operating context. They are non-authoritative product-owned records: Console may aggregate, display, correlate, and route them, but learning cannot revoke or change claims, gates, decisions, actions, source facts, product records, or product truth. A learning can reference `decision.recorded` or explain why an owning product later emits `decision.recorded`, but the decision event remains the durable product-owned decision. Telemetry may describe learning pipeline operation, but it is not the source of learning semantics. Flow Agents `workflow-learning` records remain Flow Agents-owned source records; Console handoff records can reference or summarize them without becoming a universal source schema. See [ADR 0002](../adr/0002-learning-records-use-control-plane.md).
 
 ## Record Identity
 
