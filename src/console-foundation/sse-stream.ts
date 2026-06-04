@@ -41,8 +41,9 @@ export function createSseBroker(): SseBroker {
   };
 }
 
-export function openSseResponse(response: ServerResponse): void {
+export function openSseResponse(response: ServerResponse, headers: Record<string, string> = {}): void {
   response.writeHead(200, {
+    ...headers,
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-store",
     "connection": "keep-alive",

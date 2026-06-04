@@ -69,8 +69,15 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
 
 async function routeRequest(hub: Hub, events: SseBroker, request: IncomingMessage, response: ServerResponse): Promise<void> {
   const url = new URL(request.url || "/", `http://${request.headers.host || DEFAULT_HOST}`);
+  writeCorsHeaders(response);
 
   try {
+    if (request.method === "OPTIONS") {
+      response.writeHead(204);
+      response.end();
+      return;
+    }
+
     if (request.method === "GET" && url.pathname === "/events") {
       openEventStream(hub, events, request, response);
       return;
@@ -152,7 +159,7 @@ function readJsonBody(request: IncomingMessage): Promise<unknown> {
 }
 
 function openEventStream(hub: Hub, events: SseBroker, request: IncomingMessage, response: ServerResponse): void {
-  openSseResponse(response);
+  openSseResponse(response, corsHeaders());
   events.add(response);
   writeSse(response, "ready", {
     connectedAt: new Date().toISOString()
@@ -167,9 +174,25 @@ function openEventStream(hub: Hub, events: SseBroker, request: IncomingMessage, 
 function writeJson(response: ServerResponse, statusCode: number, payload: unknown): void {
   const body = `${JSON.stringify(payload, null, 2)}\n`;
   response.writeHead(statusCode, {
+    ...corsHeaders(),
     "content-type": "application/json; charset=utf-8",
     "content-length": Buffer.byteLength(body),
     "cache-control": "no-store"
   });
   response.end(body);
+}
+
+function writeCorsHeaders(response: ServerResponse): void {
+  for (const [name, value] of Object.entries(corsHeaders())) {
+    response.setHeader(name, value);
+  }
+}
+
+function corsHeaders(): Record<string, string> {
+  return {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "content-type",
+    "vary": "origin"
+  };
 }

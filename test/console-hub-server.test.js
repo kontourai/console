@@ -59,6 +59,7 @@ test("local hub server streams accepted record updates over SSE", async () => {
 
     assert.equal(ready.event, "ready");
     assert.equal(initialState.event, "state");
+    assert.equal(streamClient.headers["access-control-allow-origin"], "*");
     assert.equal(initialState.data.source.acceptedEventCount, 0);
     assert.equal(invalid.statusCode, 400);
     assert.equal(result.statusCode, 202);
@@ -69,6 +70,23 @@ test("local hub server streams accepted record updates over SSE", async () => {
     assert.equal(update.data.state.timeline[0].id, "evt-surface-flow-handoff-001");
   } finally {
     if (streamClient.request) streamClient.request.destroy();
+    await close(app);
+  }
+});
+
+test("local hub server allows loopback browser preflight requests", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const result = await rawRequest("OPTIONS", `${baseUrl}/records`);
+
+    assert.equal(result.statusCode, 204);
+    assert.equal(result.headers["access-control-allow-origin"], "*");
+    assert.equal(result.headers["access-control-allow-methods"], "GET, POST, OPTIONS");
+    assert.equal(result.headers["access-control-allow-headers"], "content-type");
+  } finally {
     await close(app);
   }
 });
@@ -157,6 +175,7 @@ function rawRequest(method, url, body) {
       response.on("end", () => {
         resolve({
           statusCode: response.statusCode,
+          headers: response.headers,
           body: responseBody
         });
       });
@@ -175,6 +194,7 @@ function connectSse(url, holder = {}) {
   let currentData = [];
 
   const request = http.request(url, { method: "GET" }, (response) => {
+    holder.headers = response.headers;
     response.setEncoding("utf8");
     response.on("data", (chunk) => {
       buffer += chunk;
