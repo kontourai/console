@@ -116,6 +116,8 @@ export function buildProcessFlow(state: OperatingState): ProcessFlow {
     addEdge(edges, { id: "process-step", from: processNodeId as string, to: stepNodeId as string, active: processIsActive });
   }
 
+  // Edges are intentionally conservative: draw only intrinsic stage/process/step
+  // flow plus relationships backed by explicit refs in the operating state.
   const nodesByRef = new Map<string, string>([
     ...(activeProcess && processNodeId ? [[`run:${activeProcess.id}`, processNodeId]] as Array<[string, string]> : []),
   ]);
