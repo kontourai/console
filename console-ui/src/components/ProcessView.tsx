@@ -1,9 +1,10 @@
-import { formatStep, type ConsoleProcess } from "@kontour/console-core";
+import { formatStep, type ConsoleLearning, type ConsoleProcess } from "@kontour/console-core";
 import { formatTime } from "../utils/format";
 import { Badge } from "./Badge";
 import { Progress } from "./Progress";
+import { LearningNotes } from "./Rows";
 
-export function ProcessView({ process }: { process: ConsoleProcess }) {
+export function ProcessView({ process, advisoryLearnings = [] }: { process: ConsoleProcess; advisoryLearnings?: ConsoleLearning[] }) {
   return (
     <div className="process-block">
       <div className="row-title">
@@ -16,6 +17,7 @@ export function ProcessView({ process }: { process: ConsoleProcess }) {
         <div><dt>updated</dt><dd>{formatTime(process.updatedAt)}</dd></div>
       </dl>
       <Progress value={process.percentComplete} />
+      <LearningNotes learnings={advisoryLearnings} />
     </div>
   );
 }

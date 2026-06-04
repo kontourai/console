@@ -2,6 +2,8 @@ export type {
   ConsoleAction,
   ConsoleClaim,
   ConsoleGate,
+  ConsoleLearning,
+  ConsoleLink,
   ConsoleProcess,
   ConsoleRef,
   ConsoleSource,
@@ -9,6 +11,7 @@ export type {
   RecordAcceptedEvent,
   TimelineItem
 } from "./operating-state";
+export { selectLearningsBySubjectRef } from "./operating-state";
 export type { FlowEdge, FlowNode, FlowNodeKind, ProcessFlow } from "./process-flow";
 export { buildProcessFlow } from "./process-flow";
 export { formatStep, selectActiveProcess } from "./process-utils";

@@ -17,23 +17,32 @@ test("local hub server accepts records and exposes current state", async () => {
   try {
     const baseUrl = serverUrl(app);
     const stream = surfaceFlowHandoffStream();
+    const learningEvent = advisoryLearningEvent();
     const results = [];
 
     for (const event of stream.events) {
       results.push(await requestJson("POST", `${baseUrl}/records`, event));
     }
+    results.push(await requestJson("POST", `${baseUrl}/records`, learningEvent));
 
     const state = await requestJson("GET", `${baseUrl}/state`);
     const inspection = await requestJson("GET", `${baseUrl}/inspect`);
 
-    assert.deepEqual(results.map((item) => item.statusCode), [202, 202, 202, 202, 202, 202]);
-    assert.equal(state.body.source.acceptedEventCount, 6);
+    assert.deepEqual(results.map((item) => item.statusCode), [202, 202, 202, 202, 202, 202, 202]);
+    assert.equal(state.body.source.acceptedEventCount, 7);
     assert.equal(state.body.gates[0].status, "passed");
     assert.equal(state.body.claims[0].freshness.status, "fresh");
     assert.equal(state.body.actions[0].readOnly, true);
+    assert.equal(state.body.actions.length, 1);
     assert.equal(state.body.currentStage, "Provider directory freshness passed; Provider directory refresh can continue.");
+    assert.equal(state.body.learnings[0].id, "learning-provider-directory-operator-note");
+    assert.equal(state.body.learnings[0].nonAuthority, true);
+    assert.deepEqual(state.body.learnings[0].refs.map((ref) => `${ref.product}:${ref.kind}:${ref.id}`), [
+      "flow:run:run-provider-directory-refresh",
+      "surface:claim:claim-provider-directory-current"
+    ]);
     assert.equal(inspection.body.validation.errors.length, 0);
-    assert.equal(inspection.body.eventStreams.length, 2);
+    assert.equal(inspection.body.eventStreams.length, 3);
   } finally {
     await close(app);
   }
@@ -50,6 +59,7 @@ test("local hub server streams accepted record updates over SSE", async () => {
     const ready = await eventStream.nextEvent();
     const initialState = await eventStream.nextEvent();
     const stream = surfaceFlowHandoffStream();
+    const learningEvent = advisoryLearningEvent();
     const invalid = await requestJson("POST", `${baseUrl}/records`, {
       schema: "kontour.console.event",
       version: "0.1",
@@ -57,6 +67,8 @@ test("local hub server streams accepted record updates over SSE", async () => {
     });
     const result = await requestJson("POST", `${baseUrl}/records`, stream.events[0]);
     const update = await eventStream.nextEvent();
+    const learningResult = await requestJson("POST", `${baseUrl}/records`, learningEvent);
+    const learningUpdate = await eventStream.nextEvent();
 
     assert.equal(ready.event, "ready");
     assert.equal(initialState.event, "state");
@@ -69,6 +81,43 @@ test("local hub server streams accepted record updates over SSE", async () => {
     assert.equal(update.data.delivery.recordId, "evt-surface-flow-handoff-001");
     assert.equal(update.data.state.source.acceptedEventCount, 1);
     assert.equal(update.data.state.timeline[0].id, "evt-surface-flow-handoff-001");
+    assert.equal(learningResult.statusCode, 202);
+    assert.equal(learningUpdate.event, "record.accepted");
+    assert.equal(learningUpdate.data.delivery.recordId, "evt-learning-provider-directory-operator-note");
+    assert.equal(learningUpdate.data.state.learnings[0].id, "learning-provider-directory-operator-note");
+    assert.equal(learningUpdate.data.state.claims.length, 0);
+    assert.equal(learningUpdate.data.state.gates.length, 0);
+    assert.equal(learningUpdate.data.state.actions.length, 0);
+  } finally {
+    if (streamClient.request) streamClient.request.destroy();
+    await close(app);
+  }
+});
+
+test("local hub server keeps learning-only updates advisory over SSE", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  const streamClient = { request: null };
+  try {
+    const baseUrl = serverUrl(app);
+    const eventStream = connectSse(`${baseUrl}/events`, streamClient);
+    await eventStream.nextEvent();
+    await eventStream.nextEvent();
+
+    const result = await requestJson("POST", `${baseUrl}/records`, advisoryLearningEvent());
+    const update = await eventStream.nextEvent();
+    const state = await requestJson("GET", `${baseUrl}/state`);
+
+    assert.equal(result.statusCode, 202);
+    assert.equal(update.event, "record.accepted");
+    assert.equal(update.data.state.currentStage, "No authoritative events replayed.");
+    assert.equal(update.data.state.learnings.length, 1);
+    assert.equal(update.data.state.claims.length, 0);
+    assert.equal(update.data.state.gates.length, 0);
+    assert.equal(update.data.state.actions.length, 0);
+    assert.equal(state.body.currentStage, "No authoritative events replayed.");
+    assert.equal(state.body.actions.length, 0);
   } finally {
     if (streamClient.request) streamClient.request.destroy();
     await close(app);
@@ -129,6 +178,45 @@ test("local hub server rejects malformed requests safely", async () => {
 function surfaceFlowHandoffStream() {
   const report = inspectFixtures({ rootDir: process.env.KONTOUR_REPO_ROOT || process.cwd() });
   return report.eventStreams.find((item) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+}
+
+function advisoryLearningEvent() {
+  return {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-learning-provider-directory-operator-note",
+    type: "learning.recorded",
+    sequence: 99,
+    occurredAt: "2026-06-04T12:03:00Z",
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "kontour-console" },
+    subject: { product: "flow-agents", kind: "workflow-learning", id: "learning-provider-directory-operator-note" },
+    payload: {
+      summary: "Operators need advisory context separate from provider-owned claim and gate state.",
+      refs: [
+        { product: "surface", kind: "claim", id: "claim-provider-directory-current", label: "Provider directory current" },
+        { product: "flow", kind: "run", id: "run-provider-directory-refresh", label: "Provider directory refresh" }
+      ],
+      actions: [
+        {
+          id: "action-learning-should-not-project",
+          label: "Learning action should stay advisory",
+          status: "available",
+          authority: { product: "flow-agents", command: "learning.apply" }
+        }
+      ],
+      after: {
+        nextActionRefs: [{ product: "flow", kind: "action", id: "action-learning-next-should-not-project" }]
+      },
+      data: {
+        id: "learning-provider-directory-operator-note",
+        family: "workflow",
+        nonAuthority: true,
+        confidence: 0.84,
+        sourceRef: { product: "flow", kind: "run", id: "run-provider-directory-refresh", label: "Provider directory refresh" }
+      }
+    }
+  };
 }
 
 function listen(app) {
