@@ -1,5 +1,5 @@
-import { formatStep, formatTime } from "../utils/format";
-import type { ConsoleProcess } from "../types";
+import { formatStep, type ConsoleProcess } from "@kontour/console-core";
+import { formatTime } from "../utils/format";
 import { Badge } from "./Badge";
 import { Progress } from "./Progress";
 

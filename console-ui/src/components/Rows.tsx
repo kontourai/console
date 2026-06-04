@@ -1,5 +1,5 @@
+import type { ConsoleAction, ConsoleClaim, ConsoleGate, TimelineItem } from "@kontour/console-core";
 import { formatTime } from "../utils/format";
-import type { ConsoleAction, ConsoleClaim, ConsoleGate, TimelineItem } from "../types";
 import { Badge } from "./Badge";
 
 export function GateRow({ gate }: { gate: ConsoleGate }) {

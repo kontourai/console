@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import type { OperatingState, RecordAcceptedEvent } from "@kontour/console-core";
 import { connectHubEvents, DEFAULT_HUB_URL } from "../hubClient";
-import type { ConnectionStatus, OperatingState, RecordAcceptedEvent } from "../types";
+import type { ConnectionStatus } from "../types";
 
 const EMPTY_STATE: OperatingState = {
   currentStage: "Waiting for hub state.",

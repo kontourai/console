@@ -1,4 +1,5 @@
-import type { HubEventHandlers, OperatingState, RecordAcceptedEvent } from "./types";
+import type { OperatingState, RecordAcceptedEvent } from "@kontour/console-core";
+import type { HubEventHandlers } from "./types";
 
 export const DEFAULT_HUB_URL = "http://127.0.0.1:3737";
 

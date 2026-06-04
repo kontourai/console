@@ -14,6 +14,16 @@ Kontour Console brings those products together into one operating plane for clai
 
 This repo ships local-first Console foundation code alongside the product context and architecture decisions. It includes fixture inspection, local file sinks, deterministic replay, and a loopback-only development server; it is not a hosted production service.
 
+## Package Layout
+
+The Console prototype is split into TypeScript workspaces with clear ownership:
+
+- `console-core` owns shared TypeScript record and process-flow shapes used across packages.
+- `console-server` owns local file sinks, fixture/local inspection, current-state projection, and the loopback SSE hub.
+- `console-ui` owns the React/Vite UI that renders hub state and live events.
+
+Root commands delegate into those workspaces so a fresh checkout can still use `npm test`, `npm run typecheck`, `npm run inspect:fixtures`, and `npm run serve` from this directory.
+
 ## Contributor Hook Tooling
 
 This repo includes optional local contributor tooling for Git hooks. To opt in, run:
@@ -54,13 +64,15 @@ A Console producer is the Kontour product or product runtime that emits control-
 
 Products can write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under a configured `.kontour` root, appending events below `.kontour/events/` and writing current projection snapshots below `.kontour/projections/`.
 
-```js
+Prototype package exports point at TypeScript source. Run programmatic examples in this repo with `node --import tsx` or another TypeScript loader until the packages gain a compiled publish target.
+
+```ts
 const {
   KontourEmitter,
   LocalFileSink,
   CompositeSink,
   InMemorySink
-} = require("./src/console-foundation");
+} = require("@kontour/console-server");
 
 const memory = new InMemorySink();
 const emitter = new KontourEmitter({
@@ -92,13 +104,13 @@ console.log(result.children.map((child) => ({
 After a producer writes local records, inspect the generated `.kontour` tree without copying files into `docs/examples`:
 
 ```sh
-node bin/kontour-console-inspect.js local
+node --import tsx console-server/bin/kontour-console-inspect.ts local
 ```
 
 The same local read path is exported for programmatic consumers:
 
-```js
-const { inspectLocalKontour } = require("./src/console-foundation");
+```ts
+const { inspectLocalKontour } = require("@kontour/console-server");
 
 const report = inspectLocalKontour({ rootDir: process.cwd() });
 console.log(report.eventStreams.length, report.projections.length);
@@ -129,13 +141,13 @@ The `kontour serve` command binds to `127.0.0.1:3737` by default and exposes:
 
 `surfaceClaimStateToProjection()` and `surfaceFreshnessTransitionToEvent()` are the first Surface Console producer pattern in this package. They are dependency-free helper/example functions for mapping caller-owned Surface claim state into local Console records; they are not live Surface integration.
 
-```js
+```ts
 const {
   KontourEmitter,
   LocalFileSink,
   surfaceClaimStateToProjection,
   surfaceFreshnessTransitionToEvent
-} = require("./src/console-foundation");
+} = require("@kontour/console-server");
 
 const emitter = new KontourEmitter({
   sink: new LocalFileSink({ root: ".kontour" })
@@ -167,7 +179,7 @@ Optional action descriptors supplied to the helper are persisted as inert projec
 
 `flowProcessStateToProjection()` and `flowGateTransitionToEvent()` are dependency-free Flow Console producer helper/example functions. They map caller-owned process and gate state into local Console records; they are not real Flow integration, do not run Flow control semantics, and do not perform action descriptors. Action descriptors are inert, read-only metadata for display and review.
 
-```js
+```ts
 const {
   KontourEmitter,
   LocalFileSink,
@@ -175,7 +187,7 @@ const {
   getFlowProcessStatus,
   flowProcessStateToProjection,
   flowGateTransitionToEvent
-} = require("./src/console-foundation");
+} = require("@kontour/console-server");
 
 const emitter = new KontourEmitter({
   sink: new LocalFileSink({ root: ".kontour" })

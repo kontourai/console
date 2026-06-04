@@ -1,0 +1,107 @@
+export interface ConsoleRef {
+  product?: string;
+  kind?: string;
+  id?: string;
+  label?: string;
+  name?: string;
+}
+
+export interface ConsoleSource {
+  mode?: string;
+  streamIds?: string[];
+  acceptedEventCount?: number;
+  duplicateEventCount?: number;
+  lastAcceptedEventId?: string | null;
+}
+
+export interface ConsoleProcess {
+  id: string;
+  label?: string;
+  status?: string;
+  currentStep?: string | { id?: string; label?: string };
+  percentComplete?: number;
+  updatedAt?: string;
+  claimRefs?: ConsoleRef[];
+  nextActionRefs?: ConsoleRef[];
+}
+
+export interface ConsoleGate {
+  id: string;
+  label?: string;
+  status?: string;
+  processRef?: ConsoleRef;
+  expectationRefs?: ConsoleRef[];
+  evidenceRefs?: ConsoleRef[];
+  missingEvidence?: string[];
+  routeBack?: {
+    reason?: string;
+    targetStep?: string;
+    attempt?: number;
+    maxAttempts?: number;
+  };
+  updatedAt?: string;
+}
+
+export interface ConsoleClaim {
+  id: string;
+  label?: string;
+  status?: string;
+  freshness?: {
+    status?: string;
+    lastCheckedAt?: string;
+    expiresAt?: string;
+  };
+  materiality?: string;
+  processRefs?: ConsoleRef[];
+  evidenceRefs?: ConsoleRef[];
+  updatedAt?: string;
+  lastVerifiedAt?: string;
+}
+
+export interface ConsoleAction {
+  id: string;
+  label?: string;
+  kind?: string;
+  status?: string;
+  readOnly?: boolean;
+  authority?: {
+    product?: string;
+    command?: string;
+  };
+  subjectRefs?: ConsoleRef[];
+}
+
+export interface TimelineItem {
+  id: string;
+  type?: string;
+  occurredAt?: string;
+  observedAt?: string;
+  summary?: string;
+  streamId?: string;
+  producer?: {
+    product?: string;
+    id?: string;
+    name?: string;
+  };
+  subjectRef?: ConsoleRef;
+}
+
+export interface OperatingState {
+  generatedAt?: string | null;
+  currentStage?: string;
+  source?: ConsoleSource;
+  processes?: ConsoleProcess[];
+  gates?: ConsoleGate[];
+  claims?: ConsoleClaim[];
+  actions?: ConsoleAction[];
+  timeline?: TimelineItem[];
+}
+
+export interface RecordAcceptedEvent {
+  delivery?: {
+    outcome?: string;
+    recordId?: string;
+    observedAt?: string;
+  };
+  state?: OperatingState;
+}

@@ -3,20 +3,25 @@
   "version": "0.0.0",
   "private": true,
   "type": "commonjs",
+  "workspaces": [
+    "console-core",
+    "console-server",
+    "console-ui"
+  ],
   "bin": {
-    "kontour": "bin/kontour.js",
-    "kontour-console-inspect": "bin/kontour-console-inspect.js"
+    "kontour": "console-server/bin/kontour.ts",
+    "kontour-console-inspect": "console-server/bin/kontour-console-inspect.ts"
   },
   "scripts": {
     "build": "npm run typecheck",
-    "inspect:fixtures": "node bin/kontour-console-inspect.js",
-    "prototype:handoff": "node scripts/serve-prototype.cjs docs/prototypes/handoff-replay",
-    "serve": "node bin/kontour.js serve",
-    "test": "npm run typecheck && node scripts/check-content-boundary.cjs && node --test test/*.js && node --import tsx --test test/*.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "check:content-boundary": "node scripts/check-content-boundary.cjs",
-    "setup:repo-hooks": "node scripts/setup-repo-hooks.cjs",
-    "validate:repo-hooks": "node scripts/validate-repo-hooks.cjs"
+    "inspect:fixtures": "npm --workspace @kontour/console-server run inspect:fixtures",
+    "prototype:handoff": "node --import tsx scripts/serve-prototype.ts docs/prototypes/handoff-replay",
+    "serve": "npm --workspace @kontour/console-server run serve --",
+    "test": "npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontour/console-core test && npm --workspace @kontour/console-server test && npm --workspace @kontour/console-ui run typecheck",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontour/console-core run typecheck && npm --workspace @kontour/console-server run typecheck && npm --workspace @kontour/console-ui run typecheck",
+    "check:content-boundary": "node --import tsx scripts/check-content-boundary.ts",
+    "setup:repo-hooks": "node --import tsx scripts/setup-repo-hooks.ts",
+    "validate:repo-hooks": "node --import tsx scripts/validate-repo-hooks.ts"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

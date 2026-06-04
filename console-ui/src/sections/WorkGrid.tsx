@@ -3,8 +3,7 @@ import { Panel } from "../components/Panel";
 import { ProcessFlowDiagram } from "../components/ProcessFlowDiagram";
 import { ProcessView } from "../components/ProcessView";
 import { ActionRow, ClaimRow, GateRow } from "../components/Rows";
-import { buildProcessFlow } from "../utils/processFlow";
-import type { OperatingState } from "../types";
+import { buildProcessFlow, type OperatingState } from "@kontour/console-core";
 
 export function WorkGrid({ state }: { state: OperatingState }) {
   const flow = buildProcessFlow(state);

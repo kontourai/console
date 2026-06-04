@@ -1,6 +1,6 @@
+import type { OperatingState } from "@kontour/console-core";
 import { Metric } from "../components/Metric";
 import { formatTime } from "../utils/format";
-import type { OperatingState } from "../types";
 
 export function StageBand({ state }: { state: OperatingState }) {
   return (

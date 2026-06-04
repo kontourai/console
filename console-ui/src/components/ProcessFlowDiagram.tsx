@@ -1,4 +1,4 @@
-import type { FlowEdge, FlowNode } from "../utils/processFlow";
+import type { FlowEdge, FlowNode } from "@kontour/console-core";
 
 const NODE_WIDTH = 184;
 const NODE_HEIGHT = 82;

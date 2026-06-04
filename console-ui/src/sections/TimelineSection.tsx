@@ -1,6 +1,6 @@
+import type { OperatingState, RecordAcceptedEvent } from "@kontour/console-core";
 import { Empty } from "../components/Empty";
 import { TimelineRow } from "../components/Rows";
-import type { OperatingState, RecordAcceptedEvent } from "../types";
 
 export function TimelineSection({ state, lastAccepted }: { state: OperatingState; lastAccepted: RecordAcceptedEvent | null }) {
   const recentTimeline = [...(state.timeline || [])].slice(-8).reverse();

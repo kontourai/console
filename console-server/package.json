@@ -1,0 +1,24 @@
+{
+  "name": "@kontour/console-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "commonjs",
+  "exports": {
+    ".": "./src/console-foundation/index.ts"
+  },
+  "bin": {
+    "kontour": "bin/kontour.ts",
+    "kontour-console-inspect": "bin/kontour-console-inspect.ts"
+  },
+  "scripts": {
+    "inspect:fixtures": "KONTOUR_REPO_ROOT=.. node --import tsx bin/kontour-console-inspect.ts",
+    "serve": "KONTOUR_REPO_ROOT=.. node --import tsx bin/kontour.ts serve",
+    "test": "KONTOUR_REPO_ROOT=.. node --import tsx --test test/*.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}
