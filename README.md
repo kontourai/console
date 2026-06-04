@@ -14,6 +14,30 @@ Kontour Console brings those products together into one operating plane for clai
 
 This repo ships a small local read-only fixture inspector package alongside the product context and architecture decisions; it is not an app or hosted service.
 
+## Contributor Hook Tooling
+
+This repo includes optional local contributor tooling for Git hooks. To opt in, run:
+
+```sh
+npm run setup:repo-hooks
+```
+
+That command sets only this repository's local `core.hooksPath` to `.githooks`. It does not change global or system Git config. The tracked `.githooks/pre-push` hook runs the bounded existing Console lane:
+
+```sh
+npm test
+```
+
+Validate the hook wiring and drift checks with:
+
+```sh
+npm run validate:repo-hooks
+```
+
+For local/private boundary checks, set `KONTOUR_CONSOLE_BOUNDARY_DENYLIST` to a comma- or newline-separated list before running validation.
+
+Hook setup is not required for a fresh checkout to run package verification; `npm test` remains the direct verification command. These hooks are local contributor tooling, not Console event, projection, or control-plane semantics. The hook docs use generic suite products and producers language because product boundaries remain owned by suite primitives. When a push must intentionally skip local hooks, use Git's standard `--no-verify` mechanism.
+
 ## Local Fixture Inspection
 
 Run the read-only fixture inspector from the repo root:
