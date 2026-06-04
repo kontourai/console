@@ -237,6 +237,7 @@ The `| string` extension point lets products emit additional names, but custom e
 | Review items | `review_item.rejected` | The owning product recorded a rejection for a review item. |
 | Evidence | `evidence.attached` | Evidence, proof, source excerpt, observed result, or integrity metadata was attached to a subject. |
 | Decisions | `decision.recorded` | A durable approval, rejection, exception, route-back, refresh request, publish, or other decision was recorded. |
+| Learning | `learning.*` | A product-owned learning was recorded or updated as non-authoritative operating context. Learning may reference decisions, telemetry, Flow Agents `workflow-learning` records, or other source records, but it cannot revoke or change claims, gates, decisions, actions, product records, source facts, or product truth. |
 | Actions | `action.requested` | A next action was requested or queued through the product that owns the authority. |
 | Actions | `action.completed` | A product-owned action completed, such as refresh, approve, apply, resume, route back, or attach evidence. |
 | Exceptions | `exception.requested` | A product or actor requested an exception to gate, readiness, policy, or process requirements. |
@@ -258,6 +259,8 @@ type ConsoleEventPayload = {
 ```
 
 Events may carry a full `after` view, a small patch, or a product-specific `data` object. Consumers should use event type, subject, refs, and links for cross-product behavior; product-specific detail belongs under `data` or `extensions`.
+
+`learning.*` event payloads should carry refs, links, summaries, and product-specific `data` or `extensions`; they are Console handoff records, not a universal source schema. Source schemas remain product-owned. A learning that results in an authoritative product change must be accompanied by the owning product's normal event, such as `decision.recorded`, `claim.status.changed`, `gate.routed_back`, or `action.requested`.
 
 ## Actor
 
