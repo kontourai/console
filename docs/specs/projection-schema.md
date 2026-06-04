@@ -254,6 +254,7 @@ type ConsoleEventPayload = {
   summary?: string;
   reason?: string;
   refs?: CrossProductRef[];
+  links?: CrossProductLink[];
   data?: Record<string, unknown>;
 };
 ```
@@ -294,6 +295,7 @@ type KontourConsoleProjection = {
   decisions?: DecisionProjection[];
   actions?: ConsoleActionProjection[];
   exceptions?: ExceptionProjection[];
+  learnings?: LearningProjection[];
   links?: CrossProductLink[];
   extensions?: Record<string, unknown>;
 };
@@ -335,7 +337,7 @@ Rebuild behavior:
 | Input streams | Read one or more local JSONL streams for the projection scope. Candidate files must be resolved and containment-checked under an allowed stream root before reading. A stream id should be the stable file path, archive segment id, or producer-declared stream identity. |
 | Idempotency | Accept the first valid event for an `id` and ignore later duplicates with the same `id`. Re-emitted events must keep the same `id`; corrections are new events linked by `causationId`. |
 | Ordering | Sort by producer-local `sequence` when it is present for events from the same producer and stream. Events without usable sequence order by `occurredAt`, then `observedAt`, then file order as the final local tie-breaker. |
-| Folding | Apply events as state transitions into claims, processes, gates, review items, evidence, decisions, actions, exceptions, links, and summaries. The specific reducer is out of scope for v0; the fold must not invent product-owned semantics. |
+| Folding | Apply events as state transitions into claims, processes, gates, review items, evidence, decisions, actions, exceptions, learnings, links, and summaries. The specific reducer is out of scope for v0; the fold must not invent product-owned semantics. |
 | Correlation and causation | Use `correlationId` to build user-visible timelines for one workflow, review, claim refresh, route-back, or backfill. Use `causationId` to show direct parent-child transitions such as a failed gate causing a route-back. |
 | Link accumulation | Accumulate explicit `links`, `payload.refs`, and subject relationships into projection `links` where they remain relevant to the current read model. Later events may supersede status, but historical links remain available for timelines when retained by the reducer. |
 | Snapshot fallback | A projection snapshot may seed replay or stand in when event history is unavailable or partial. If events exist after the snapshot point, replay only the accepted events after the snapshot's recorded position and set `derivedFrom.mode` to `snapshot_plus_events`. |
@@ -370,6 +372,7 @@ The v0 projection envelope carries arrays of product-owned objects plus explicit
 | Decisions | `decisions` | The product or actor that recorded the decision owns the durable decision meaning. | Timeline entries and rationale display. |
 | Actions | `actions` | The authority descriptor identifies the owning product; Kontour Console must route execution through trusted product control paths. | Available next actions, disabled reasons, and pending/completed action state. |
 | Exceptions | `exceptions` | Flow or the product governance layer owns exception acceptance, rejection, expiry, and trust implications. | Exception requests and accepted exception visibility. |
+| Learnings | `learnings` | The emitting product owns the source schema, lifecycle, and meaning. Learning records are non-authoritative Console operating context only. | Explanatory context connected to workflows, decisions, source records, telemetry, or domain observations. |
 | Links | `links` | Emitting products own explicit identity and relationship assertions. | Cross-product navigation and correlation without global id minting. |
 | Extensions | `extensions` | Namespaced product or deployment detail remains product-owned. | Optional vertical fields that are not required for core v0 behavior. |
 
@@ -611,6 +614,27 @@ type ExceptionProjection = {
 ```
 
 Exceptions usually originate in Flow or product governance layers. Surface may reflect resulting trust implications through claims and events.
+
+## Learnings
+
+```ts
+type LearningProjection = {
+  id: string;
+  subjectRef: CrossProductRef;
+  family: "workflow" | "domain";
+  nonAuthority: true;
+  summary: string;
+  confidence?: number;
+  sourceRef?: CrossProductRef;
+  refs?: CrossProductRef[];
+  links?: CrossProductLink[];
+  extensions?: Record<string, unknown>;
+};
+```
+
+Learning projection objects are thin Console control-plane summaries of product-owned learning records. `family` is limited to `workflow` or `domain`, `nonAuthority` must be `true`, and `summary` is the operator-facing statement. Optional `confidence`, `sourceRef`, `refs`, `links`, and namespaced `extensions` can connect the learning to source records, decisions, telemetry, Flow Agents `workflow-learning` records, or domain objects.
+
+Kontour Console does not own or define the source learning schema. Product-specific learning fields remain in product-owned source records, event `payload.data`, refs, links, or namespaced extensions. A learning cannot revoke, change, or override claims, gates, decisions, actions, source facts, product records, or product truth; authoritative changes require the owning product's normal event.
 
 ## Freshness And Time Estimates
 

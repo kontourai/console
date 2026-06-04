@@ -19,6 +19,7 @@ function buildCurrentOperatingState(input, options = {}) {
     gates: [],
     claims: [],
     evidence: [],
+    learnings: [],
     actions: [],
     links: [],
     timeline: []
@@ -29,6 +30,7 @@ function buildCurrentOperatingState(input, options = {}) {
     gates: new Map(),
     claims: new Map(),
     evidence: new Map(),
+    learnings: new Map(),
     actions: new Map(),
     links: new Map(),
     timeline: []
@@ -40,6 +42,7 @@ function buildCurrentOperatingState(input, options = {}) {
   state.gates = sortById([...working.gates.values()]);
   state.claims = sortById([...working.claims.values()]);
   state.evidence = sortById([...working.evidence.values()]);
+  state.learnings = sortById([...working.learnings.values()]);
   state.actions = sortById([...working.actions.values()]).map((action) => ({
     ...action,
     readOnly: true
@@ -125,6 +128,9 @@ function applyEvent(state, event, streamId) {
       upsertEvidence(state, event, subject, refs, summary);
       break;
     default:
+      if (typeof event.type === "string" && event.type.startsWith("learning.")) {
+        upsertLearning(state, event, subject, refs, payload, summary);
+      }
       break;
   }
 
@@ -259,6 +265,41 @@ function upsertEvidence(state, event, subject, refs, summary) {
   state.evidence.set(subject.id, compactObject(next));
 }
 
+function upsertLearning(state, event, subject, refs, payload, summary) {
+  const data = payload.data && typeof payload.data === "object" ? payload.data : {};
+  if (!summary || !["workflow", "domain"].includes(data.family) || data.nonAuthority !== true) return;
+
+  const id = typeof data.id === "string" && data.id.length > 0
+    ? data.id
+    : subject.id || event.id;
+  const existing = state.learnings.get(id) || {
+    id,
+    sourceEventId: event.id,
+    subjectRef: subject,
+    refs: [],
+    updatedAt: event.occurredAt
+  };
+  const sourceRef = data.sourceRef && typeof data.sourceRef === "object" && isRef(data.sourceRef)
+    ? clone(data.sourceRef)
+    : undefined;
+  const next = {
+    ...existing,
+    id,
+    sourceEventId: existing.sourceEventId || event.id,
+    sourceRef: sourceRef || existing.sourceRef,
+    subjectRef: subject,
+    family: data.family,
+    nonAuthority: true,
+    summary,
+    confidence: data.confidence,
+    refs: mergeRefs(existing.refs, refs),
+    links: mergeLinks(existing.links, arrayOf(event.links).concat(arrayOf(payload.links))),
+    updatedAt: event.occurredAt || existing.updatedAt
+  };
+
+  state.learnings.set(id, compactObject(next));
+}
+
 function updateProcessFromGate(state, event, refs, after, gate) {
   if (!gate.processRef || !gate.processRef.id) return;
   const existing = state.processes.get(gate.processRef.id) || {
@@ -354,6 +395,27 @@ function mergeRefs(existing, refs) {
     byKey.set(refKey(ref), clone(ref));
   });
   return [...byKey.values()].sort(compareRefs);
+}
+
+function isRef(ref) {
+  return Boolean(ref
+    && typeof ref === "object"
+    && !Array.isArray(ref)
+    && typeof ref.product === "string"
+    && ref.product.length > 0
+    && typeof ref.kind === "string"
+    && ref.kind.length > 0
+    && typeof ref.id === "string"
+    && ref.id.length > 0);
+}
+
+function mergeLinks(existing, links) {
+  const byKey = new Map();
+  arrayOf(existing).concat(arrayOf(links)).forEach((link) => {
+    if (!link) return;
+    byKey.set(linkKey(link), clone(link));
+  });
+  return [...byKey.values()].sort(compareLinks);
 }
 
 function refKey(ref) {

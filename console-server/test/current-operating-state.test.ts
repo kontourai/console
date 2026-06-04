@@ -104,3 +104,91 @@ test("replay defaults generatedAt from the last accepted event", () => {
 
   assert.equal(state.generatedAt, "2026-06-03T10:01:42Z");
 });
+
+test("replay folds learning events as deduped non-authoritative context", () => {
+  const learningEvent = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-learning-route-back-001",
+    type: "learning.recorded",
+    occurredAt: "2026-06-04T12:00:00Z",
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "kontour-console" },
+    subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-route-back" },
+    payload: {
+      summary: "Route-back outcomes need a short operator-facing reason.",
+      refs: [{ product: "flow", kind: "run", id: "run-route-back" }],
+      links: [
+        {
+          from: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-route-back" },
+          relation: "derived_from",
+          to: { product: "flow", kind: "run", id: "run-route-back" }
+        }
+      ],
+      data: {
+        id: "learning-route-back-reason",
+        family: "workflow",
+        nonAuthority: true,
+        confidence: 0.82
+      }
+    }
+  };
+  const state = buildCurrentOperatingState({
+    eventStreams: [
+      {
+        relativePath: "inline-learning.jsonl",
+        events: [learningEvent, learningEvent]
+      }
+    ]
+  }, { generatedAt: "2026-06-04T12:00:01Z" });
+
+  assert.equal(state.source.acceptedEventCount, 1);
+  assert.equal(state.source.duplicateEventCount, 1);
+  assert.equal(state.timeline.length, 1);
+  assert.equal(state.timeline[0].id, "evt-learning-route-back-001");
+  assert.equal(state.learnings.length, 1);
+  assert.equal(state.learnings[0].id, "learning-route-back-reason");
+  assert.equal(state.learnings[0].sourceEventId, "evt-learning-route-back-001");
+  assert.equal(state.learnings[0].subjectRef.id, "workflow-learning-route-back");
+  assert.equal(state.learnings[0].family, "workflow");
+  assert.equal(state.learnings[0].nonAuthority, true);
+  assert.equal(state.learnings[0].summary, "Route-back outcomes need a short operator-facing reason.");
+  assert.equal(state.learnings[0].confidence, 0.82);
+  assert.equal(state.learnings[0].refs[0].id, "run-route-back");
+  assert.equal(state.learnings[0].links[0].relation, "derived_from");
+});
+
+test("replay ignores unsafe learning id and sourceRef payload fields", () => {
+  const learningEvent = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-learning-safe-fallback",
+    type: "learning.recorded",
+    occurredAt: "2026-06-04T12:00:00Z",
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "kontour-console" },
+    subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-safe-fallback" },
+    payload: {
+      summary: "Invalid optional payload fields should not affect replay.",
+      data: {
+        id: "",
+        family: "workflow",
+        nonAuthority: true,
+        sourceRef: { product: "flow-agents", kind: "workflow-learning" }
+      }
+    }
+  };
+
+  const state = buildCurrentOperatingState({
+    eventStreams: [
+      {
+        relativePath: "inline-learning-invalid-optional.jsonl",
+        events: [learningEvent]
+      }
+    ]
+  });
+
+  assert.equal(state.learnings.length, 1);
+  assert.equal(state.learnings[0].id, "workflow-learning-safe-fallback");
+  assert.equal(state.learnings[0].sourceRef, undefined);
+});
