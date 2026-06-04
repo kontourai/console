@@ -13,7 +13,8 @@ const OBJECT_ARRAY_KEYS = [
   "evidence",
   "decisions",
   "actions",
-  "exceptions"
+  "exceptions",
+  "learnings"
 ];
 
 function inspectFixtures(options = {}) {
@@ -249,6 +250,7 @@ function validateEvent(event, basePath) {
   validateRef(event.subject, `${basePath}.subject`, issues);
   arrayOf(event.payload && event.payload.refs).forEach((ref, index) => validateRef(ref, `${basePath}.payload.refs[${index}]`, issues));
   validateLinks(event.links, `${basePath}.links`, issues);
+  validateLearningEventPayload(event, basePath, issues);
   if (event.schema !== "kontour.console.event") issues.push(issue("error", `${basePath}.schema`, "expected kontour.console.event"));
   if (event.version !== "0.1") issues.push(issue("warning", `${basePath}.version`, "expected v0.1 event version"));
   return issues;
@@ -277,6 +279,7 @@ function validateProjection(snapshot, basePath) {
   arrayOf(snapshot.evidence).forEach((evidence, index) => validateEvidence(evidence, `${basePath}.evidence[${index}]`, issues));
   arrayOf(snapshot.decisions).forEach((decision, index) => validateDecision(decision, `${basePath}.decisions[${index}]`, issues));
   arrayOf(snapshot.exceptions).forEach((exception, index) => validateException(exception, `${basePath}.exceptions[${index}]`, issues));
+  arrayOf(snapshot.learnings).forEach((learning, index) => validateLearning(learning, `${basePath}.learnings[${index}]`, issues));
   arrayOf(snapshot.actions).forEach((action, index) => {
     requireString(action, "id", `${basePath}.actions[${index}]`, issues);
     requireObject(action, "authority", `${basePath}.actions[${index}]`, issues);
@@ -518,6 +521,44 @@ function validateException(exception, basePath, issues) {
   validateRefArray(exception && exception.evidenceRefs, `${basePath}.evidenceRefs`, issues);
 }
 
+function validateLearning(learning, basePath, issues) {
+  requireString(learning, "id", basePath, issues);
+  requireString(learning, "summary", basePath, issues);
+  validateRef(learning && learning.subjectRef, `${basePath}.subjectRef`, issues);
+  validateLearningFamily(learning && learning.family, `${basePath}.family`, issues);
+  requireTrue(learning, "nonAuthority", basePath, issues);
+  validateOptionalNumber(learning && learning.confidence, `${basePath}.confidence`, issues);
+  if (learning && learning.sourceRef !== undefined) validateRef(learning.sourceRef, `${basePath}.sourceRef`, issues);
+  validateRefArray(learning && learning.refs, `${basePath}.refs`, issues);
+  validateLinks(learning && learning.links, `${basePath}.links`, issues);
+}
+
+function validateLearningEventPayload(event, basePath, issues) {
+  if (!event || typeof event.type !== "string" || !event.type.startsWith("learning.")) return;
+  const payload = event.payload;
+  requireString(payload, "summary", `${basePath}.payload`, issues);
+  requireObject(payload, "data", `${basePath}.payload`, issues);
+  const data = payload && payload.data;
+  validateLearningFamily(data && data.family, `${basePath}.payload.data.family`, issues);
+  requireTrue(data, "nonAuthority", `${basePath}.payload.data`, issues);
+  validateOptionalNumber(data && data.confidence, `${basePath}.payload.data.confidence`, issues);
+  if (data && data.id !== undefined) requireString(data, "id", `${basePath}.payload.data`, issues);
+  if (data && data.sourceRef !== undefined) validateRef(data.sourceRef, `${basePath}.payload.data.sourceRef`, issues);
+  validateLinks(payload && payload.links, `${basePath}.payload.links`, issues);
+}
+
+function validateLearningFamily(value, pathName, issues) {
+  if (!["workflow", "domain"].includes(value)) {
+    issues.push(issue("error", pathName, "expected workflow or domain"));
+  }
+}
+
+function validateOptionalNumber(value, pathName, issues) {
+  if (value !== undefined && typeof value !== "number") {
+    issues.push(issue("error", pathName, "expected a number when present"));
+  }
+}
+
 function validateLinks(links, basePath, issues) {
   if (links === undefined) return;
   if (!Array.isArray(links)) {
@@ -578,6 +619,12 @@ function requireString(object, key, basePath, issues) {
 function requireObject(object, key, basePath, issues) {
   if (!object || !object[key] || typeof object[key] !== "object" || Array.isArray(object[key])) {
     issues.push(issue("error", `${basePath}.${key}`, "expected an object"));
+  }
+}
+
+function requireTrue(object, key, basePath, issues) {
+  if (!object || object[key] !== true) {
+    issues.push(issue("error", `${basePath}.${key}`, "expected true"));
   }
 }
 

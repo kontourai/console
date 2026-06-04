@@ -6,6 +6,7 @@ const {
   getSurfaceClaimStatus,
   getFlowProcessStatus,
   getSurveyReviewState,
+  validateEvent,
   validateProjection
 } = require("../src/console-foundation");
 
@@ -245,4 +246,153 @@ test("projection validation reports malformed enriched ref fields", () => {
 
   assert.equal(paths.has("invalid-enriched.json.claims[0].evidenceRefs[0].uid"), true);
   assert.equal(paths.has("invalid-enriched.json.claims[0].evidenceRefs[0].scope"), true);
+});
+
+test("learning event validation accepts thin non-authoritative payloads", () => {
+  const event = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-learning-001",
+    type: "learning.recorded",
+    occurredAt: "2026-06-04T12:00:00Z",
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "kontour-console" },
+    subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-001" },
+    payload: {
+      summary: "Route-back outcomes need a short operator-facing reason.",
+      refs: [{ product: "flow", kind: "run", id: "run-001" }],
+      links: [
+        {
+          from: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-001" },
+          relation: "derived_from",
+          to: { product: "flow", kind: "run", id: "run-001" }
+        }
+      ],
+      data: {
+        family: "workflow",
+        nonAuthority: true,
+        confidence: 0.82
+      }
+    }
+  };
+
+  const errors = validateEvent(event, "learning.jsonl:1").filter((item) => item.severity === "error");
+
+  assert.equal(errors.length, 0);
+});
+
+test("learning projection validation accepts thin non-authoritative objects", () => {
+  const projection = {
+    schema: "kontour.console.projection",
+    version: "0.1",
+    generatedAt: "2026-06-04T12:00:00Z",
+    derivedFrom: {},
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "kontour-console" },
+    learnings: [
+      {
+        id: "learning-route-back-reason",
+        subjectRef: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-001" },
+        family: "workflow",
+        nonAuthority: true,
+        summary: "Route-back outcomes need a short operator-facing reason.",
+        confidence: 0.82,
+        sourceRef: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-001" },
+        refs: [{ product: "flow", kind: "run", id: "run-001" }],
+        links: [
+          {
+            from: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-001" },
+            relation: "derived_from",
+            to: { product: "flow", kind: "run", id: "run-001" }
+          }
+        ],
+        extensions: {
+          "flow-agents": {
+            sourceKind: "workflow-learning"
+          }
+        }
+      }
+    ]
+  };
+
+  const errors = validateProjection(projection, "learning-projection.json").filter((item) => item.severity === "error");
+
+  assert.equal(errors.length, 0);
+});
+
+test("learning validation rejects missing family and non-authority fields", () => {
+  const event = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-learning-invalid",
+    type: "learning.recorded",
+    occurredAt: "2026-06-04T12:00:00Z",
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "kontour-console" },
+    subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-invalid" },
+    payload: {
+      summary: "Invalid learning.",
+      data: {
+        nonAuthority: false
+      }
+    }
+  };
+  const projection = {
+    schema: "kontour.console.projection",
+    version: "0.1",
+    generatedAt: "2026-06-04T12:00:00Z",
+    derivedFrom: {},
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "kontour-console" },
+    learnings: [
+      {
+        id: "learning-invalid",
+        subjectRef: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-invalid" },
+        family: "source-owned",
+        nonAuthority: false,
+        summary: "Invalid learning."
+      }
+    ]
+  };
+
+  const eventPaths = new Set(validateEvent(event, "learning.jsonl:2")
+    .filter((item) => item.severity === "error")
+    .map((item) => item.path));
+  const projectionPaths = new Set(validateProjection(projection, "learning-projection.json")
+    .filter((item) => item.severity === "error")
+    .map((item) => item.path));
+
+  assert.equal(eventPaths.has("learning.jsonl:2.payload.data.family"), true);
+  assert.equal(eventPaths.has("learning.jsonl:2.payload.data.nonAuthority"), true);
+  assert.equal(projectionPaths.has("learning-projection.json.learnings[0].family"), true);
+  assert.equal(projectionPaths.has("learning-projection.json.learnings[0].nonAuthority"), true);
+});
+
+test("learning event validation rejects invalid optional id and sourceRef fields", () => {
+  const event = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-learning-invalid-ref",
+    type: "learning.recorded",
+    occurredAt: "2026-06-04T12:00:00Z",
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "kontour-console" },
+    subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-invalid-ref" },
+    payload: {
+      summary: "Invalid optional fields.",
+      data: {
+        id: "",
+        family: "workflow",
+        nonAuthority: true,
+        sourceRef: { product: "flow-agents", kind: "workflow-learning" }
+      }
+    }
+  };
+
+  const paths = new Set(validateEvent(event, "learning.jsonl:3")
+    .filter((item) => item.severity === "error")
+    .map((item) => item.path));
+
+  assert.equal(paths.has("learning.jsonl:3.payload.data.id"), true);
+  assert.equal(paths.has("learning.jsonl:3.payload.data.sourceRef.id"), true);
 });
