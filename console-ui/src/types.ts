@@ -23,6 +23,8 @@ export interface ConsoleProcess {
   currentStep?: string | { id?: string; label?: string };
   percentComplete?: number;
   updatedAt?: string;
+  claimRefs?: ConsoleRef[];
+  nextActionRefs?: ConsoleRef[];
 }
 
 export interface ConsoleGate {
@@ -30,6 +32,8 @@ export interface ConsoleGate {
   label?: string;
   status?: string;
   processRef?: ConsoleRef;
+  expectationRefs?: ConsoleRef[];
+  evidenceRefs?: ConsoleRef[];
   missingEvidence?: string[];
   routeBack?: {
     reason?: string;
@@ -50,6 +54,8 @@ export interface ConsoleClaim {
     expiresAt?: string;
   };
   materiality?: string;
+  processRefs?: ConsoleRef[];
+  evidenceRefs?: ConsoleRef[];
   updatedAt?: string;
   lastVerifiedAt?: string;
 }
@@ -64,6 +70,7 @@ export interface ConsoleAction {
     product?: string;
     command?: string;
   };
+  subjectRefs?: ConsoleRef[];
 }
 
 export interface TimelineItem {

@@ -47,6 +47,7 @@ input {
 .topbar,
 .stage-band,
 .panel,
+.flow-panel,
 .timeline-section,
 .notice {
   border: 1px solid var(--line);
@@ -209,10 +210,30 @@ h2 {
 
 .work-grid {
   display: grid;
-  grid-template-columns: 1.15fr 1fr 1fr 0.95fr;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 14px;
   margin-top: 14px;
   align-items: start;
+}
+
+.flow-panel {
+  min-width: 0;
+  min-height: 454px;
+  padding: 14px;
+}
+
+.side-stack {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.bottom-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  min-width: 0;
 }
 
 .panel,
@@ -344,6 +365,167 @@ dd {
   background: linear-gradient(90deg, var(--accent), var(--cyan));
 }
 
+.flow-scroll {
+  margin-top: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid #2d332b;
+  background:
+    linear-gradient(90deg, rgba(242, 240, 232, 0.05) 1px, transparent 1px) 0 0 / 28px 100%,
+    linear-gradient(rgba(242, 240, 232, 0.04) 1px, transparent 1px) 0 0 / 100% 28px,
+    #0d0f0c;
+}
+
+.flow-svg {
+  display: block;
+  min-width: 1260px;
+  width: 100%;
+  height: auto;
+}
+
+.flow-lane-label {
+  fill: var(--dim);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.flow-lane-line {
+  stroke: rgba(166, 171, 156, 0.24);
+  stroke-dasharray: 2 8;
+}
+
+.flow-edge {
+  fill: none;
+  stroke: #5d6757;
+  stroke-width: 2;
+  marker-end: none;
+}
+
+.flow-edge-active {
+  stroke: var(--accent);
+  stroke-dasharray: 8 8;
+  animation: flow-edge-run 1.8s linear infinite;
+}
+
+.flow-node {
+  width: 184px;
+  height: 82px;
+  padding: 9px;
+  overflow: hidden;
+  color: var(--text);
+  background: #12140f;
+  border: 1px solid #3a4035;
+  border-left: 5px solid #6e7669;
+}
+
+.flow-node-active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(201, 255, 74, 0.28), 0 0 0 0 rgba(201, 255, 74, 0.32);
+  animation: flow-node-pulse 1.6s ease-in-out infinite;
+}
+
+.flow-node-stage {
+  border-left-color: var(--accent);
+}
+
+.flow-node-process,
+.flow-node-step {
+  border-left-color: var(--cyan);
+}
+
+.flow-node-gate {
+  border-left-color: var(--warn);
+}
+
+.flow-node-claim {
+  border-left-color: var(--good);
+}
+
+.flow-node-action {
+  border-left-color: #b9b0a2;
+}
+
+.flow-node-timeline {
+  border-left-color: var(--bad);
+}
+
+.flow-node-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--dim);
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.flow-node-top b {
+  min-width: 0;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-node strong {
+  display: block;
+  margin-top: 7px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-node p {
+  display: -webkit-box;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.flow-node-list {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes flow-node-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgba(201, 255, 74, 0.26), 0 0 0 0 rgba(201, 255, 74, 0.2);
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px rgba(201, 255, 74, 0.42), 0 0 0 5px rgba(201, 255, 74, 0.08);
+  }
+}
+
+@keyframes flow-edge-run {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-edge-active,
+  .flow-node-active {
+    animation: none;
+  }
+}
+
 .timeline-section {
   margin-top: 14px;
 }
@@ -387,6 +569,16 @@ dd {
   .status {
     justify-self: start;
   }
+
+  .flow-panel,
+  .bottom-grid {
+    grid-column: 1 / -1;
+  }
+
+  .side-stack {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media (max-width: 720px) {
@@ -398,6 +590,8 @@ dd {
   .topbar,
   .stage-band,
   .work-grid,
+  .side-stack,
+  .bottom-grid,
   .hub-form,
   .stage-metrics,
   .details {
