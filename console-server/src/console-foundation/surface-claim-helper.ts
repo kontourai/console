@@ -1,14 +1,27 @@
+import type { ConsoleActionRecord, CrossProductRef, OpenRecord } from "./types";
+
 const DEFAULT_VERSION = "0.1";
 const DEFAULT_PRODUCER = { product: "surface", id: "surface-console-producer" };
 
-function surfaceClaimStateToProjection(state: any, options: any = {}) {
+type MutableRecord = Record<string, unknown>;
+type ResourceLike = OpenRecord & { metadata?: OpenRecord };
+type ResourceFields = {
+  apiVersion?: unknown;
+  name?: unknown;
+  uid?: unknown;
+  scope?: unknown;
+};
+type RefMergeField = "apiVersion" | "name" | "uid" | "scope" | "label" | "url";
+type StatusRecord = OpenRecord & { status?: unknown };
+
+function surfaceClaimStateToProjection(state: OpenRecord, options: OpenRecord = {}) {
   requireObject(state, "state");
   const claimId = requireString(state.claimId || state.id, "state.claimId");
   const generatedAt = options.generatedAt || state.generatedAt || state.lastUpdatedAt;
   const producer = clone(options.producer || state.producer || DEFAULT_PRODUCER);
   const scope = clone(options.scope || state.scope || { product: "surface", kind: "claim_set", id: claimId });
   const claimRef = refWithResource(
-    clone(state.claimRef || { product: "surface", kind: "claim", id: claimId }),
+    clone((state.claimRef || { product: "surface", kind: "claim", id: claimId }) as CrossProductRef),
     options.claimResource || state.claimResource,
     {
       apiVersion: options.claimApiVersion || state.claimApiVersion,
@@ -17,12 +30,12 @@ function surfaceClaimStateToProjection(state: any, options: any = {}) {
       scope: options.claimScope || state.claimScope
     }
   );
-  const evidenceRefs = cloneArray(state.evidenceRefs).map((ref: any) => refWithResource(ref, ref && ref.resource));
-  const actionDescriptors = cloneArray(options.actions || state.actions);
+  const evidenceRefs = cloneArray<CrossProductRef>(state.evidenceRefs).map((ref) => refWithResource(ref, ref && ref.resource));
+  const actionDescriptors = cloneArray<ConsoleActionRecord>(options.actions || state.actions);
   const actionRefs = mergeRefs(
-    cloneArray(state.actionRefs).map((ref: any) => refWithResource(ref, ref && ref.resource)),
+    cloneArray<CrossProductRef>(state.actionRefs).map((ref) => refWithResource(ref, ref && ref.resource)),
     actionDescriptors
-      .filter((action: any) => action && action.id)
+      .filter((action) => action && action.id)
       .map(actionToRef)
   );
 
@@ -58,14 +71,14 @@ function surfaceClaimStateToProjection(state: any, options: any = {}) {
   });
 }
 
-function surfaceFreshnessTransitionToEvent(transition: any, options: any = {}) {
+function surfaceFreshnessTransitionToEvent(transition: OpenRecord, options: OpenRecord = {}) {
   requireObject(transition, "transition");
   const claimId = requireString(transition.claimId || transition.id, "transition.claimId");
   const occurredAt = options.occurredAt || transition.occurredAt || transition.changedAt;
   const producer = clone(options.producer || transition.producer || DEFAULT_PRODUCER);
   const scope = clone(options.scope || transition.scope || { product: "surface", kind: "claim_set", id: claimId });
   const subject = refWithResource(
-    clone(transition.subject || transition.claimRef || { product: "surface", kind: "claim", id: claimId }),
+    clone((transition.subject || transition.claimRef || { product: "surface", kind: "claim", id: claimId }) as CrossProductRef),
     options.claimResource || transition.claimResource,
     {
       apiVersion: options.claimApiVersion || transition.claimApiVersion,
@@ -74,7 +87,7 @@ function surfaceFreshnessTransitionToEvent(transition: any, options: any = {}) {
       scope: options.claimScope || transition.claimScope
     }
   );
-  const refs = cloneArray(transition.refs).map((ref: any) => refWithResource(ref, ref && ref.resource));
+  const refs = cloneArray<CrossProductRef>(transition.refs).map((ref) => refWithResource(ref, ref && ref.resource));
 
   if (!hasRef(refs, subject)) refs.unshift(clone(subject));
 
@@ -99,34 +112,37 @@ function surfaceFreshnessTransitionToEvent(transition: any, options: any = {}) {
   });
 }
 
-function requireObject(value: any, label: any) {
+function requireObject(value: unknown, label: string): asserts value is OpenRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`${label} must be an object`);
   }
 }
 
-function requireString(value: any, label: any) {
+function requireString(value: unknown, label: string) {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${label} must be a non-empty string`);
   }
   return value;
 }
 
-function cloneArray(value: any) {
+function cloneArray<T = OpenRecord>(value: unknown): T[] {
   return Array.isArray(value) ? clone(value) : [];
 }
 
-function clone(value: any) {
+function clone<T>(value: T): T;
+function clone(value: undefined): undefined;
+function clone<T>(value: T | undefined): T | undefined {
   if (value === undefined) return undefined;
-  return JSON.parse(JSON.stringify(value));
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function actionToRef(action: any) {
-  return refWithResource(clone(action.ref || {
-    product: action.product || action.authority && action.authority.product || "surface",
+function actionToRef(action: ConsoleActionRecord) {
+  const authority = asOpenRecord(action.authority);
+  return refWithResource(clone((action.ref || {
+    product: firstString(action.product, authority.product, "surface"),
     kind: "action",
     id: action.id
-  }), action.resource, {
+  }) as CrossProductRef), action.resource, {
     apiVersion: action.apiVersion,
     name: action.name,
     uid: action.uid,
@@ -134,36 +150,39 @@ function actionToRef(action: any) {
   });
 }
 
-function cleanActionDescriptor(action: any) {
+function cleanActionDescriptor(action: ConsoleActionRecord) {
   const copy = compactObject(clone(action));
-  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key: any) => delete copy[key]);
+  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key) => delete copy[key]);
   return copy;
 }
 
-function refWithResource(ref: any, resource: any, fields: any = {}) {
+function refWithResource<T extends OpenRecord>(ref: T, resource: unknown, fields?: ResourceFields): T;
+function refWithResource(ref: undefined, resource: unknown, fields?: ResourceFields): undefined;
+function refWithResource<T extends OpenRecord>(ref: T | undefined, resource: unknown, fields: ResourceFields = {}): T | undefined {
   if (!ref) return ref;
   const copy = clone(ref);
-  const metadata = resource && resource.metadata || {};
+  const resourceRecord = asResource(resource);
+  const metadata = asOpenRecord(resourceRecord.metadata);
   const enriched = {
-    apiVersion: firstDefined(fields.apiVersion, resource && resource.apiVersion),
-    name: firstDefined(fields.name, metadata.name, resource && resource.name),
-    uid: firstDefined(fields.uid, metadata.uid, resource && resource.uid),
-    scope: firstDefined(fields.scope, resource && resource.scope)
+    apiVersion: firstDefined(fields.apiVersion, resourceRecord.apiVersion),
+    name: firstDefined(fields.name, metadata.name, resourceRecord.name),
+    uid: firstDefined(fields.uid, metadata.uid, resourceRecord.uid),
+    scope: firstDefined(fields.scope, resourceRecord.scope)
   };
   for (const [key, value] of Object.entries(enriched)) {
-    if (value !== undefined && copy[key] === undefined) copy[key] = clone(value);
+    if (value !== undefined && copy[key] === undefined) (copy as OpenRecord)[key] = clone(value);
   }
   delete copy.resource;
   return copy;
 }
 
-function mergeRefs(primary: any, secondary: any) {
-  const merged = primary.map(clone);
+function mergeRefs(primary: CrossProductRef[], secondary: CrossProductRef[]) {
+  const merged = primary.map((ref) => clone(ref));
   for (const ref of secondary) {
-    const existing = merged.find((item: any) => hasRef([item], ref));
+    const existing = merged.find((item) => hasRef([item], ref));
     if (existing) {
-      for (const key of ["apiVersion", "name", "uid", "scope", "label", "url"]) {
-        if (existing[key] === undefined && ref[key] !== undefined) existing[key] = clone(ref[key]);
+      for (const key of ["apiVersion", "name", "uid", "scope", "label", "url"] as RefMergeField[]) {
+        if (existing[key] === undefined && ref[key] !== undefined) (existing as OpenRecord)[key] = clone(ref[key]);
       }
     } else {
       merged.push(clone(ref));
@@ -172,30 +191,48 @@ function mergeRefs(primary: any, secondary: any) {
   return merged;
 }
 
-function firstDefined(...values: any[]) {
-  return values.find((value: any) => value !== undefined);
+function firstDefined(...values: unknown[]) {
+  return values.find((value) => value !== undefined);
 }
 
-function hasRef(refs: any, ref: any) {
-  return refs.some((item: any) => item && ref && item.product === ref.product && item.kind === ref.kind && item.id === ref.id);
+function firstString(...values: unknown[]) {
+  return values.find((value): value is string => typeof value === "string" && value.length > 0) || "";
 }
 
-function freshnessKey(value: any) {
-  if (value && typeof value === "object") return value.status || stableStringify(value);
+function hasRef(refs: CrossProductRef[], ref: CrossProductRef | undefined) {
+  return refs.some((item) => item && ref && item.product === ref.product && item.kind === ref.kind && item.id === ref.id);
+}
+
+function freshnessKey(value: unknown) {
+  const record = asStatusRecord(value);
+  if (record) return record.status || stableStringify(record);
   return String(value);
 }
 
-function stableStringify(value: any): string {
+function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   if (!value || typeof value !== "object") return JSON.stringify(value);
-  return `{${Object.keys(value).sort().map((key: any) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  const record = value as OpenRecord;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
 }
 
-function compactObject(object: any) {
-  return Object.keys(object).reduce((copy: any, key: any) => {
+function compactObject(object: OpenRecord) {
+  return Object.keys(object).reduce<MutableRecord>((copy, key) => {
     if (object[key] !== undefined) copy[key] = object[key];
     return copy;
   }, {});
+}
+
+function asOpenRecord(value: unknown): OpenRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as OpenRecord : {};
+}
+
+function asResource(value: unknown): ResourceLike {
+  return asOpenRecord(value) as ResourceLike;
+}
+
+function asStatusRecord(value: unknown): StatusRecord | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as StatusRecord : undefined;
 }
 
 module.exports = {

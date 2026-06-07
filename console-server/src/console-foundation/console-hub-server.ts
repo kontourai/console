@@ -19,7 +19,7 @@ const MAX_BODY_BYTES = 1024 * 1024;
 export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): ConsoleHubServer {
   const hub = options.hub || new LocalConsoleHub(options);
   const events = createSseBroker();
-  const server = http.createServer((request: any, response: any) => {
+  const server = http.createServer((request: IncomingMessage, response: ServerResponse) => {
     routeRequest(hub, events, request, response);
   });
 
@@ -93,7 +93,7 @@ async function routeRequest(hub: Hub, events: SseBroker, request: IncomingMessag
 }
 
 function readJsonBody(request: IncomingMessage): Promise<import("./types").ConsoleRecord> {
-  return new Promise((resolve: any, reject: any) => {
+  return new Promise((resolve: (record: import("./types").ConsoleRecord) => void, reject: (error: unknown) => void) => {
     let size = 0;
     let body = "";
     let rejected = false;

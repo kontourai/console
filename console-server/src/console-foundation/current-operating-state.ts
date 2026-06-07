@@ -1,12 +1,46 @@
-function buildCurrentOperatingState(input: any, options: any = {}): any {
+import type {
+  ConsoleActionRecord,
+  ConsoleEventRecord,
+  ConsoleLink,
+  CrossProductRef,
+  CurrentOperatingStateOptions,
+  JsonObject,
+  JsonValue,
+  OpenRecord,
+  OperatingState,
+  ReplayEventEntry,
+  ReplayEventStream,
+  ReplayInput
+} from "./types";
+
+type ReplayObject = JsonObject & { id: string; label?: string; [key: string]: unknown };
+type ReplayPatch = OpenRecord;
+type CurrentStageState = {
+  processes: ReplayObject[];
+  gates: ReplayObject[];
+  claims: ReplayObject[];
+  timeline: JsonObject[];
+};
+type MutableReplayState = {
+  processes: Map<string, ReplayObject>;
+  gates: Map<string, ReplayObject>;
+  claims: Map<string, ReplayObject>;
+  evidence: Map<string, ReplayObject>;
+  learnings: Map<string, ReplayObject>;
+  actions: Map<string, ConsoleActionRecord>;
+  links: Map<string, ConsoleLink>;
+  timeline: JsonObject[];
+};
+
+function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | ConsoleEventRecord[] | null | undefined, options: CurrentOperatingStateOptions = {}): OperatingState {
   const eventStreams = normalizeEventStreams(input);
   const prepared = prepareEvents(eventStreams);
   const generatedAt = options.generatedAt || replayGeneratedAt(prepared.acceptedEvents);
-  const state: any = {
+  const state: OperatingState = {
     generatedAt,
     source: {
       mode: "event_replay",
-      streamIds: eventStreams.map((stream: any, index: any) => stream.relativePath || stream.filePath || `stream-${index + 1}`),
+      streamIds: eventStreams.map((stream: ReplayEventStream, index: number) => stream.relativePath || stream.filePath || `stream-${index + 1}`),
       acceptedEventCount: prepared.acceptedEvents.length,
       duplicateEventCount: prepared.duplicateEventCount,
       lastAcceptedEventId: prepared.acceptedEvents.length
@@ -24,54 +58,66 @@ function buildCurrentOperatingState(input: any, options: any = {}): any {
     timeline: []
   };
 
-  const working: any = {
-    processes: new Map<string, any>(),
-    gates: new Map<string, any>(),
-    claims: new Map<string, any>(),
-    evidence: new Map<string, any>(),
-    learnings: new Map<string, any>(),
-    actions: new Map<string, any>(),
-    links: new Map<string, any>(),
-    timeline: [] as any[]
+  const working: MutableReplayState = {
+    processes: new Map<string, ReplayObject>(),
+    gates: new Map<string, ReplayObject>(),
+    claims: new Map<string, ReplayObject>(),
+    evidence: new Map<string, ReplayObject>(),
+    learnings: new Map<string, ReplayObject>(),
+    actions: new Map<string, ConsoleActionRecord>(),
+    links: new Map<string, ConsoleLink>(),
+    timeline: []
   };
 
-  prepared.acceptedEvents.forEach((entry: any) => applyEvent(working, entry.event, entry.streamId));
+  prepared.acceptedEvents.forEach((entry: ReplayEventEntry) => applyEvent(working, entry.event, entry.streamId));
 
-  state.processes = sortById([...working.processes.values()]);
-  state.gates = sortById([...working.gates.values()]);
-  state.claims = sortById([...working.claims.values()]);
+  const processes = sortById([...working.processes.values()]);
+  const gates = sortById([...working.gates.values()]);
+  const claims = sortById([...working.claims.values()]);
+  state.processes = processes;
+  state.gates = gates;
+  state.claims = claims;
   state.evidence = sortById([...working.evidence.values()]);
   state.learnings = sortById([...working.learnings.values()]);
-  state.actions = sortById([...working.actions.values()]).map((action: any) => ({
+  state.actions = sortById([...working.actions.values()]).map((action: ConsoleActionRecord) => ({
     ...action,
     readOnly: true
   }));
   state.links = [...working.links.values()].sort(compareLinks);
   state.timeline = working.timeline;
-  state.currentStage = describeCurrentStage(state);
+  state.currentStage = describeCurrentStage({
+    processes,
+    gates,
+    claims,
+    timeline: state.timeline
+  });
 
   return state;
 }
 
-function normalizeEventStreams(input: any): any[] {
+function normalizeEventStreams(input: ReplayInput | ReplayEventStream[] | ConsoleEventRecord[] | null | undefined): ReplayEventStream[] {
   if (!input) return [];
   if (Array.isArray(input)) {
-    if (input.every((item: any) => item && Array.isArray(item.events))) return input;
-    return [{ relativePath: "inline-events", events: input }];
+    if (input.every((item: unknown) => isReplayEventStream(item))) return input as ReplayEventStream[];
+    return [{ relativePath: "inline-events", events: input as ConsoleEventRecord[] }];
   }
   if (Array.isArray(input.eventStreams)) return input.eventStreams;
   if (Array.isArray(input.events)) return [{ relativePath: input.relativePath || "inline-events", events: input.events }];
   return [];
 }
 
-function prepareEvents(eventStreams: any): { acceptedEvents: any[]; duplicateEventCount: number } {
+function isReplayEventStream(value: unknown): value is ReplayEventStream {
+  return Boolean(value && typeof value === "object" && Array.isArray((value as ReplayEventStream).events));
+}
+
+function prepareEvents(eventStreams: ReplayEventStream[]): { acceptedEvents: ReplayEventEntry[]; duplicateEventCount: number } {
   const seen = new Set();
-  const acceptedEvents: any[] = [];
+  const acceptedEvents: ReplayEventEntry[] = [];
   let duplicateEventCount = 0;
 
-  eventStreams.forEach((stream: any, streamIndex: any) => {
+  eventStreams.forEach((stream: ReplayEventStream, streamIndex: number) => {
     const streamId = stream.relativePath || stream.filePath || `stream-${streamIndex + 1}`;
-    arrayOf(stream.events).forEach((event: any, eventIndex: any) => {
+    arrayOf<ConsoleEventRecord>(stream.events).forEach((event: ConsoleEventRecord, eventIndex: number) => {
       if (!event || typeof event !== "object") return;
       if (event.id && seen.has(event.id)) {
         duplicateEventCount += 1;
@@ -86,7 +132,7 @@ function prepareEvents(eventStreams: any): { acceptedEvents: any[]; duplicateEve
   return { acceptedEvents, duplicateEventCount };
 }
 
-function compareEventEntries(left: any, right: any) {
+function compareEventEntries(left: ReplayEventEntry, right: ReplayEventEntry): number {
   return compareMaybeNumber(left.event.sequence, right.event.sequence)
     || compareMaybeString(left.event.occurredAt, right.event.occurredAt)
     || compareMaybeString(left.event.observedAt, right.event.observedAt)
@@ -94,17 +140,17 @@ function compareEventEntries(left: any, right: any) {
     || left.eventIndex - right.eventIndex;
 }
 
-function replayGeneratedAt(acceptedEvents: any) {
+function replayGeneratedAt(acceptedEvents: ReplayEventEntry[]): string | null {
   if (!acceptedEvents.length) return null;
   const last = acceptedEvents[acceptedEvents.length - 1].event;
   return last.observedAt || last.occurredAt || null;
 }
 
-function applyEvent(state: any, event: any, streamId: any) {
+function applyEvent(state: MutableReplayState, event: ConsoleEventRecord, streamId: string): void {
   const subject = clone(event.subject);
-  const payload = event.payload || {};
-  const refs = arrayOf(payload.refs);
-  const after = payload.after && typeof payload.after === "object" ? clone(payload.after) : {};
+  const payload: OpenRecord = event.payload || {};
+  const refs = arrayOf<CrossProductRef>(payload.refs);
+  const after: ReplayPatch = isPlainObject(payload.after) ? clone(payload.after) : {};
   const summary = payload.summary || event.summary;
 
   switch (event.type) {
@@ -133,14 +179,17 @@ function applyEvent(state: any, event: any, streamId: any) {
       break;
   }
 
-  arrayOf(event.links).forEach((link: any) => {
+  arrayOf<ConsoleLink>(event.links).forEach((link: ConsoleLink) => {
     state.links.set(linkKey(link), clone(link));
   });
   if (!isLearningEvent(event)) {
-    arrayOf(payload.actions).concat(arrayOf(after.nextActionRefs).map((ref: any) => actionFromRef(ref)))
-      .filter(Boolean)
-      .forEach((action: any) => {
-        state.actions.set(action.id, compactObject(clone(action)));
+    const actions = [
+      ...arrayOf<ConsoleActionRecord>(payload.actions),
+      ...arrayOf<CrossProductRef>(after.nextActionRefs).map((ref: CrossProductRef) => actionFromRef(ref))
+    ].filter(isConsoleActionRecord);
+    actions
+      .forEach((action: ConsoleActionRecord) => {
+        state.actions.set(action.id, compactObject<ConsoleActionRecord>(clone(action)));
       });
   }
 
@@ -156,8 +205,8 @@ function applyEvent(state: any, event: any, streamId: any) {
   });
 }
 
-function upsertProcess(state: any, event: any, subject: any, refs: any, after: any) {
-  const existing = state.processes.get(subject.id) || {
+function upsertProcess(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch): void {
+  const existing: ReplayObject = state.processes.get(subject.id) || {
     id: subject.id,
     label: subject.label,
     sourceRef: subject,
@@ -167,7 +216,7 @@ function upsertProcess(state: any, event: any, subject: any, refs: any, after: a
     updatedAt: event.occurredAt
   };
 
-  const next = {
+  const next: ReplayObject = {
     ...existing,
     ...after,
     id: subject.id,
@@ -177,14 +226,14 @@ function upsertProcess(state: any, event: any, subject: any, refs: any, after: a
     updatedAt: event.occurredAt || existing.updatedAt
   };
 
-  next.claimRefs = mergeRefs(existing.claimRefs, refs.filter((ref: any) => ref.product === "surface" && ref.kind === "claim"));
-  next.gateRefs = mergeRefs(existing.gateRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "gate"));
-  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: any) => ref.kind === "evidence"));
+  next.claimRefs = mergeRefs(existing.claimRefs, refs.filter((ref: CrossProductRef) => ref.product === "surface" && ref.kind === "claim"));
+  next.gateRefs = mergeRefs(existing.gateRefs, refs.filter((ref: CrossProductRef) => ref.product === "flow" && ref.kind === "gate"));
+  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: CrossProductRef) => ref.kind === "evidence"));
   state.processes.set(subject.id, compactObject(next));
 }
 
-function upsertGate(state: any, event: any, subject: any, refs: any, after: any) {
-  const existing = state.gates.get(subject.id) || {
+function upsertGate(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch): void {
+  const existing: ReplayObject = state.gates.get(subject.id) || {
     id: subject.id,
     label: subject.label,
     sourceRef: subject,
@@ -193,7 +242,7 @@ function upsertGate(state: any, event: any, subject: any, refs: any, after: any)
     updatedAt: event.occurredAt
   };
 
-  const next = {
+  const next: ReplayObject = {
     ...existing,
     ...after,
     id: subject.id,
@@ -204,14 +253,14 @@ function upsertGate(state: any, event: any, subject: any, refs: any, after: any)
     updatedAt: event.occurredAt || existing.updatedAt
   };
 
-  next.expectationRefs = mergeRefs(existing.expectationRefs, refs.filter((ref: any) => ref.product === "surface" && ref.kind === "claim"));
-  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: any) => ref.kind === "evidence"));
+  next.expectationRefs = mergeRefs(existing.expectationRefs, refs.filter((ref: CrossProductRef) => ref.product === "surface" && ref.kind === "claim"));
+  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: CrossProductRef) => ref.kind === "evidence"));
   state.gates.set(subject.id, compactObject(next));
   updateProcessFromGate(state, event, refs, after, next);
 }
 
-function upsertClaim(state: any, event: any, subject: any, refs: any, after: any) {
-  const existing = state.claims.get(subject.id) || {
+function upsertClaim(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch): void {
+  const existing: ReplayObject = state.claims.get(subject.id) || {
     id: subject.id,
     label: subject.label,
     sourceRef: subject,
@@ -221,7 +270,7 @@ function upsertClaim(state: any, event: any, subject: any, refs: any, after: any
     updatedAt: event.occurredAt
   };
 
-  const next = {
+  const next: ReplayObject = {
     ...existing,
     ...after,
     id: subject.id,
@@ -231,18 +280,19 @@ function upsertClaim(state: any, event: any, subject: any, refs: any, after: any
     updatedAt: event.occurredAt || existing.updatedAt
   };
 
-  if (!next.lastVerifiedAt && after.freshness && after.freshness.lastCheckedAt) {
-    next.lastVerifiedAt = after.freshness.lastCheckedAt;
+  const freshness = isPlainObject(after.freshness) ? after.freshness : {};
+  if (!next.lastVerifiedAt && freshness.lastCheckedAt) {
+    next.lastVerifiedAt = freshness.lastCheckedAt;
   }
 
-  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: any) => ref.kind === "evidence"));
-  next.gateRefs = mergeRefs(existing.gateRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "gate"));
-  next.processRefs = mergeRefs(existing.processRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "run"));
+  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: CrossProductRef) => ref.kind === "evidence"));
+  next.gateRefs = mergeRefs(existing.gateRefs, refs.filter((ref: CrossProductRef) => ref.product === "flow" && ref.kind === "gate"));
+  next.processRefs = mergeRefs(existing.processRefs, refs.filter((ref: CrossProductRef) => ref.product === "flow" && ref.kind === "run"));
   state.claims.set(subject.id, compactObject(next));
 }
 
-function upsertEvidence(state: any, event: any, subject: any, refs: any, summary: any) {
-  const existing = state.evidence.get(subject.id) || {
+function upsertEvidence(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], summary: unknown): void {
+  const existing: ReplayObject = state.evidence.get(subject.id) || {
     id: subject.id,
     label: subject.label,
     sourceRef: subject,
@@ -258,22 +308,22 @@ function upsertEvidence(state: any, event: any, subject: any, refs: any, summary
     status: existing.status || "available",
     capturedAt: existing.capturedAt || event.occurredAt,
     summary: summary || existing.summary,
-    claimRefs: mergeRefs(existing.claimRefs, refs.filter((ref: any) => ref.product === "surface" && ref.kind === "claim")),
-    gateRefs: mergeRefs(existing.gateRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "gate")),
-    processRefs: mergeRefs(existing.processRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "run"))
+    claimRefs: mergeRefs(existing.claimRefs, refs.filter((ref: CrossProductRef) => ref.product === "surface" && ref.kind === "claim")),
+    gateRefs: mergeRefs(existing.gateRefs, refs.filter((ref: CrossProductRef) => ref.product === "flow" && ref.kind === "gate")),
+    processRefs: mergeRefs(existing.processRefs, refs.filter((ref: CrossProductRef) => ref.product === "flow" && ref.kind === "run"))
   };
 
   state.evidence.set(subject.id, compactObject(next));
 }
 
-function upsertLearning(state: any, event: any, subject: any, refs: any, payload: any, summary: any) {
-  const data = payload.data && typeof payload.data === "object" ? payload.data : {};
-  if (!summary || !["workflow", "domain"].includes(data.family) || data.nonAuthority !== true) return;
+function upsertLearning(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], payload: OpenRecord, summary: unknown): void {
+  const data: OpenRecord = isPlainObject(payload.data) ? payload.data : {};
+  if (!summary || typeof data.family !== "string" || !["workflow", "domain"].includes(data.family) || data.nonAuthority !== true) return;
 
   const id = typeof data.id === "string" && data.id.length > 0
     ? data.id
     : subject.id || event.id;
-  const existing = state.learnings.get(id) || {
+  const existing: ReplayObject = state.learnings.get(id) || {
     id,
     sourceEventId: event.id,
     subjectRef: subject,
@@ -301,49 +351,50 @@ function upsertLearning(state: any, event: any, subject: any, refs: any, payload
   state.learnings.set(id, compactObject(next));
 }
 
-function isLearningEvent(event: any) {
+function isLearningEvent(event: { type?: unknown }): boolean {
   return typeof event.type === "string" && event.type.startsWith("learning.");
 }
 
-function updateProcessFromGate(state: any, event: any, refs: any, after: any, gate: any) {
-  if (!gate.processRef || !gate.processRef.id) return;
-  const existing = state.processes.get(gate.processRef.id) || {
-    id: gate.processRef.id,
-    label: gate.processRef.label,
-    sourceRef: gate.processRef,
+function updateProcessFromGate(state: MutableReplayState, event: ConsoleEventRecord, refs: CrossProductRef[], after: ReplayPatch, gate: ReplayObject): void {
+  const processRef = gate.processRef as CrossProductRef | undefined;
+  if (!processRef || !processRef.id) return;
+  const existing: ReplayObject = state.processes.get(processRef.id) || {
+    id: processRef.id,
+    label: processRef.label,
+    sourceRef: processRef,
     claimRefs: [],
     gateRefs: [],
     evidenceRefs: [],
     nextActionRefs: []
   };
   const processPatch = pickProcessPatch(after);
-  const next = {
+  const next: ReplayObject = {
     ...existing,
     ...processPatch,
-    id: gate.processRef.id,
-    label: gate.processRef.label || existing.label,
-    sourceRef: existing.sourceRef || gate.processRef,
+    id: processRef.id,
+    label: processRef.label || existing.label,
+    sourceRef: existing.sourceRef || processRef,
     updatedAt: event.occurredAt || existing.updatedAt
   };
 
-  next.claimRefs = mergeRefs(existing.claimRefs, refs.filter((ref: any) => ref.product === "surface" && ref.kind === "claim"));
-  next.gateRefs = mergeRefs(existing.gateRefs, [gate.sourceRef]);
-  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: any) => ref.kind === "evidence"));
+  next.claimRefs = mergeRefs(existing.claimRefs, refs.filter((ref: CrossProductRef) => ref.product === "surface" && ref.kind === "claim"));
+  next.gateRefs = mergeRefs(existing.gateRefs, isRef(gate.sourceRef) ? [gate.sourceRef] : []);
+  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: CrossProductRef) => ref.kind === "evidence"));
   next.nextActionRefs = mergeRefs(existing.nextActionRefs, processPatch.nextActionRefs);
-  state.processes.set(gate.processRef.id, compactObject(next));
+  state.processes.set(processRef.id, compactObject(next));
 }
 
-function pickProcessPatch(after: any): any {
-  const patch: any = {};
-  ["currentStep", "percentComplete", "nextActionRefs"].forEach((key: any) => {
+function pickProcessPatch(after: ReplayPatch): ReplayPatch {
+  const patch: ReplayPatch = {};
+  ["currentStep", "percentComplete", "nextActionRefs"].forEach((key: string) => {
     if (after[key] !== undefined) patch[key] = clone(after[key]);
   });
   return patch;
 }
 
-function actionFromRef(ref: any) {
+function actionFromRef(ref: CrossProductRef): ConsoleActionRecord | null {
   if (!ref || ref.kind !== "action" || !ref.id) return null;
-  const action: any = {
+  const action: ConsoleActionRecord = {
     id: ref.id,
     label: ref.label,
     kind: ref.name && ref.name.startsWith("resume-") ? "resume" : undefined,
@@ -351,38 +402,39 @@ function actionFromRef(ref: any) {
     authority: {
       product: ref.product
     },
-    subjectRefs: ref.scope ? [clone(ref.scope)] : undefined
+    subjectRefs: isRef(ref.scope) ? [clone(ref.scope)] : undefined
   };
-  if (action.kind === "resume" && ref.product === "flow") action.authority.command = "flow.run.resume";
+  if (action.kind === "resume" && ref.product === "flow" && action.authority) action.authority.command = "flow.run.resume";
   return action;
 }
 
-function describeCurrentStage(state: any) {
-  const waitingGate = state.gates.find((gate: any) => ["waiting", "open", "routed_back"].includes(gate.status));
+function describeCurrentStage(state: CurrentStageState): string {
+  const waitingGate = state.gates.find((gate: ReplayObject) => ["waiting", "open", "routed_back"].includes(String(gate.status)));
   if (waitingGate) {
-    const claim = state.claims.find((item: any) => arrayOf(waitingGate.expectationRefs).some((ref: any) => ref.id === item.id));
+    const claim = state.claims.find((item: ReplayObject) => arrayOf<CrossProductRef>(waitingGate.expectationRefs).some((ref: CrossProductRef) => ref.id === item.id));
     if (claim) return `Still waiting on ${claim.label || claim.id}.`;
     return `Still waiting on ${waitingGate.label || waitingGate.id}.`;
   }
 
-  const failedGate = state.gates.find((gate: any) => gate.status === "failed");
+  const failedGate = state.gates.find((gate: ReplayObject) => gate.status === "failed");
   if (failedGate) return `${failedGate.label || failedGate.id} failed.`;
 
-  const passedGate = [...state.gates].reverse().find((gate: any) => gate.status === "passed");
+  const passedGate = [...state.gates].reverse().find((gate: ReplayObject) => gate.status === "passed");
   if (passedGate) {
-    const process = state.processes.find((item: any) => passedGate.processRef && item.id === passedGate.processRef.id);
+    const processRef = passedGate.processRef as CrossProductRef | undefined;
+    const process = state.processes.find((item: ReplayObject) => processRef && item.id === processRef.id);
     return `${passedGate.label || passedGate.id} passed; ${(process && (process.label || process.id)) || "the process"} can continue.`;
   }
 
-  const activeProcess = state.processes.find((process: any) => ["running", "active", "waiting"].includes(process.status));
+  const activeProcess = state.processes.find((process: ReplayObject) => ["running", "active", "waiting"].includes(String(process.status)));
   if (activeProcess) return `${activeProcess.label || activeProcess.id} is ${activeProcess.status}.`;
 
-  const latestAuthoritativeEvent = [...state.timeline].reverse().find((item: any) => !isLearningEvent(item));
-  if (latestAuthoritativeEvent) return latestAuthoritativeEvent.summary || "Events replayed.";
+  const latestAuthoritativeEvent = [...state.timeline].reverse().find((item: JsonObject) => !isLearningEvent(item));
+  if (latestAuthoritativeEvent) return String(latestAuthoritativeEvent.summary || "Events replayed.");
   return state.timeline.length ? "No authoritative events replayed." : "No events replayed.";
 }
 
-function statusFromGateEvent(type: any) {
+function statusFromGateEvent(type: string): string | undefined {
   if (type === "gate.opened") return "waiting";
   if (type === "gate.passed") return "passed";
   if (type === "gate.failed") return "failed";
@@ -390,46 +442,47 @@ function statusFromGateEvent(type: any) {
   return undefined;
 }
 
-function processRefFromScope(scope: any) {
-  if (!scope || scope.kind !== "run" || !scope.id) return undefined;
+function processRefFromScope(scope: unknown): CrossProductRef | undefined {
+  if (!isRef(scope) || scope.kind !== "run") return undefined;
   return clone(scope);
 }
 
-function mergeRefs(existing: any, refs: any) {
-  const byKey = new Map();
-  arrayOf(existing).concat(arrayOf(refs)).forEach((ref: any) => {
+function mergeRefs(existing: unknown, refs: unknown): CrossProductRef[] {
+  const byKey = new Map<string, CrossProductRef>();
+  arrayOf<CrossProductRef>(existing).concat(arrayOf<CrossProductRef>(refs)).forEach((ref: CrossProductRef) => {
     if (!ref || !ref.id) return;
     byKey.set(refKey(ref), clone(ref));
   });
   return [...byKey.values()].sort(compareRefs);
 }
 
-function isRef(ref: any) {
+function isRef(ref: unknown): ref is CrossProductRef {
+  const candidate = ref as Partial<CrossProductRef> | undefined;
   return Boolean(ref
     && typeof ref === "object"
     && !Array.isArray(ref)
-    && typeof ref.product === "string"
-    && ref.product.length > 0
-    && typeof ref.kind === "string"
-    && ref.kind.length > 0
-    && typeof ref.id === "string"
-    && ref.id.length > 0);
+    && typeof candidate?.product === "string"
+    && candidate.product.length > 0
+    && typeof candidate.kind === "string"
+    && candidate.kind.length > 0
+    && typeof candidate.id === "string"
+    && candidate.id.length > 0);
 }
 
-function mergeLinks(existing: any, links: any) {
-  const byKey = new Map();
-  arrayOf(existing).concat(arrayOf(links)).forEach((link: any) => {
+function mergeLinks(existing: unknown, links: unknown): ConsoleLink[] {
+  const byKey = new Map<string, ConsoleLink>();
+  arrayOf<ConsoleLink>(existing).concat(arrayOf<ConsoleLink>(links)).forEach((link: ConsoleLink) => {
     if (!link) return;
     byKey.set(linkKey(link), clone(link));
   });
   return [...byKey.values()].sort(compareLinks);
 }
 
-function refKey(ref: any) {
+function refKey(ref: CrossProductRef): string {
   return [ref.product, ref.kind, ref.id].join(":");
 }
 
-function linkKey(link: any) {
+function linkKey(link: ConsoleLink): string {
   return [
     link && link.from && refKey(link.from),
     link && link.relation,
@@ -438,20 +491,20 @@ function linkKey(link: any) {
   ].join("|");
 }
 
-function compareRefs(left: any, right: any) {
+function compareRefs(left: CrossProductRef, right: CrossProductRef): number {
   return refKey(left).localeCompare(refKey(right));
 }
 
-function compareLinks(left: any, right: any) {
+function compareLinks(left: ConsoleLink, right: ConsoleLink): number {
   return compareMaybeString(left.createdAt, right.createdAt)
     || compareMaybeString(linkKey(left), linkKey(right));
 }
 
-function sortById(items: any) {
-  return items.sort((left: any, right: any) => String(left.id).localeCompare(String(right.id)));
+function sortById<T extends { id?: unknown }>(items: T[]): T[] {
+  return items.sort((left: T, right: T) => String(left.id).localeCompare(String(right.id)));
 }
 
-function compareMaybeNumber(left: any, right: any) {
+function compareMaybeNumber(left: unknown, right: unknown): number {
   const leftNumber = Number(left);
   const rightNumber = Number(right);
   const leftComparable = Number.isFinite(leftNumber);
@@ -461,30 +514,40 @@ function compareMaybeNumber(left: any, right: any) {
   return 0;
 }
 
-function compareMaybeString(left: any, right: any) {
+function compareMaybeString(left: unknown, right: unknown): number {
   if (left && right && left !== right) return String(left).localeCompare(String(right));
   if (left && !right) return -1;
   if (!left && right) return 1;
   return 0;
 }
 
-function compactObject(object: any): any {
-  const result: any = {};
+function compactObject<T extends OpenRecord>(object: T): T {
+  const result: OpenRecord = {};
   Object.entries(object).forEach(([key, value]) => {
     if (value === undefined) return;
     if (Array.isArray(value) && value.length === 0) return;
     result[key] = value;
   });
-  return result;
+  return result as T;
 }
 
-function clone(value: any) {
+function clone<T>(value: T): T;
+function clone<T>(value: T | undefined): T | undefined;
+function clone<T>(value: T | undefined): T | undefined {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
 }
 
-function arrayOf(value: any) {
-  return Array.isArray(value) ? value : [];
+function arrayOf<T = unknown>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : [];
+}
+
+function isPlainObject(value: unknown): value is OpenRecord {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function isConsoleActionRecord(value: ConsoleActionRecord | null): value is ConsoleActionRecord {
+  return Boolean(value && typeof value.id === "string" && value.id.length > 0);
 }
 
 module.exports = {

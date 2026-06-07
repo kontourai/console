@@ -6,6 +6,7 @@ const {
   createConsoleHubServer
 } = require("../src/console-foundation/console-hub-server");
 const path = require("node:path");
+import type { ConsoleHubServer } from "../src/console-foundation";
 
 interface ServeOptions {
   host: string;
@@ -13,7 +14,7 @@ interface ServeOptions {
   kontourRoot?: string;
 }
 
-function main(argv: any) {
+function main(argv: string[]) {
   const command = argv[2] || "help";
   if (command === "serve") {
     serve(parseServeOptions(argv.slice(3)));
@@ -24,7 +25,7 @@ function main(argv: any) {
   process.exitCode = command === "help" || command === "--help" || command === "-h" ? 0 : 2;
 }
 
-function serve(options: any) {
+function serve(options: ServeOptions): void {
   const app = createConsoleHubServer({
     rootDir: repoRoot(),
     kontourRoot: options.kontourRoot,
@@ -33,7 +34,9 @@ function serve(options: any) {
   });
   app.listen({}, () => {
     const address = app.server.address();
-    console.log(`Kontour local hub: http://${address.address}:${address.port}`);
+    const resolved = address as ReturnType<ConsoleHubServer["server"]["address"]>;
+    if (!resolved || typeof resolved === "string") return;
+    console.log(`Kontour local hub: http://${resolved.address}:${resolved.port}`);
     console.log("POST /records  GET /state  GET /inspect  GET /events");
   });
 }
@@ -44,7 +47,7 @@ function repoRoot() {
     : process.cwd();
 }
 
-function parseServeOptions(args: any): ServeOptions {
+function parseServeOptions(args: string[]): ServeOptions {
   const options: ServeOptions = {
     host: DEFAULT_HOST,
     port: DEFAULT_PORT
@@ -79,7 +82,7 @@ function parseServeOptions(args: any): ServeOptions {
   return options;
 }
 
-function requiredValue(args: any, index: any, label: any) {
+function requiredValue(args: string[], index: number, label: string): string {
   const value = args[index + 1];
   if (!value || value.startsWith("--")) {
     console.error(`${label} requires a value`);

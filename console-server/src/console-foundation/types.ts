@@ -2,6 +2,10 @@ export type RecordKind = "event" | "projection";
 export type DeliveryOutcome = "accepted" | "skipped" | "failed";
 export type ValidationSeverity = "error" | "warning";
 export type SourceKind = "fixture" | "local";
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+export type JsonArray = JsonValue[];
+export type OpenRecord = Record<string, unknown>;
 
 export interface CrossProductRef {
   product: string;
@@ -16,11 +20,23 @@ export interface CrossProductRef {
   [key: string]: unknown;
 }
 
+export type JsonObject = Record<string, unknown>;
+
 export interface ConsoleLink {
   from?: CrossProductRef;
   relation?: string;
   to?: CrossProductRef;
   createdAt?: string;
+}
+
+export interface ConsoleActionRecord extends JsonObject {
+  id: string;
+  label?: string;
+  kind?: string;
+  status?: string;
+  readOnly?: boolean;
+  authority?: JsonObject;
+  subjectRefs?: CrossProductRef[];
 }
 
 export interface OperatingState {
@@ -43,6 +59,13 @@ export interface OperatingState {
   timeline?: Record<string, unknown>[];
 }
 
+export interface ConsoleProducer {
+  product?: string;
+  id?: string;
+  name?: string;
+  [key: string]: unknown;
+}
+
 export interface ConsoleRecordBase {
   schema: string;
   version: string;
@@ -58,7 +81,12 @@ export interface ConsoleEventRecord extends ConsoleRecordBase {
   type: string;
   occurredAt: string;
   subject: CrossProductRef;
-  payload: Record<string, unknown>;
+  producer: ConsoleProducer;
+  payload: JsonObject;
+  links?: ConsoleLink[];
+  observedAt?: string;
+  sequence?: number;
+  summary?: string;
 }
 
 export interface ConsoleProjectionRecord extends ConsoleRecordBase {
@@ -68,6 +96,27 @@ export interface ConsoleProjectionRecord extends ConsoleRecordBase {
 }
 
 export type ConsoleRecord = ConsoleEventRecord | ConsoleProjectionRecord | ConsoleRecordBase;
+
+export interface ConsoleObjectRecord extends JsonObject {
+  id?: string;
+  label?: string;
+  status?: string;
+  kind?: string;
+  [key: string]: unknown;
+}
+
+export interface ConsoleProjectionSnapshot extends ConsoleProjectionRecord {
+  claims?: ConsoleObjectRecord[];
+  processes?: ConsoleObjectRecord[];
+  gates?: ConsoleObjectRecord[];
+  reviewItems?: ConsoleObjectRecord[];
+  evidence?: ConsoleObjectRecord[];
+  decisions?: ConsoleObjectRecord[];
+  actions?: ConsoleObjectRecord[];
+  exceptions?: ConsoleObjectRecord[];
+  learnings?: ConsoleObjectRecord[];
+  links?: ConsoleLink[];
+}
 
 export interface ValidationIssue {
   severity: ValidationSeverity;
@@ -100,6 +149,21 @@ export interface DeliveryResult {
   safeMessage?: string;
   children?: DeliveryResult[];
   [key: string]: unknown;
+}
+
+export interface DeliveryResultFields {
+  sinkId: string;
+  sinkRole: string;
+  outcome: DeliveryOutcome;
+  status?: string;
+  recordId: string;
+  recordKind: RecordKind;
+  observedAt?: string;
+  destination?: string;
+  retryable?: boolean;
+  errorCode?: string;
+  safeMessage?: string;
+  children?: DeliveryResult[];
 }
 
 export interface Sink {
@@ -173,7 +237,7 @@ export interface ProjectionInspection {
   relativePath: string;
   sourceKind?: SourceKind;
   sourceRoot?: string;
-  snapshot: ConsoleProjectionRecord;
+  snapshot: ConsoleProjectionSnapshot;
   summary: ProjectionSummary;
   actions: ActionDescriptor[];
   validation: ValidationIssue[];
@@ -256,4 +320,24 @@ export interface RequestError extends Error {
   code?: string;
   statusCode?: number;
   safeMessage?: string;
+}
+
+export interface ReplayEventStream {
+  filePath?: string;
+  relativePath?: string;
+  events: ConsoleEventRecord[];
+}
+
+export interface ReplayInput {
+  filePath?: string;
+  relativePath?: string;
+  events?: ConsoleEventRecord[];
+  eventStreams?: ReplayEventStream[];
+}
+
+export interface ReplayEventEntry {
+  event: ConsoleEventRecord;
+  streamId: string;
+  streamIndex: number;
+  eventIndex: number;
 }

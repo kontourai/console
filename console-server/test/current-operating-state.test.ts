@@ -96,6 +96,38 @@ test("replay orders accepted events by sequence before file order", () => {
   assert.equal(state.gates[0].status, "passed");
 });
 
+test("replay does not promote non-run gate scope into a process ref", () => {
+  const state = buildCurrentOperatingState([{
+    relativePath: "gate-non-run-scope.jsonl",
+    events: [
+      {
+        schema: "kontour.console.event",
+        version: "0.1",
+        id: "evt-gate-non-run-scope",
+        type: "gate.opened",
+        occurredAt: "2026-06-04T12:00:00Z",
+        producer: { product: "flow", id: "flow-local" },
+        subject: {
+          product: "flow",
+          kind: "gate",
+          id: "gate-non-run-scope",
+          label: "Gate with claim scope",
+          scope: { product: "surface", kind: "claim", id: "claim-not-a-run" }
+        },
+        payload: {
+          summary: "Gate opened without an explicit process ref.",
+          refs: [],
+          after: { status: "waiting" }
+        }
+      }
+    ]
+  }]);
+
+  assert.equal(state.gates.length, 1);
+  assert.equal(state.gates[0].processRef, undefined);
+  assert.equal(state.processes.length, 0);
+});
+
 test("replay defaults generatedAt from the last accepted event", () => {
   const report = inspectFixtures({ rootDir });
   const stream = report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));

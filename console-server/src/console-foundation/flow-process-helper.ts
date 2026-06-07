@@ -1,15 +1,29 @@
+import type { ConsoleActionRecord, CrossProductRef, OpenRecord } from "./types";
+
 const DEFAULT_VERSION = "0.1";
 const DEFAULT_PRODUCER = { product: "flow", id: "flow-console-producer" };
 
-function flowProcessStateToProjection(state: any, options: any = {}) {
+type MutableRecord = Record<string, unknown>;
+type ResourceLike = OpenRecord & { metadata?: OpenRecord };
+type ResourceFields = {
+  apiVersion?: unknown;
+  name?: unknown;
+  uid?: unknown;
+  scope?: unknown;
+};
+type GateRecord = OpenRecord & { id?: string; status?: string };
+type ProcessRecord = OpenRecord & { id?: string; openGateRefs?: CrossProductRef[] };
+type StatusRecord = OpenRecord & { status?: unknown };
+
+function flowProcessStateToProjection(state: OpenRecord, options: OpenRecord = {}) {
   requireObject(state, "state");
-  const stateProcess = state.process || {};
+  const stateProcess = asOpenRecord(state.process);
   const processId = requireString(stateProcess.id || state.processId || state.id, "state.processId");
   const generatedAt = options.generatedAt || state.generatedAt || state.updatedAt || stateProcess.updatedAt;
   const producer = clone(options.producer || state.producer || DEFAULT_PRODUCER);
   const scope = clone(options.scope || state.scope || { product: "flow", kind: "process_run", id: processId });
   const processRef = refWithResource(
-    clone(state.processRef || stateProcess.processRef || { product: "flow", kind: "run", id: processId }),
+    clone((state.processRef || stateProcess.processRef || { product: "flow", kind: "run", id: processId }) as CrossProductRef),
     options.processResource || state.processResource || stateProcess.processResource,
     {
       apiVersion: options.processApiVersion || state.processApiVersion || stateProcess.processApiVersion,
@@ -18,11 +32,11 @@ function flowProcessStateToProjection(state: any, options: any = {}) {
       scope: options.processScope || state.processScope || stateProcess.processScope
     }
   );
-  const rawActions = cloneArray(options.actions || state.actions);
+  const rawActions = cloneArray<ConsoleActionRecord>(options.actions || state.actions);
   const actions = rawActions.map(cleanActionDescriptor);
   const nextActionRefs = deriveNextActionRefs(state, rawActions);
   const primaryProcess = buildPrimaryProcess(state, stateProcess, processId, nextActionRefs);
-  const processes = mergePrimaryProcess(cloneArray(state.processes), primaryProcess);
+  const processes = mergePrimaryProcess(cloneArray<ProcessRecord>(state.processes), primaryProcess);
   const gates = normalizeGates(state.gates, processRef);
 
   return compactObject({
@@ -49,20 +63,21 @@ function flowProcessStateToProjection(state: any, options: any = {}) {
   });
 }
 
-function deriveNextActionRefs(state: any, actions: any) {
-  const stateProcess = state.process || {};
-  const suppliedNextActionRefs = cloneArray(stateProcess.nextActionRefs || state.nextActionRefs);
+function deriveNextActionRefs(state: OpenRecord, actions: ConsoleActionRecord[]) {
+  const stateProcess = asOpenRecord(state.process);
+  const suppliedNextActionRefs = cloneArray<CrossProductRef>(stateProcess.nextActionRefs || state.nextActionRefs);
   return suppliedNextActionRefs.concat(
     actions
-      .filter((action: any) => action && action.id)
+      .filter((action) => action && action.id)
       .map(actionToRef)
-      .filter((ref: any) => !hasRef(suppliedNextActionRefs, ref))
+      .filter((ref) => !hasRef(suppliedNextActionRefs, ref))
   );
 }
 
-function actionToRef(action: any) {
+function actionToRef(action: ConsoleActionRecord) {
+  const authority = asOpenRecord(action.authority);
   return refWithResource({
-    product: action.product || action.authority && action.authority.product || "flow",
+    product: firstString(action.product, authority.product, "flow"),
     kind: "action",
     id: action.id,
     label: action.label
@@ -74,13 +89,13 @@ function actionToRef(action: any) {
   });
 }
 
-function cleanActionDescriptor(action: any) {
+function cleanActionDescriptor(action: ConsoleActionRecord) {
   const copy = compactObject(clone(action));
-  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key: any) => delete copy[key]);
+  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key) => delete copy[key]);
   return copy;
 }
 
-function buildPrimaryProcess(state: any, stateProcess: any, processId: any, nextActionRefs: any) {
+function buildPrimaryProcess(state: OpenRecord, stateProcess: OpenRecord, processId: string, nextActionRefs: CrossProductRef[]) {
   return compactObject({
     id: processId,
     definitionId: stateProcess.definitionId || state.definitionId,
@@ -99,8 +114,8 @@ function buildPrimaryProcess(state: any, stateProcess: any, processId: any, next
   });
 }
 
-function normalizeGates(gates: any, processRef: any) {
-  return cloneArray(gates).map((gate: any) => {
+function normalizeGates(gates: unknown, processRef: CrossProductRef) {
+  return cloneArray<GateRecord>(gates).map((gate) => {
     const {
       gateResource,
       resource,
@@ -115,7 +130,7 @@ function normalizeGates(gates: any, processRef: any) {
       ...publicGate
     } = gate;
     const gateRef = refWithResource(
-      { product: "flow", kind: "gate", id: gate.id },
+      { product: "flow", kind: "gate", id: requireString(gate.id, "gate.id") },
       gateResource || resource,
       {
         apiVersion: gateApiVersion || apiVersion,
@@ -128,25 +143,26 @@ function normalizeGates(gates: any, processRef: any) {
       ...publicGate,
       gateRef,
       processRef: clone(gate.processRef || processRef),
-      expectationRefs: cloneArray(gate.expectationRefs).map((ref: any) => refWithResource(ref, ref && ref.resource)),
-      evidenceRefs: cloneArray(gate.evidenceRefs).map((ref: any) => refWithResource(ref, ref && ref.resource))
+      expectationRefs: cloneArray<CrossProductRef>(gate.expectationRefs).map((ref) => refWithResource(ref, ref && ref.resource)),
+      evidenceRefs: cloneArray<CrossProductRef>(gate.evidenceRefs).map((ref) => refWithResource(ref, ref && ref.resource))
     });
   });
 }
 
-function flowGateTransitionToEvent(transition: any, options: any = {}) {
+function flowGateTransitionToEvent(transition: OpenRecord, options: OpenRecord = {}) {
   requireObject(transition, "transition");
   const gateId = requireString(transition.gateId || transition.id, "transition.gateId");
   const occurredAt = options.occurredAt || transition.occurredAt || transition.changedAt;
   const before = clone(transition.before);
-  const after = clone(transition.after || { status: transition.status });
-  const afterStatus = requireString(after && after.status || transition.status, "transition.after.status");
+  const after = clone((transition.after || { status: transition.status }) as StatusRecord);
+  const afterStatus = requireString(after.status || transition.status, "transition.after.status");
   const eventType = eventTypeFor(transition.type, before, after, afterStatus);
-  const processId = transition.processId || transition.processRef && transition.processRef.id;
+  const transitionProcessRef = asOpenRecord(transition.processRef);
+  const processId = transition.processId || transitionProcessRef.id;
   const producer = clone(options.producer || transition.producer || DEFAULT_PRODUCER);
   const scope = clone(options.scope || transition.scope || { product: "flow", kind: "process_run", id: processId || gateId });
   const subject = refWithResource(
-    clone(transition.subject || transition.gateRef || { product: "flow", kind: "gate", id: gateId }),
+    clone((transition.subject || transition.gateRef || { product: "flow", kind: "gate", id: gateId }) as CrossProductRef),
     options.gateResource || transition.gateResource,
     {
       apiVersion: options.gateApiVersion || transition.gateApiVersion,
@@ -155,7 +171,7 @@ function flowGateTransitionToEvent(transition: any, options: any = {}) {
       scope: options.gateScope || transition.gateScope
     }
   );
-  const processRef = transition.processRef || (processId ? { product: "flow", kind: "run", id: processId } : undefined);
+  const processRef = (transition.processRef || (processId ? { product: "flow", kind: "run", id: processId } : undefined)) as CrossProductRef | undefined;
   const enrichedProcessRef = processRef ? refWithResource(
     clone(processRef),
     options.processResource || transition.processResource,
@@ -166,7 +182,7 @@ function flowGateTransitionToEvent(transition: any, options: any = {}) {
       scope: options.processScope || transition.processScope
     }
   ) : undefined;
-  const refs = cloneArray(transition.refs).map((ref: any) => refWithResource(ref, ref && ref.resource));
+  const refs = cloneArray<CrossProductRef>(transition.refs).map((ref) => refWithResource(ref, ref && ref.resource));
 
   if (!hasRef(refs, subject)) refs.unshift(clone(subject));
   if (enrichedProcessRef && !hasRef(refs, enrichedProcessRef)) refs.push(enrichedProcessRef);
@@ -197,7 +213,7 @@ function flowGateTransitionToEvent(transition: any, options: any = {}) {
   });
 }
 
-function eventTypeFor(type: any, before: any, after: any, status: any) {
+function eventTypeFor(type: unknown, before: unknown, after: unknown, status: unknown) {
   if (typeof type === "string" && type.startsWith("gate.")) return type;
   const normalized = normalizeStatus(status);
   if (normalized === "open" || normalized === "opened") return "gate.opened";
@@ -208,61 +224,68 @@ function eventTypeFor(type: any, before: any, after: any, status: any) {
   return `gate.${normalized}`;
 }
 
-function hasRouteBackMetadata(before: any, after: any) {
+function hasRouteBackMetadata(before: unknown, after: unknown) {
+  const beforeRecord = asOpenRecord(before);
+  const afterRecord = asOpenRecord(after);
   return Boolean(
-    after && (after.routeBackTo || after.routedBackTo || after.routeBackReason) ||
-    before && (before.routeBackTo || before.routedBackTo || before.routeBackReason)
+    afterRecord && (afterRecord.routeBackTo || afterRecord.routedBackTo || afterRecord.routeBackReason) ||
+    beforeRecord && (beforeRecord.routeBackTo || beforeRecord.routedBackTo || beforeRecord.routeBackReason)
   );
 }
 
-function mergePrimaryProcess(processes: any, primaryProcess: any) {
-  if (processes.some((process: any) => process && process.id === primaryProcess.id)) return processes.map(compactObject);
+function mergePrimaryProcess(processes: ProcessRecord[], primaryProcess: ProcessRecord) {
+  if (processes.some((process) => process && process.id === primaryProcess.id)) return processes.map(compactObject);
   return [primaryProcess].concat(processes.map(compactObject));
 }
 
-function countOpenGates(gates: any, openGateRefs: any) {
-  const explicitIds = new Set(cloneArray(openGateRefs).map((ref: any) => ref.id));
-  return gates.filter((gate: any) => isOpenGate(gate) || explicitIds.has(gate.id)).length;
+function countOpenGates(gates: GateRecord[], openGateRefs: unknown) {
+  const explicitIds = new Set(cloneArray<CrossProductRef>(openGateRefs).map((ref) => ref.id));
+  return gates.filter((gate) => isOpenGate(gate) || (gate.id !== undefined && explicitIds.has(gate.id))).length;
 }
 
-function isOpenGate(gate: any) {
-  return gate && ["open", "waiting", "routed_back"].includes(gate.status);
+function isOpenGate(gate: GateRecord) {
+  return typeof gate.status === "string" && ["open", "waiting", "routed_back"].includes(gate.status);
 }
 
-function requireObject(value: any, label: any) {
+function requireObject(value: unknown, label: string): asserts value is OpenRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`${label} must be an object`);
   }
 }
 
-function requireString(value: any, label: any) {
+function requireString(value: unknown, label: string) {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${label} must be a non-empty string`);
   }
   return value;
 }
 
-function cloneArray(value: any) {
+function cloneArray<T = OpenRecord>(value: unknown): T[] {
   return Array.isArray(value) ? clone(value) : [];
 }
 
-function clone(value: any) {
+function clone<T>(value: T): T;
+function clone(value: undefined): undefined;
+function clone<T>(value: T | undefined): T | undefined {
   if (value === undefined) return undefined;
-  return JSON.parse(JSON.stringify(value));
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function refWithResource(ref: any, resource: any, fields: any = {}) {
+function refWithResource<T extends OpenRecord>(ref: T, resource: unknown, fields?: ResourceFields): T;
+function refWithResource(ref: undefined, resource: unknown, fields?: ResourceFields): undefined;
+function refWithResource<T extends OpenRecord>(ref: T | undefined, resource: unknown, fields: ResourceFields = {}): T | undefined {
   if (!ref) return ref;
   const copy = clone(ref);
-  const metadata = resource && resource.metadata || {};
+  const resourceRecord = asResource(resource);
+  const metadata = asOpenRecord(resourceRecord.metadata);
   const enriched = {
-    apiVersion: firstDefined(fields.apiVersion, resource && resource.apiVersion),
-    name: firstDefined(fields.name, metadata.name, resource && resource.name),
-    uid: firstDefined(fields.uid, metadata.uid, resource && resource.uid),
-    scope: firstDefined(fields.scope, resource && resource.scope)
+    apiVersion: firstDefined(fields.apiVersion, resourceRecord.apiVersion),
+    name: firstDefined(fields.name, metadata.name, resourceRecord.name),
+    uid: firstDefined(fields.uid, metadata.uid, resourceRecord.uid),
+    scope: firstDefined(fields.scope, resourceRecord.scope)
   };
   for (const [key, value] of Object.entries(enriched)) {
-    if (value !== undefined && copy[key] === undefined) copy[key] = clone(value);
+    if (value !== undefined && copy[key] === undefined) (copy as OpenRecord)[key] = clone(value);
   }
   delete copy.resource;
   delete copy.gateResource;
@@ -270,38 +293,56 @@ function refWithResource(ref: any, resource: any, fields: any = {}) {
   return copy;
 }
 
-function firstDefined(...values: any[]) {
-  return values.find((value: any) => value !== undefined);
+function firstDefined(...values: unknown[]) {
+  return values.find((value) => value !== undefined);
 }
 
-function hasRef(refs: any, ref: any) {
-  return refs.some((item: any) => item && ref && item.product === ref.product && item.kind === ref.kind && item.id === ref.id);
+function firstString(...values: unknown[]) {
+  return values.find((value): value is string => typeof value === "string" && value.length > 0) || "";
 }
 
-function normalizeStatus(value: any) {
+function hasRef(refs: CrossProductRef[], ref: CrossProductRef | undefined) {
+  return refs.some((item) => item && ref && item.product === ref.product && item.kind === ref.kind && item.id === ref.id);
+}
+
+function normalizeStatus(value: unknown) {
   return String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
-function statusKey(value: any) {
-  if (value && typeof value === "object") return value.status || stableStringify(value);
+function statusKey(value: unknown) {
+  const record = asStatusRecord(value);
+  if (record) return record.status || stableStringify(record);
   return String(value);
 }
 
-function stableStringify(value: any): string {
+function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   if (!value || typeof value !== "object") return JSON.stringify(value);
-  return `{${Object.keys(value).sort().map((key: any) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  const record = value as OpenRecord;
+  return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(",")}}`;
 }
 
-function compactObject(object: any) {
-  return Object.keys(object).reduce((copy: any, key: any) => {
+function compactObject(object: OpenRecord) {
+  return Object.keys(object).reduce<MutableRecord>((copy, key) => {
     if (isSafeObjectKey(key) && object[key] !== undefined) copy[key] = object[key];
     return copy;
   }, {});
 }
 
-function isSafeObjectKey(key: any) {
+function isSafeObjectKey(key: string) {
   return key !== "__proto__" && key !== "constructor" && key !== "prototype";
+}
+
+function asOpenRecord(value: unknown): OpenRecord {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as OpenRecord : {};
+}
+
+function asResource(value: unknown): ResourceLike {
+  return asOpenRecord(value) as ResourceLike;
+}
+
+function asStatusRecord(value: unknown): StatusRecord | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as StatusRecord : undefined;
 }
 
 module.exports = {

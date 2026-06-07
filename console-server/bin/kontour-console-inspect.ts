@@ -6,10 +6,27 @@ const {
   getSurfaceClaimStatus,
   getSurveyReviewState
 } = require("../src/console-foundation");
-import type { InspectionReport } from "../src/console-foundation";
+import type { EventSummary, InspectionReport, ProjectionSummary } from "../src/console-foundation";
 const path = require("node:path");
 
-function main(argv: any) {
+type PrintOptions = { title?: string };
+type CurrentStateSummary = ProjectionSummary["currentState"] & {
+  claims?: Array<{ id?: string; status?: string; freshnessStatus?: string }>;
+  processes?: Array<{ id?: string; status?: string }>;
+  gates?: Array<{ id?: string; status?: string }>;
+  reviewItems?: Array<{ id?: string; status?: string }>;
+  actions?: Array<{ id?: string; status?: string; authorityProduct?: string }>;
+};
+type ReviewPrintItem = {
+  reviewItem: { id?: string; status?: string };
+  claim?: { id?: string; status?: string } | null;
+  evidence: Array<{ id?: string }>;
+  decisions: Array<{ id?: string }>;
+  actions: Array<{ id?: string }>;
+  links: Array<{ relation?: string }>;
+};
+
+function main(argv: string[]) {
   const command = argv[2] || "inspect";
   const rootDir = repoRoot();
 
@@ -45,13 +62,13 @@ function main(argv: any) {
     const report = inspectFixtures({ rootDir });
     const reviewId = argv[3];
     const reviews = getSurveyReviewState(report.projections, { reviewId });
-    for (const review of reviews) {
+    for (const review of reviews as ReviewPrintItem[]) {
       console.log(`${review.reviewItem.id}: ${review.reviewItem.status}`);
       console.log(`  claim: ${review.claim && review.claim.id} (${review.claim && review.claim.status})`);
-      console.log(`  evidence: ${review.evidence.map((item: any) => item.id).join(", ")}`);
-      console.log(`  decisions: ${review.decisions.map((item: any) => item.id).join(", ")}`);
-      console.log(`  actions: ${review.actions.map((item: any) => item.id).join(", ")}`);
-      console.log(`  links: ${review.links.map((item: any) => item.relation).join(", ")}`);
+      console.log(`  evidence: ${review.evidence.map((item) => item.id).join(", ")}`);
+      console.log(`  decisions: ${review.decisions.map((item) => item.id).join(", ")}`);
+      console.log(`  actions: ${review.actions.map((item) => item.id).join(", ")}`);
+      console.log(`  links: ${review.links.map((item) => item.relation).join(", ")}`);
     }
     exitForValidation(report);
     return;
@@ -67,7 +84,7 @@ function repoRoot() {
     : process.cwd();
 }
 
-function printInspection(report: InspectionReport, options: any = {}) {
+function printInspection(report: InspectionReport, options: PrintOptions = {}) {
   console.log(options.title || "Kontour Console inspection");
   console.log("");
   console.log(`Event streams: ${report.eventStreams.length}`);
@@ -94,29 +111,29 @@ function printInspection(report: InspectionReport, options: any = {}) {
   }
 }
 
-function printCurrentState(state: any) {
-  for (const claim of state.claims) {
+function printCurrentState(state: CurrentStateSummary) {
+  for (const claim of state.claims || []) {
     console.log(`  claim ${claim.id}: ${claim.status} freshness=${claim.freshnessStatus || "unknown"}`);
   }
-  for (const processState of state.processes) {
+  for (const processState of state.processes || []) {
     console.log(`  process ${processState.id}: ${processState.status}`);
   }
-  for (const gate of state.gates) {
+  for (const gate of state.gates || []) {
     console.log(`  gate ${gate.id}: ${gate.status}`);
   }
-  for (const review of state.reviewItems) {
+  for (const review of state.reviewItems || []) {
     console.log(`  review ${review.id}: ${review.status}`);
   }
-  for (const action of state.actions) {
+  for (const action of state.actions || []) {
     console.log(`  action ${action.id}: ${action.status} authority=${action.authorityProduct || "unknown"} readOnly=true`);
   }
 }
 
-function formatCounts(counts: any) {
-  return Object.keys(counts).sort().map((key: any) => `${key}=${counts[key]}`).join(", ");
+function formatCounts(counts: EventSummary["eventTypeCounts"] | ProjectionSummary["objectCounts"]): string {
+  return Object.keys(counts).sort().map((key: string) => `${key}=${counts[key]}`).join(", ");
 }
 
-function formatSource(item: any) {
+function formatSource(item: { sourceKind?: string; relativePath: string }): string {
   if (!item.sourceKind) return item.relativePath;
   return `${item.sourceKind}:${item.relativePath}`;
 }
