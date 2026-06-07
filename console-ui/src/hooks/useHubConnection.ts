@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import type { OperatingState, RecordAcceptedEvent } from "@kontour/console-core";
+import type { OperatingState } from "@kontour/console-core";
 import { connectHubEvents, DEFAULT_HUB_URL } from "../hubClient";
+import type { ConsoleAcceptedRecordSsePayload } from "../serverApiTypes";
 import type { ConnectionStatus } from "../types";
 
 const EMPTY_STATE: OperatingState = {
@@ -15,7 +16,7 @@ const EMPTY_STATE: OperatingState = {
 export function useHubConnection(hubUrl: string) {
   const [status, setStatus] = useState<ConnectionStatus>("idle");
   const [state, setState] = useState<OperatingState>(EMPTY_STATE);
-  const [lastAccepted, setLastAccepted] = useState<RecordAcceptedEvent | null>(null);
+  const [lastAccepted, setLastAccepted] = useState<ConsoleAcceptedRecordSsePayload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {

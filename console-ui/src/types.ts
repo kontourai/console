@@ -1,11 +1,11 @@
-import type { OperatingState, RecordAcceptedEvent } from "@kontour/console-core";
+import type { ConsoleAcceptedRecordSsePayload, ConsoleStateResponse } from "./serverApiTypes";
 
 export type ConnectionStatus = "idle" | "connecting" | "connected" | "disconnected" | "error";
 
 export interface HubEventHandlers {
   onStatus(status: ConnectionStatus): void;
   onOpen?(): void;
-  onState(state: OperatingState): void;
-  onRecordAccepted(event: RecordAcceptedEvent): void;
+  onState(state: ConsoleStateResponse): void;
+  onRecordAccepted(event: ConsoleAcceptedRecordSsePayload): void;
   onError(message: string): void;
 }
