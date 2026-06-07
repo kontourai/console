@@ -133,9 +133,10 @@ The `kontour serve` command binds to `127.0.0.1:3737` by default and exposes:
 - `POST /records`
 - `GET /state`
 - `GET /inspect`
+- `GET /stream`
 - `GET /events`
 
-`GET /events` is a server-sent event stream. It sends an initial `ready` event, an initial `state` event, and a `record.accepted` event after an accepted `POST /records`. The local hub persists through `.kontour` files and does not add a database, auth model, remote execution channel, product API fetcher, or action executor.
+`GET /stream` is the canonical server-sent event stream. It sends an initial `ready` event, an initial `state` event, and a `record.accepted` event after an accepted `POST /records`. `GET /events` returns local event stream JSON by default and remains an SSE compatibility path for `Accept: text/event-stream` clients. Browser-origin access is limited to loopback origins unless explicitly configured. The local hub persists through `.kontour` files and does not add a database, auth model, remote execution channel, product API fetcher, or action executor.
 
 ### Surface Claim Status/Freshness Producer Helper
 

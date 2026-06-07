@@ -59,6 +59,52 @@ export interface OperatingState {
   timeline?: Record<string, unknown>[];
 }
 
+export type ConsoleApiErrorCode =
+  | "BAD_REQUEST"
+  | "BODY_TOO_LARGE"
+  | "INVALID_BODY"
+  | "INVALID_JSON"
+  | "INVALID_RECORD"
+  | "METHOD_NOT_ALLOWED"
+  | "NOT_FOUND"
+  | "ORIGIN_NOT_ALLOWED"
+  | "SINK_DELIVERY_FAILED"
+  | (string & {});
+
+export interface ConsoleApiError {
+  error: ConsoleApiErrorCode;
+  safeMessage?: string;
+  validation?: ValidationIssue[];
+}
+
+export type ConsoleStateResponse = OperatingState;
+export type ConsoleEventsResponse = EventStreamInspection[];
+export type ConsoleRecordsRequest = ConsoleRecord;
+export type ConsoleRecordsResponse = DeliveryResult | ConsoleApiError;
+export type ConsoleSseEventName = "ready" | "state" | "record.accepted";
+export type ConsoleStreamPath = "/stream";
+export type ConsoleEventsCompatibilityPath = "/events";
+
+export interface ConsoleReadySsePayload {
+  connectedAt: string;
+}
+
+export type ConsoleStateSsePayload = OperatingState;
+
+export interface ConsoleAcceptedRecordSsePayload {
+  delivery: DeliveryResult;
+  state: OperatingState;
+}
+
+export interface ConsoleSsePayloadMap {
+  ready: ConsoleReadySsePayload;
+  state: ConsoleStateSsePayload;
+  "record.accepted": ConsoleAcceptedRecordSsePayload;
+}
+
+export type ConsoleStreamSsePayload = ConsoleSsePayloadMap[ConsoleSseEventName];
+export type ConsoleEventsSsePayload = ConsoleStreamSsePayload;
+
 export interface ConsoleProducer {
   product?: string;
   id?: string;
@@ -294,6 +340,7 @@ export interface ConsoleHubServerOptions extends LocalConsoleHubOptions {
   hub?: Hub;
   host?: string;
   port?: number;
+  allowedOrigins?: string[];
 }
 
 export interface ListenOptions {
@@ -320,6 +367,7 @@ export interface RequestError extends Error {
   code?: string;
   statusCode?: number;
   safeMessage?: string;
+  validation?: ValidationIssue[];
 }
 
 export interface ReplayEventStream {

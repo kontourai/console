@@ -13,6 +13,7 @@ type RawResponse = { statusCode?: number; headers: Record<string, any>; body: st
 type JsonResponse = { statusCode?: number; body: any };
 type SseEvent = { event: string; data: any };
 type SseHolder = { request?: any; headers?: Record<string, any> };
+const LOCAL_UI_ORIGIN = "http://127.0.0.1:5173";
 
 test("local hub server accepts records and exposes current state", async () => {
   const rootDir = tempRoot();
@@ -31,6 +32,7 @@ test("local hub server accepts records and exposes current state", async () => {
 
     const state = await requestJson("GET", `${baseUrl}/state`);
     const inspection = await requestJson("GET", `${baseUrl}/inspect`);
+    const events = await requestJson("GET", `${baseUrl}/events`);
 
     assert.deepEqual(results.map((item: any) => item.statusCode), [202, 202, 202, 202, 202, 202, 202]);
     assert.equal(state.body.source.acceptedEventCount, 7);
@@ -47,6 +49,8 @@ test("local hub server accepts records and exposes current state", async () => {
     ]);
     assert.equal(inspection.body.validation.errors.length, 0);
     assert.equal(inspection.body.eventStreams.length, 3);
+    assert.equal(events.statusCode, 200);
+    assert.equal(events.body.reduce((sum: any, item: any) => sum + item.events.length, 0), 7);
   } finally {
     await close(app);
   }
@@ -59,7 +63,7 @@ test("local hub server streams accepted record updates over SSE", async () => {
   const streamClient: SseHolder = {};
   try {
     const baseUrl = serverUrl(app);
-    const eventStream = connectSse(`${baseUrl}/events`, streamClient);
+    const eventStream = connectSse(`${baseUrl}/stream`, streamClient);
     const ready = await eventStream.nextEvent();
     const initialState = await eventStream.nextEvent();
     const stream = surfaceFlowHandoffStream();
@@ -76,7 +80,7 @@ test("local hub server streams accepted record updates over SSE", async () => {
 
     assert.equal(ready.event, "ready");
     assert.equal(initialState.event, "state");
-    assert.equal(streamClient.headers!["access-control-allow-origin"], "*");
+    assert.equal(streamClient.headers!["access-control-allow-origin"], LOCAL_UI_ORIGIN);
     assert.equal(initialState.data.source.acceptedEventCount, 0);
     assert.equal(invalid.statusCode, 400);
     assert.equal(result.statusCode, 202);
@@ -92,6 +96,30 @@ test("local hub server streams accepted record updates over SSE", async () => {
     assert.equal(learningUpdate.data.state.claims.length, 0);
     assert.equal(learningUpdate.data.state.gates.length, 0);
     assert.equal(learningUpdate.data.state.actions.length, 0);
+  } finally {
+    if (streamClient.request) streamClient.request.destroy();
+    await close(app);
+  }
+});
+
+test("local hub server keeps /events as an SSE compatibility alias", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  const streamClient: SseHolder = {};
+  try {
+    const baseUrl = serverUrl(app);
+    const eventStream = connectSse(`${baseUrl}/events`, streamClient);
+    const ready = await eventStream.nextEvent();
+    const initialState = await eventStream.nextEvent();
+    const result = await requestJson("POST", `${baseUrl}/records`, surfaceFlowHandoffStream().events[0]);
+    const update = await eventStream.nextEvent();
+
+    assert.equal(ready.event, "ready");
+    assert.equal(initialState.event, "state");
+    assert.equal(result.statusCode, 202);
+    assert.equal(update.event, "record.accepted");
+    assert.equal(update.data.delivery.recordId, "evt-surface-flow-handoff-001");
   } finally {
     if (streamClient.request) streamClient.request.destroy();
     await close(app);
@@ -128,18 +156,93 @@ test("local hub server keeps learning-only updates advisory over SSE", async () 
   }
 });
 
+test("local hub server accepts projection records through local file sink", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const projection = surfaceFlowHandoffProjection();
+    const result = await requestJson("POST", `${baseUrl}/records`, projection.snapshot);
+    const inspection = await requestJson("GET", `${baseUrl}/inspect`);
+    const projectionPath = path.join(
+      rootDir,
+      ".kontour",
+      "projections",
+      projection.snapshot.producer.id,
+      `${projection.snapshot.scope.kind}-${projection.snapshot.scope.id}.json`
+    );
+
+    assert.equal(result.statusCode, 202);
+    assert.equal(result.body.outcome, "accepted");
+    assert.equal(result.body.recordKind, "projection");
+    assert.equal(fs.existsSync(projectionPath), true);
+    assert.equal(inspection.body.projections.length, 1);
+    assert.equal(inspection.body.projections[0].snapshot.id, projection.snapshot.id);
+    assert.equal(inspection.body.validation.errors.length, 0);
+  } finally {
+    await close(app);
+  }
+});
+
 test("local hub server allows loopback browser preflight requests", async () => {
   const rootDir = tempRoot();
   const app = createConsoleHubServer({ rootDir, port: 0 });
   await listen(app);
   try {
     const baseUrl = serverUrl(app);
-    const result = await rawRequest("OPTIONS", `${baseUrl}/records`);
+    const result = await rawRequest("OPTIONS", `${baseUrl}/records`, undefined, {
+      origin: LOCAL_UI_ORIGIN,
+      "access-control-request-method": "POST"
+    });
 
     assert.equal(result.statusCode, 204);
-    assert.equal(result.headers["access-control-allow-origin"], "*");
+    assert.equal(result.headers["access-control-allow-origin"], LOCAL_UI_ORIGIN);
     assert.equal(result.headers["access-control-allow-methods"], "GET, POST, OPTIONS");
     assert.equal(result.headers["access-control-allow-headers"], "content-type");
+  } finally {
+    await close(app);
+  }
+});
+
+test("local hub server rejects unexpected browser origins", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const rejected = await rawRequest("POST", `${baseUrl}/records`, JSON.stringify(surfaceFlowHandoffStream().events[0]), {
+      origin: "http://localhost:9999",
+      "content-type": "application/json"
+    });
+    const state = await requestJson("GET", `${baseUrl}/state`);
+
+    assert.equal(rejected.statusCode, 403);
+    assert.equal(rejected.headers["access-control-allow-origin"], undefined);
+    assert.equal(JSON.parse(rejected.body).error, "ORIGIN_NOT_ALLOWED");
+    assert.equal(state.body.source.acceptedEventCount, 0);
+  } finally {
+    await close(app);
+  }
+});
+
+test("local hub server allows explicitly configured browser origins", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    allowedOrigins: ["http://localhost:9999"]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const allowed = await rawRequest("GET", `${baseUrl}/state`, undefined, {
+      origin: "http://localhost:9999"
+    });
+
+    assert.equal(allowed.statusCode, 200);
+    assert.equal(allowed.headers["access-control-allow-origin"], "http://localhost:9999");
+    assert.equal(JSON.parse(allowed.body).source.acceptedEventCount, 0);
   } finally {
     await close(app);
   }
@@ -152,6 +255,12 @@ test("local hub server rejects malformed requests safely", async () => {
   try {
     const baseUrl = serverUrl(app);
     const invalidJson = await rawRequest("POST", `${baseUrl}/records`, "{");
+    const nonObjectBody = await rawRequest("POST", `${baseUrl}/records`, "\"not-object\"");
+    const invalidSchema = await requestJson("POST", `${baseUrl}/records`, {
+      schema: "kontour.console.unknown",
+      version: "0.1",
+      id: "bad-schema"
+    });
     const invalidRecord = await requestJson("POST", `${baseUrl}/records`, {
       schema: "kontour.console.event",
       version: "0.1",
@@ -164,9 +273,14 @@ test("local hub server rejects malformed requests safely", async () => {
 
     assert.equal(invalidJson.statusCode, 400);
     assert.equal(JSON.parse(invalidJson.body).error, "INVALID_JSON");
+    assert.equal(nonObjectBody.statusCode, 400);
+    assert.equal(JSON.parse(nonObjectBody.body).error, "INVALID_BODY");
+    assert.equal(invalidSchema.statusCode, 400);
+    assert.equal(invalidSchema.body.error, "INVALID_RECORD");
     assert.equal(invalidRecord.statusCode, 400);
-    assert.equal(invalidRecord.body.outcome, "failed");
-    assert.equal(invalidRecord.body.errorCode, "INVALID_RECORD");
+    assert.equal(invalidRecord.body.error, "INVALID_RECORD");
+    assert.equal(invalidRecord.body.safeMessage, "record validation failed");
+    assert.equal(invalidRecord.body.validation.some((item: any) => item.path === "record.type"), true);
     assert.equal(oversized.statusCode, 413);
     assert.equal(JSON.parse(oversized.body).error, "BODY_TOO_LARGE");
     assert.equal(missing.statusCode, 404);
@@ -182,6 +296,11 @@ test("local hub server rejects malformed requests safely", async () => {
 function surfaceFlowHandoffStream() {
   const report = inspectFixtures({ rootDir: process.env.KONTOUR_REPO_ROOT || process.cwd() });
   return report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+}
+
+function surfaceFlowHandoffProjection() {
+  const report = inspectFixtures({ rootDir: process.env.KONTOUR_REPO_ROOT || process.cwd() });
+  return report.projections.find((item: any) => item.relativePath.endsWith("surface-flow-handoff-current.json"));
 }
 
 function advisoryLearningEvent() {
@@ -249,13 +368,14 @@ function requestJson(method: any, url: any, payload?: any): Promise<JsonResponse
   }));
 }
 
-function rawRequest(method: any, url: any, body?: any): Promise<RawResponse> {
+function rawRequest(method: any, url: any, body?: any, extraHeaders: Record<string, string> = {}): Promise<RawResponse> {
   return new Promise((resolve: any, reject: any) => {
     const request = http.request(url, {
       method,
       headers: body === undefined
-        ? undefined
+        ? extraHeaders
         : {
+          ...extraHeaders,
           "content-type": "application/json",
           "content-length": Buffer.byteLength(body)
         }
@@ -286,7 +406,7 @@ function connectSse(url: any, holder: SseHolder = {}) {
   let currentEvent: string | null = null;
   let currentData: string[] = [];
 
-  const request = http.request(url, { method: "GET" }, (response: any) => {
+  const request = http.request(url, { method: "GET", headers: { accept: "text/event-stream", origin: LOCAL_UI_ORIGIN } }, (response: any) => {
     holder.headers = response.headers;
     response.setEncoding("utf8");
     response.on("data", (chunk: any) => {

@@ -37,7 +37,7 @@ function serve(options: ServeOptions): void {
     const resolved = address as ReturnType<ConsoleHubServer["server"]["address"]>;
     if (!resolved || typeof resolved === "string") return;
     console.log(`Kontour local hub: http://${resolved.address}:${resolved.port}`);
-    console.log("POST /records  GET /state  GET /inspect  GET /events");
+    console.log("POST /records  GET /state  GET /inspect  GET /events  GET /stream SSE");
   });
 }
 
