@@ -1,11 +1,25 @@
-// @ts-nocheck
 const path = require("node:path");
 const { LocalFileSink } = require("./emitter");
+import type {
+  ConsoleEventRecord,
+  ConsoleProjectionRecord,
+  ConsoleRecord,
+  CurrentOperatingStateOptions,
+  DeliveryResult,
+  InspectionReport,
+  LocalConsoleHubOptions,
+  OperatingState,
+  Sink
+} from "./types";
 
 const LOCAL_KONTOUR_DIR = ".kontour";
 
 class LocalConsoleHub {
-  constructor(options = {}) {
+  rootDir: string;
+  kontourRoot: string;
+  sink: Sink;
+
+  constructor(options: LocalConsoleHubOptions = {}) {
     this.rootDir = path.resolve(options.rootDir || process.cwd());
     this.kontourRoot = resolveUnderRoot(this.rootDir, options.kontourRoot || options.localRoot || LOCAL_KONTOUR_DIR);
     this.sink = options.sink || new LocalFileSink({
@@ -15,31 +29,31 @@ class LocalConsoleHub {
     });
   }
 
-  append(record) {
+  append(record: ConsoleRecord): Promise<DeliveryResult> {
     return Promise.resolve(this.sink.deliver(record));
   }
 
-  appendEvent(event) {
+  appendEvent(event: ConsoleEventRecord): Promise<DeliveryResult> {
     return this.append(event);
   }
 
-  appendProjection(projection) {
+  appendProjection(projection: ConsoleProjectionRecord): Promise<DeliveryResult> {
     return this.append(projection);
   }
 
-  inspect() {
+  inspect(): InspectionReport {
     return foundation().inspectLocalKontour({
       rootDir: this.rootDir,
       kontourRoot: this.kontourRoot
     });
   }
 
-  currentOperatingState(options = {}) {
+  currentOperatingState(options: CurrentOperatingStateOptions = {}): OperatingState {
     return foundation().buildCurrentOperatingState(this.inspect(), options);
   }
 }
 
-function createLocalConsoleHub(options = {}) {
+function createLocalConsoleHub(options: LocalConsoleHubOptions = {}): LocalConsoleHub {
   return new LocalConsoleHub(options);
 }
 
@@ -47,7 +61,7 @@ function foundation() {
   return require("./index");
 }
 
-function resolveUnderRoot(rootDir, maybeRelativePath) {
+function resolveUnderRoot(rootDir: string, maybeRelativePath: string): string {
   return path.resolve(path.isAbsolute(maybeRelativePath)
     ? maybeRelativePath
     : path.join(rootDir, maybeRelativePath));

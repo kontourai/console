@@ -1,4 +1,3 @@
-// @ts-nocheck
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -23,12 +22,12 @@ test("local console hub appends handoff events and exposes replayed current stat
   const report = hub.inspect();
   const state = hub.currentOperatingState({ generatedAt: "2026-06-03T10:01:45Z" });
 
-  assert.deepEqual(results.map((result) => result.outcome), ["accepted", "accepted", "accepted", "accepted", "accepted", "accepted"]);
+  assert.deepEqual(results.map((result: any) => result.outcome), ["accepted", "accepted", "accepted", "accepted", "accepted", "accepted"]);
   assert.equal(results[0].sinkRole, "LocalConsoleHub");
   assert.equal(report.kontourRoot, path.join(rootDir, ".kontour"));
   assert.equal(report.validation.errors.length, 0);
   assert.equal(report.eventStreams.length, 2);
-  assert.equal(report.eventStreams.reduce((sum, item) => sum + item.events.length, 0), 6);
+  assert.equal(report.eventStreams.reduce((sum: any, item: any) => sum + item.events.length, 0), 6);
   assert.equal(fs.existsSync(path.join(rootDir, ".kontour", "events", "flow-local", "project-provider-directory-refresh.jsonl")), true);
   assert.equal(fs.existsSync(path.join(rootDir, ".kontour", "events", "surface-local", "project-provider-directory-refresh.jsonl")), true);
 
@@ -68,7 +67,7 @@ test("local console hub accepts custom local root and failed appends do not crea
 
 function surfaceFlowHandoffStream() {
   const report = inspectFixtures({ rootDir: process.env.KONTOUR_REPO_ROOT || process.cwd() });
-  return report.eventStreams.find((item) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+  return report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
 }
 
 function tempRoot() {

@@ -1,6 +1,44 @@
-// @ts-nocheck
 const fs = require("node:fs");
 const path = require("node:path");
+import type {
+  EventStreamInspection,
+  LoaderOptions,
+  ProjectionInspection,
+  ValidationIssue,
+  ValidationSeverity
+} from "./types";
+
+export type {
+  ActionDescriptor,
+  ClassifiedRecord,
+  CompositeSinkOptions,
+  ConsoleEventRecord,
+  ConsoleHubServer,
+  ConsoleHubServerOptions,
+  ConsoleProjectionRecord,
+  ConsoleRecord,
+  CrossProductRef,
+  CurrentOperatingStateOptions,
+  DeliveryOutcome,
+  DeliveryResult,
+  EventStreamInspection,
+  Hub,
+  InMemorySinkOptions,
+  InspectLocalOptions,
+  InspectOptions,
+  InspectionReport,
+  KontourEmitterOptions,
+  ListenOptions,
+  LoaderOptions,
+  LocalConsoleHubOptions,
+  LocalFileSinkOptions,
+  OperatingState,
+  ProjectionInspection,
+  RecordKind,
+  Sink,
+  ValidationIssue,
+  ValidationSummary
+} from "./types";
 
 const EVENT_DIR = path.join("docs", "examples", "event-streams");
 const PROJECTION_DIR = path.join("docs", "examples", "projections");
@@ -17,16 +55,16 @@ const OBJECT_ARRAY_KEYS = [
   "learnings"
 ];
 
-function inspectFixtures(options = {}) {
+function inspectFixtures(options: any = {}) {
   const rootDir = options.rootDir || process.cwd();
-  const source = {
+  const source: LoaderOptions = {
     sourceKind: "fixture",
     sourceRoot: rootDir
   };
   const eventStreams = loadEventStreams(path.join(rootDir, EVENT_DIR), rootDir, source);
   const projections = loadProjectionSnapshots(path.join(rootDir, PROJECTION_DIR), rootDir, source);
-  const issues = eventStreams.flatMap((stream) => stream.validation)
-    .concat(projections.flatMap((projection) => projection.validation));
+  const issues = eventStreams.flatMap((stream: any) => stream.validation)
+    .concat(projections.flatMap((projection: any) => projection.validation));
 
   return {
     rootDir,
@@ -36,11 +74,11 @@ function inspectFixtures(options = {}) {
   };
 }
 
-function inspectLocalKontour(options = {}) {
+function inspectLocalKontour(options: any = {}) {
   const rootDir = path.resolve(options.rootDir || process.cwd());
   const kontourRoot = resolveUnderRoot(rootDir, options.kontourRoot || options.localRoot || LOCAL_KONTOUR_DIR);
   const sourceRoot = kontourRoot;
-  const source = {
+  const source: LoaderOptions = {
     sourceKind: "local",
     sourceRoot
   };
@@ -54,8 +92,8 @@ function inspectLocalKontour(options = {}) {
     recursive: true,
     containmentRoot: sourceRoot
   });
-  const issues = eventStreams.flatMap((stream) => stream.validation)
-    .concat(projections.flatMap((projection) => projection.validation));
+  const issues = eventStreams.flatMap((stream: any) => stream.validation)
+    .concat(projections.flatMap((projection: any) => projection.validation));
 
   return {
     rootDir,
@@ -66,30 +104,30 @@ function inspectLocalKontour(options = {}) {
   };
 }
 
-function loadEventStreams(streamDir, rootDir = process.cwd(), options = {}) {
+function loadEventStreams(streamDir: string, rootDir = process.cwd(), options: LoaderOptions = {}): EventStreamInspection[] {
   const files = options.recursive
     ? listFilesRecursive(streamDir, ".jsonl", options.containmentRoot || streamDir)
     : listFiles(streamDir, ".jsonl");
-  return files.map((filePath) => {
+  return files.map((filePath: any) => {
     const relativePath = path.relative(rootDir, filePath);
-    const events = [];
-    const validation = [];
-    let lines = [];
+    const events: any[] = [];
+    const validation: ValidationIssue[] = [];
+    let lines: string[] = [];
 
     try {
       lines = readContainedTextFile(filePath, options.containmentRoot).split(/\r?\n/);
     } catch (error) {
-      validation.push(issue("error", relativePath, `unable to read event stream: ${error.message}`));
+      validation.push(issue("error", relativePath, `unable to read event stream: ${safeErrorMessage(error)}`));
     }
 
-    lines.forEach((line, index) => {
+    lines.forEach((line: any, index: any) => {
       if (!line.trim()) return;
       try {
         const event = JSON.parse(line);
         events.push(event);
         validation.push(...validateEvent(event, `${relativePath}:${index + 1}`));
       } catch (error) {
-        validation.push(issue("error", `${relativePath}:${index + 1}`, `invalid JSON: ${error.message}`));
+        validation.push(issue("error", `${relativePath}:${index + 1}`, `invalid JSON: ${safeErrorMessage(error)}`));
       }
     });
 
@@ -105,20 +143,20 @@ function loadEventStreams(streamDir, rootDir = process.cwd(), options = {}) {
   });
 }
 
-function loadProjectionSnapshots(projectionDir, rootDir = process.cwd(), options = {}) {
+function loadProjectionSnapshots(projectionDir: string, rootDir = process.cwd(), options: LoaderOptions = {}): ProjectionInspection[] {
   const files = options.recursive
     ? listFilesRecursive(projectionDir, ".json", options.containmentRoot || projectionDir)
     : listFiles(projectionDir, ".json");
-  return files.map((filePath) => {
+  return files.map((filePath: any) => {
     const relativePath = path.relative(rootDir, filePath);
-    const validation = [];
-    let snapshot = {};
+    const validation: ValidationIssue[] = [];
+    let snapshot: any = {};
 
     try {
       snapshot = JSON.parse(readContainedTextFile(filePath, options.containmentRoot));
       validation.push(...validateProjection(snapshot, relativePath));
     } catch (error) {
-      validation.push(issue("error", relativePath, `invalid JSON: ${error.message}`));
+      validation.push(issue("error", relativePath, `invalid JSON: ${safeErrorMessage(error)}`));
     }
 
     return {
@@ -134,10 +172,10 @@ function loadProjectionSnapshots(projectionDir, rootDir = process.cwd(), options
   });
 }
 
-function getSurfaceClaimStatus(projections, options = {}) {
+function getSurfaceClaimStatus(projections: any, options: any = {}) {
   return projections
-    .filter((projection) => projection.snapshot.producer && projection.snapshot.producer.product === "surface")
-    .flatMap((projection) => arrayOf(projection.snapshot.claims).map((claim) => ({
+    .filter((projection: any) => projection.snapshot.producer && projection.snapshot.producer.product === "surface")
+    .flatMap((projection: any) => arrayOf(projection.snapshot.claims).map((claim: any) => ({
       projection: projection.relativePath,
       id: claim.id,
       label: claim.label,
@@ -153,26 +191,26 @@ function getSurfaceClaimStatus(projections, options = {}) {
       requiresSelectedFlowRun: Boolean(claim.extensions && claim.extensions.rendering && claim.extensions.rendering.requiresSelectedFlowRun),
       source: claim
     })))
-    .filter((claim) => !options.claimId || claim.id === options.claimId);
+    .filter((claim: any) => !options.claimId || claim.id === options.claimId);
 }
 
-function getSurveyReviewState(projections, options = {}) {
+function getSurveyReviewState(projections: any, options: any = {}) {
   return projections
-    .filter((projection) => projection.snapshot.producer && projection.snapshot.producer.product === "survey")
-    .flatMap((projection) => {
+    .filter((projection: any) => projection.snapshot.producer && projection.snapshot.producer.product === "survey")
+    .flatMap((projection: any) => {
       const snapshot = projection.snapshot;
       return arrayOf(snapshot.reviewItems)
-        .filter((reviewItem) => matchesReview(reviewItem, options))
-        .map((reviewItem) => {
-          const claimIds = new Set(arrayOf(reviewItem.claimRefs).map((ref) => ref.id));
-          const evidenceIds = new Set(arrayOf(reviewItem.evidenceRefs).map((ref) => ref.id));
-          const actionIds = new Set(arrayOf(reviewItem.actionRefs).map((ref) => ref.id));
+        .filter((reviewItem: any) => matchesReview(reviewItem, options))
+        .map((reviewItem: any) => {
+          const claimIds = new Set(arrayOf(reviewItem.claimRefs).map((ref: any) => ref.id));
+          const evidenceIds = new Set(arrayOf(reviewItem.evidenceRefs).map((ref: any) => ref.id));
+          const actionIds = new Set(arrayOf(reviewItem.actionRefs).map((ref: any) => ref.id));
           const subjectIds = new Set([reviewItem.id, reviewItem.subjectRef && reviewItem.subjectRef.id].filter(Boolean));
-          const claims = arrayOf(snapshot.claims).filter((claim) => claimIds.has(claim.id) || options.claimId === claim.id);
-          const evidence = arrayOf(snapshot.evidence).filter((item) => evidenceIds.has(item.id) || refsContain(item.claimRefs, claimIds));
-          const actions = arrayOf(snapshot.actions).filter((action) => actionIds.has(action.id) || refsContain(action.subjectRefs, claimIds) || refsContain(action.subjectRefs, subjectIds));
-          const decisions = arrayOf(snapshot.decisions).filter((decision) => refsContain(decision.subjectRefs, new Set([reviewItem.id])) || refsContain(decision.evidenceRefs, evidenceIds));
-          const linkedIds = new Set([reviewItem.id, ...claimIds, ...evidenceIds, ...actionIds, ...subjectIds, ...decisions.map((decision) => decision.id)]);
+          const claims = arrayOf(snapshot.claims).filter((claim: any) => claimIds.has(claim.id) || options.claimId === claim.id);
+          const evidence = arrayOf(snapshot.evidence).filter((item: any) => evidenceIds.has(item.id) || refsContain(item.claimRefs, claimIds));
+          const actions = arrayOf(snapshot.actions).filter((action: any) => actionIds.has(action.id) || refsContain(action.subjectRefs, claimIds) || refsContain(action.subjectRefs, subjectIds));
+          const decisions = arrayOf(snapshot.decisions).filter((decision: any) => refsContain(decision.subjectRefs, new Set([reviewItem.id])) || refsContain(decision.evidenceRefs, evidenceIds));
+          const linkedIds = new Set([reviewItem.id, ...claimIds, ...evidenceIds, ...actionIds, ...subjectIds, ...decisions.map((decision: any) => decision.id)]);
           return {
             projection: projection.relativePath,
             reviewItem,
@@ -180,34 +218,34 @@ function getSurveyReviewState(projections, options = {}) {
             claims,
             evidence,
             decisions,
-            actions: actions.map((action) => toActionDescriptor(action, `${projection.relativePath}.actions`)),
-            links: arrayOf(snapshot.links).filter((link) => refSetHas(link.from, linkedIds) || refSetHas(link.to, linkedIds))
+            actions: actions.map((action: any) => toActionDescriptor(action, `${projection.relativePath}.actions`)),
+            links: arrayOf(snapshot.links).filter((link: any) => refSetHas(link.from, linkedIds) || refSetHas(link.to, linkedIds))
           };
         });
     });
 }
 
-function getFlowProcessStatus(projections, options = {}) {
+function getFlowProcessStatus(projections: any, options: any = {}) {
   return projections
-    .filter((projection) => projection.snapshot.producer && projection.snapshot.producer.product === "flow")
-    .flatMap((projection) => {
+    .filter((projection: any) => projection.snapshot.producer && projection.snapshot.producer.product === "flow")
+    .flatMap((projection: any) => {
       const snapshot = projection.snapshot;
       return arrayOf(snapshot.processes)
-        .filter((process) => matchesProcess(process, snapshot, options))
-        .map((process) => {
+        .filter((process: any) => matchesProcess(process, snapshot, options))
+        .map((process: any) => {
           const processIds = new Set([process.id]);
-          const openGateIds = new Set(arrayOf(process.openGateRefs).map((ref) => ref.id));
-          const nextActionIds = new Set(arrayOf(process.nextActionRefs).map((ref) => ref.id));
-          const gates = arrayOf(snapshot.gates).filter((gate) => {
+          const openGateIds = new Set(arrayOf(process.openGateRefs).map((ref: any) => ref.id));
+          const nextActionIds = new Set(arrayOf(process.nextActionRefs).map((ref: any) => ref.id));
+          const gates = arrayOf(snapshot.gates).filter((gate: any) => {
             const matchesProcessRef = gate.processRef && processIds.has(gate.processRef.id);
             const matchesExplicitGate = openGateIds.has(gate.id);
             return matchesProcessRef || matchesExplicitGate || options.gateId === gate.id;
           });
-          const gateIds = new Set(gates.map((gate) => gate.id));
-          const openGates = gates.filter((gate) => isOpenFlowGate(gate) || openGateIds.has(gate.id));
-          const evidence = arrayOf(snapshot.evidence).filter((item) => refsContain(item.processRefs, processIds) || refsContain(item.gateRefs, gateIds));
-          const decisions = arrayOf(snapshot.decisions).filter((decision) => refsContain(decision.subjectRefs, processIds) || refsContain(decision.subjectRefs, gateIds));
-          const actions = arrayOf(snapshot.actions).filter((action) => {
+          const gateIds = new Set(gates.map((gate: any) => gate.id));
+          const openGates = gates.filter((gate: any) => isOpenFlowGate(gate) || openGateIds.has(gate.id));
+          const evidence = arrayOf(snapshot.evidence).filter((item: any) => refsContain(item.processRefs, processIds) || refsContain(item.gateRefs, gateIds));
+          const decisions = arrayOf(snapshot.decisions).filter((decision: any) => refsContain(decision.subjectRefs, processIds) || refsContain(decision.subjectRefs, gateIds));
+          const actions = arrayOf(snapshot.actions).filter((action: any) => {
             if (nextActionIds.has(action.id)) return true;
             if (refsContain(action.subjectRefs, processIds)) return true;
             return refsContain(action.subjectRefs, gateIds);
@@ -229,15 +267,15 @@ function getFlowProcessStatus(projections, options = {}) {
             openGates,
             evidence,
             decisions,
-            actions: actions.map((action) => toActionDescriptor(action, `${projection.relativePath}.actions`)),
+            actions: actions.map((action: any) => toActionDescriptor(action, `${projection.relativePath}.actions`)),
             source: process
           };
         });
     });
 }
 
-function validateEvent(event, basePath) {
-  const issues = [];
+function validateEvent(event: any, basePath: any): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
   requireString(event, "schema", basePath, issues);
   requireString(event, "version", basePath, issues);
   requireString(event, "id", basePath, issues);
@@ -248,7 +286,7 @@ function validateEvent(event, basePath) {
   requireObject(event, "subject", basePath, issues);
   requireObject(event, "payload", basePath, issues);
   validateRef(event.subject, `${basePath}.subject`, issues);
-  arrayOf(event.payload && event.payload.refs).forEach((ref, index) => validateRef(ref, `${basePath}.payload.refs[${index}]`, issues));
+  arrayOf(event.payload && event.payload.refs).forEach((ref: any, index: any) => validateRef(ref, `${basePath}.payload.refs[${index}]`, issues));
   validateLinks(event.links, `${basePath}.links`, issues);
   validateLearningEventPayload(event, basePath, issues);
   if (event.schema !== "kontour.console.event") issues.push(issue("error", `${basePath}.schema`, "expected kontour.console.event"));
@@ -256,8 +294,8 @@ function validateEvent(event, basePath) {
   return issues;
 }
 
-function validateProjection(snapshot, basePath) {
-  const issues = [];
+function validateProjection(snapshot: any, basePath: any): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
   requireString(snapshot, "schema", basePath, issues);
   requireString(snapshot, "version", basePath, issues);
   requireString(snapshot, "generatedAt", basePath, issues);
@@ -266,24 +304,24 @@ function validateProjection(snapshot, basePath) {
   requireObject(snapshot, "scope", basePath, issues);
   if (snapshot.schema !== "kontour.console.projection") issues.push(issue("error", `${basePath}.schema`, "expected kontour.console.projection"));
   if (snapshot.version !== "0.1") issues.push(issue("warning", `${basePath}.version`, "expected v0.1 projection version"));
-  OBJECT_ARRAY_KEYS.forEach((key) => {
+  OBJECT_ARRAY_KEYS.forEach((key: any) => {
     if (snapshot[key] !== undefined && !Array.isArray(snapshot[key])) {
       issues.push(issue("error", `${basePath}.${key}`, "expected an array when present"));
     }
   });
-  arrayOf(snapshot.links).forEach((link, index) => validateLink(link, `${basePath}.links[${index}]`, issues));
-  arrayOf(snapshot.claims).forEach((claim, index) => validateClaim(claim, `${basePath}.claims[${index}]`, issues));
-  arrayOf(snapshot.processes).forEach((process, index) => validateProcess(process, `${basePath}.processes[${index}]`, issues));
-  arrayOf(snapshot.gates).forEach((gate, index) => validateGate(gate, `${basePath}.gates[${index}]`, issues));
-  arrayOf(snapshot.reviewItems).forEach((reviewItem, index) => validateReviewItem(reviewItem, `${basePath}.reviewItems[${index}]`, issues));
-  arrayOf(snapshot.evidence).forEach((evidence, index) => validateEvidence(evidence, `${basePath}.evidence[${index}]`, issues));
-  arrayOf(snapshot.decisions).forEach((decision, index) => validateDecision(decision, `${basePath}.decisions[${index}]`, issues));
-  arrayOf(snapshot.exceptions).forEach((exception, index) => validateException(exception, `${basePath}.exceptions[${index}]`, issues));
-  arrayOf(snapshot.learnings).forEach((learning, index) => validateLearning(learning, `${basePath}.learnings[${index}]`, issues));
-  arrayOf(snapshot.actions).forEach((action, index) => {
+  arrayOf(snapshot.links).forEach((link: any, index: any) => validateLink(link, `${basePath}.links[${index}]`, issues));
+  arrayOf(snapshot.claims).forEach((claim: any, index: any) => validateClaim(claim, `${basePath}.claims[${index}]`, issues));
+  arrayOf(snapshot.processes).forEach((process: any, index: any) => validateProcess(process, `${basePath}.processes[${index}]`, issues));
+  arrayOf(snapshot.gates).forEach((gate: any, index: any) => validateGate(gate, `${basePath}.gates[${index}]`, issues));
+  arrayOf(snapshot.reviewItems).forEach((reviewItem: any, index: any) => validateReviewItem(reviewItem, `${basePath}.reviewItems[${index}]`, issues));
+  arrayOf(snapshot.evidence).forEach((evidence: any, index: any) => validateEvidence(evidence, `${basePath}.evidence[${index}]`, issues));
+  arrayOf(snapshot.decisions).forEach((decision: any, index: any) => validateDecision(decision, `${basePath}.decisions[${index}]`, issues));
+  arrayOf(snapshot.exceptions).forEach((exception: any, index: any) => validateException(exception, `${basePath}.exceptions[${index}]`, issues));
+  arrayOf(snapshot.learnings).forEach((learning: any, index: any) => validateLearning(learning, `${basePath}.learnings[${index}]`, issues));
+  arrayOf(snapshot.actions).forEach((action: any, index: any) => {
     requireString(action, "id", `${basePath}.actions[${index}]`, issues);
     requireObject(action, "authority", `${basePath}.actions[${index}]`, issues);
-    arrayOf(action && action.subjectRefs).forEach((ref, refIndex) => validateRef(ref, `${basePath}.actions[${index}].subjectRefs[${refIndex}]`, issues));
+    arrayOf(action && action.subjectRefs).forEach((ref: any, refIndex: any) => validateRef(ref, `${basePath}.actions[${index}].subjectRefs[${refIndex}]`, issues));
     for (const warning of actionDescriptorWarnings(action)) {
       issues.push(issue("warning", `${basePath}.actions[${index}]`, warning));
     }
@@ -291,8 +329,8 @@ function validateProjection(snapshot, basePath) {
   return issues;
 }
 
-function summarizeEvents(events) {
-  const eventTypeCounts = {};
+function summarizeEvents(events: any) {
+  const eventTypeCounts: Record<string, number> = {};
   for (const event of events) {
     eventTypeCounts[event.type] = (eventTypeCounts[event.type] || 0) + 1;
   }
@@ -304,8 +342,8 @@ function summarizeEvents(events) {
   };
 }
 
-function summarizeProjection(snapshot) {
-  const objectCounts = {};
+function summarizeProjection(snapshot: any) {
+  const objectCounts: Record<string, number> = {};
   for (const key of OBJECT_ARRAY_KEYS) {
     objectCounts[key] = arrayOf(snapshot[key]).length;
   }
@@ -313,20 +351,20 @@ function summarizeProjection(snapshot) {
   return {
     objectCounts,
     currentState: {
-      claims: arrayOf(snapshot.claims).map((claim) => ({ id: claim.id, status: claim.status, freshnessStatus: claim.freshness && claim.freshness.status })),
-      processes: arrayOf(snapshot.processes).map((item) => ({ id: item.id, status: item.status })),
-      gates: arrayOf(snapshot.gates).map((item) => ({ id: item.id, status: item.status })),
-      reviewItems: arrayOf(snapshot.reviewItems).map((item) => ({ id: item.id, status: item.status })),
-      actions: arrayOf(snapshot.actions).map((item) => ({ id: item.id, status: item.status, authorityProduct: item.authority && item.authority.product }))
+      claims: arrayOf(snapshot.claims).map((claim: any) => ({ id: claim.id, status: claim.status, freshnessStatus: claim.freshness && claim.freshness.status })),
+      processes: arrayOf(snapshot.processes).map((item: any) => ({ id: item.id, status: item.status })),
+      gates: arrayOf(snapshot.gates).map((item: any) => ({ id: item.id, status: item.status })),
+      reviewItems: arrayOf(snapshot.reviewItems).map((item: any) => ({ id: item.id, status: item.status })),
+      actions: arrayOf(snapshot.actions).map((item: any) => ({ id: item.id, status: item.status, authorityProduct: item.authority && item.authority.product }))
     }
   };
 }
 
-function extractActionDescriptors(snapshot, basePath = "projection") {
-  return arrayOf(snapshot.actions).map((action) => toActionDescriptor(action, `${basePath}.actions`));
+function extractActionDescriptors(snapshot: any, basePath: any = "projection") {
+  return arrayOf(snapshot.actions).map((action: any) => toActionDescriptor(action, `${basePath}.actions`));
 }
 
-function toActionDescriptor(action, basePath) {
+function toActionDescriptor(action: any, basePath: any) {
   return {
     id: action.id,
     label: action.label,
@@ -335,13 +373,13 @@ function toActionDescriptor(action, basePath) {
     authority: action.authority,
     subjectRefs: arrayOf(action.subjectRefs),
     readOnly: true,
-    warnings: actionDescriptorWarnings(action).map((message) => ({ severity: "warning", path: `${basePath}.${action.id}`, message })),
+    warnings: actionDescriptorWarnings(action).map((message: any) => ({ severity: "warning", path: `${basePath}.${action.id}`, message })),
     source: action
   };
 }
 
-function actionDescriptorWarnings(action) {
-  const warnings = [];
+function actionDescriptorWarnings(action: any): string[] {
+  const warnings: string[] = [];
   if (!action || typeof action !== "object") return warnings;
   if (action.authority && action.authority.command) warnings.push("authority.command is an inert descriptor only");
   if (action.authority && action.authority.endpoint) warnings.push("authority.endpoint is an inert descriptor only");
@@ -349,30 +387,30 @@ function actionDescriptorWarnings(action) {
   return warnings;
 }
 
-function listFiles(dir, extension) {
+function listFiles(dir: any, extension: any) {
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir)
-    .filter((name) => name.endsWith(extension))
+    .filter((name: any) => name.endsWith(extension))
     .sort()
-    .map((name) => path.join(dir, name));
+    .map((name: any) => path.join(dir, name));
 }
 
-function listFilesRecursive(dir, extension, containmentRoot) {
+function listFilesRecursive(dir: any, extension: any, containmentRoot: any): string[] {
   const root = path.resolve(containmentRoot);
   const start = path.resolve(dir);
   if (!isSafeDiscoveryRoot(root) || !isContainedPath(start, root) || !fs.existsSync(start)) return [];
-  const entries = [];
+  const entries: string[] = [];
   walkSafe(start, root, extension, entries);
   return entries.sort();
 }
 
-function resolveUnderRoot(rootDir, maybeRelativePath) {
+function resolveUnderRoot(rootDir: any, maybeRelativePath: any) {
   return path.resolve(path.isAbsolute(maybeRelativePath)
     ? maybeRelativePath
     : path.join(rootDir, maybeRelativePath));
 }
 
-function readContainedTextFile(filePath, containmentRoot) {
+function readContainedTextFile(filePath: any, containmentRoot: any) {
   if (!containmentRoot) return fs.readFileSync(filePath, "utf8");
   const root = path.resolve(containmentRoot);
   if (!isContainedPath(filePath, root)) {
@@ -392,7 +430,7 @@ function readContainedTextFile(filePath, containmentRoot) {
   }
 }
 
-function isSafeDiscoveryRoot(root) {
+function isSafeDiscoveryRoot(root: any) {
   try {
     const stat = fs.lstatSync(root);
     return stat.isDirectory() && !stat.isSymbolicLink();
@@ -401,7 +439,7 @@ function isSafeDiscoveryRoot(root) {
   }
 }
 
-function walkSafe(dir, root, extension, entries) {
+function walkSafe(dir: any, root: any, extension: any, entries: any) {
   let stat;
   try {
     stat = fs.lstatSync(dir);
@@ -428,42 +466,42 @@ function walkSafe(dir, root, extension, entries) {
   }
 }
 
-function isContainedPath(candidate, root) {
+function isContainedPath(candidate: any, root: any) {
   const relative = path.relative(root, path.resolve(candidate));
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-function matchesReview(reviewItem, options) {
+function matchesReview(reviewItem: any, options: any) {
   if (options.reviewId && reviewItem.id !== options.reviewId) return false;
   if (options.claimId && !refsContain(reviewItem.claimRefs, new Set([options.claimId]))) return false;
   if (options.providerFieldRef && (!reviewItem.subjectRef || reviewItem.subjectRef.id !== options.providerFieldRef)) return false;
   return true;
 }
 
-function matchesProcess(process, snapshot, options) {
+function matchesProcess(process: any, snapshot: any, options: any) {
   if (options.processId && process.id !== options.processId) return false;
   if (options.status && process.status !== options.status) return false;
   if (options.gateId) {
-    const openGateRefs = new Set(arrayOf(process.openGateRefs).map((ref) => ref.id));
-    const hasGate = arrayOf(snapshot.gates).some((gate) => gate.id === options.gateId && gate.processRef && gate.processRef.id === process.id);
+    const openGateRefs = new Set(arrayOf(process.openGateRefs).map((ref: any) => ref.id));
+    const hasGate = arrayOf(snapshot.gates).some((gate: any) => gate.id === options.gateId && gate.processRef && gate.processRef.id === process.id);
     if (!openGateRefs.has(options.gateId) && !hasGate) return false;
   }
   return true;
 }
 
-function isOpenFlowGate(gate) {
+function isOpenFlowGate(gate: any) {
   return gate && ["open", "waiting", "routed_back"].includes(gate.status);
 }
 
-function refsContain(refs, ids) {
-  return arrayOf(refs).some((ref) => ids.has(ref.id));
+function refsContain(refs: any, ids: any) {
+  return arrayOf(refs).some((ref: any) => ids.has(ref.id));
 }
 
-function refSetHas(ref, ids) {
+function refSetHas(ref: any, ids: any) {
   return Boolean(ref && ids.has(ref.id));
 }
 
-function validateClaim(claim, basePath, issues) {
+function validateClaim(claim: any, basePath: any, issues: any) {
   requireString(claim, "id", basePath, issues);
   requireString(claim, "status", basePath, issues);
   validateRefArray(claim && claim.evidenceRefs, `${basePath}.evidenceRefs`, issues);
@@ -471,7 +509,7 @@ function validateClaim(claim, basePath, issues) {
   if (claim && claim.sourceRef !== undefined) validateRef(claim.sourceRef, `${basePath}.sourceRef`, issues);
 }
 
-function validateProcess(process, basePath, issues) {
+function validateProcess(process: any, basePath: any, issues: any) {
   requireString(process, "id", basePath, issues);
   requireString(process, "status", basePath, issues);
   validateRefArray(process && process.openGateRefs, `${basePath}.openGateRefs`, issues);
@@ -480,7 +518,7 @@ function validateProcess(process, basePath, issues) {
   validateRefArray(process && process.nextActionRefs, `${basePath}.nextActionRefs`, issues);
 }
 
-function validateGate(gate, basePath, issues) {
+function validateGate(gate: any, basePath: any, issues: any) {
   requireString(gate, "id", basePath, issues);
   requireString(gate, "status", basePath, issues);
   validateRef(gate && gate.processRef, `${basePath}.processRef`, issues);
@@ -488,7 +526,7 @@ function validateGate(gate, basePath, issues) {
   validateRefArray(gate && gate.evidenceRefs, `${basePath}.evidenceRefs`, issues);
 }
 
-function validateReviewItem(reviewItem, basePath, issues) {
+function validateReviewItem(reviewItem: any, basePath: any, issues: any) {
   requireString(reviewItem, "id", basePath, issues);
   requireString(reviewItem, "kind", basePath, issues);
   requireString(reviewItem, "status", basePath, issues);
@@ -499,14 +537,14 @@ function validateReviewItem(reviewItem, basePath, issues) {
   validateRefArray(reviewItem && reviewItem.actionRefs, `${basePath}.actionRefs`, issues);
 }
 
-function validateEvidence(evidence, basePath, issues) {
+function validateEvidence(evidence: any, basePath: any, issues: any) {
   requireString(evidence, "id", basePath, issues);
   validateRef(evidence && evidence.producerRef, `${basePath}.producerRef`, issues);
   validateRefArray(evidence && evidence.claimRefs, `${basePath}.claimRefs`, issues);
   validateRefArray(evidence && evidence.processRefs, `${basePath}.processRefs`, issues);
 }
 
-function validateDecision(decision, basePath, issues) {
+function validateDecision(decision: any, basePath: any, issues: any) {
   requireString(decision, "id", basePath, issues);
   requireString(decision, "kind", basePath, issues);
   requireString(decision, "decidedAt", basePath, issues);
@@ -514,14 +552,14 @@ function validateDecision(decision, basePath, issues) {
   validateRefArray(decision && decision.evidenceRefs, `${basePath}.evidenceRefs`, issues);
 }
 
-function validateException(exception, basePath, issues) {
+function validateException(exception: any, basePath: any, issues: any) {
   requireString(exception, "id", basePath, issues);
   requireString(exception, "status", basePath, issues);
   validateRefArray(exception && exception.subjectRefs, `${basePath}.subjectRefs`, issues);
   validateRefArray(exception && exception.evidenceRefs, `${basePath}.evidenceRefs`, issues);
 }
 
-function validateLearning(learning, basePath, issues) {
+function validateLearning(learning: any, basePath: any, issues: any) {
   requireString(learning, "id", basePath, issues);
   requireString(learning, "summary", basePath, issues);
   validateRef(learning && learning.subjectRef, `${basePath}.subjectRef`, issues);
@@ -533,7 +571,7 @@ function validateLearning(learning, basePath, issues) {
   validateLinks(learning && learning.links, `${basePath}.links`, issues);
 }
 
-function validateLearningEventPayload(event, basePath, issues) {
+function validateLearningEventPayload(event: any, basePath: any, issues: any) {
   if (!event || typeof event.type !== "string" || !event.type.startsWith("learning.")) return;
   const payload = event.payload;
   requireString(payload, "summary", `${basePath}.payload`, issues);
@@ -547,28 +585,28 @@ function validateLearningEventPayload(event, basePath, issues) {
   validateLinks(payload && payload.links, `${basePath}.payload.links`, issues);
 }
 
-function validateLearningFamily(value, pathName, issues) {
+function validateLearningFamily(value: any, pathName: any, issues: any) {
   if (!["workflow", "domain"].includes(value)) {
     issues.push(issue("error", pathName, "expected workflow or domain"));
   }
 }
 
-function validateOptionalNumber(value, pathName, issues) {
+function validateOptionalNumber(value: any, pathName: any, issues: any) {
   if (value !== undefined && typeof value !== "number") {
     issues.push(issue("error", pathName, "expected a number when present"));
   }
 }
 
-function validateLinks(links, basePath, issues) {
+function validateLinks(links: any, basePath: any, issues: any) {
   if (links === undefined) return;
   if (!Array.isArray(links)) {
     issues.push(issue("error", basePath, "expected an array"));
     return;
   }
-  links.forEach((link, index) => validateLink(link, `${basePath}[${index}]`, issues));
+  links.forEach((link: any, index: any) => validateLink(link, `${basePath}[${index}]`, issues));
 }
 
-function validateLink(link, basePath, issues) {
+function validateLink(link: any, basePath: any, issues: any) {
   requireObject({ link }, "link", basePath, issues);
   if (!link || typeof link !== "object") return;
   validateRef(link.from, `${basePath}.from`, issues);
@@ -576,16 +614,16 @@ function validateLink(link, basePath, issues) {
   requireString(link, "relation", basePath, issues);
 }
 
-function validateRefArray(refs, basePath, issues) {
+function validateRefArray(refs: any, basePath: any, issues: any) {
   if (refs === undefined) return;
   if (!Array.isArray(refs)) {
     issues.push(issue("error", basePath, "expected an array"));
     return;
   }
-  refs.forEach((ref, index) => validateRef(ref, `${basePath}[${index}]`, issues));
+  refs.forEach((ref: any, index: any) => validateRef(ref, `${basePath}[${index}]`, issues));
 }
 
-function validateRef(ref, basePath, issues) {
+function validateRef(ref: any, basePath: any, issues: any) {
   if (!ref || typeof ref !== "object" || Array.isArray(ref)) {
     issues.push(issue("error", basePath, "expected CrossProductRef object"));
     return;
@@ -593,7 +631,7 @@ function validateRef(ref, basePath, issues) {
   requireString(ref, "product", basePath, issues);
   requireString(ref, "kind", basePath, issues);
   requireString(ref, "id", basePath, issues);
-  ["apiVersion", "name", "uid", "label", "url"].forEach((key) => {
+  ["apiVersion", "name", "uid", "label", "url"].forEach((key: any) => {
     if (ref[key] !== undefined && (typeof ref[key] !== "string" || ref[key].length === 0)) {
       issues.push(issue("error", `${basePath}.${key}`, "expected a non-empty string when present"));
     }
@@ -601,7 +639,7 @@ function validateRef(ref, basePath, issues) {
   if (ref.scope !== undefined) {
     requireObject(ref, "scope", basePath, issues);
     if (ref.scope && typeof ref.scope === "object" && !Array.isArray(ref.scope)) {
-      ["product", "kind", "id"].forEach((key) => {
+      ["product", "kind", "id"].forEach((key: any) => {
         if (ref.scope[key] !== undefined && (typeof ref.scope[key] !== "string" || ref.scope[key].length === 0)) {
           issues.push(issue("error", `${basePath}.scope.${key}`, "expected a non-empty string when present"));
         }
@@ -610,37 +648,41 @@ function validateRef(ref, basePath, issues) {
   }
 }
 
-function requireString(object, key, basePath, issues) {
+function requireString(object: any, key: any, basePath: any, issues: any) {
   if (!object || typeof object[key] !== "string" || object[key].length === 0) {
     issues.push(issue("error", `${basePath}.${key}`, "expected a non-empty string"));
   }
 }
 
-function requireObject(object, key, basePath, issues) {
+function requireObject(object: any, key: any, basePath: any, issues: any) {
   if (!object || !object[key] || typeof object[key] !== "object" || Array.isArray(object[key])) {
     issues.push(issue("error", `${basePath}.${key}`, "expected an object"));
   }
 }
 
-function requireTrue(object, key, basePath, issues) {
+function requireTrue(object: any, key: any, basePath: any, issues: any) {
   if (!object || object[key] !== true) {
     issues.push(issue("error", `${basePath}.${key}`, "expected true"));
   }
 }
 
-function issue(severity, pathName, message) {
+function issue(severity: ValidationSeverity, pathName: string, message: string): ValidationIssue {
   return { severity, path: pathName, message };
 }
 
-function splitIssues(issues) {
+function splitIssues(issues: ValidationIssue[]) {
   return {
-    errors: issues.filter((item) => item.severity === "error"),
-    warnings: issues.filter((item) => item.severity === "warning")
+    errors: issues.filter((item: any) => item.severity === "error"),
+    warnings: issues.filter((item: any) => item.severity === "warning")
   };
 }
 
-function arrayOf(value) {
+function arrayOf(value: any) {
   return Array.isArray(value) ? value : [];
+}
+
+function safeErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 const emitter = require("./emitter");

@@ -1,8 +1,7 @@
-// @ts-nocheck
 const DEFAULT_VERSION = "0.1";
 const DEFAULT_PRODUCER = { product: "surface", id: "surface-console-producer" };
 
-function surfaceClaimStateToProjection(state, options = {}) {
+function surfaceClaimStateToProjection(state: any, options: any = {}) {
   requireObject(state, "state");
   const claimId = requireString(state.claimId || state.id, "state.claimId");
   const generatedAt = options.generatedAt || state.generatedAt || state.lastUpdatedAt;
@@ -18,12 +17,12 @@ function surfaceClaimStateToProjection(state, options = {}) {
       scope: options.claimScope || state.claimScope
     }
   );
-  const evidenceRefs = cloneArray(state.evidenceRefs).map((ref) => refWithResource(ref, ref && ref.resource));
+  const evidenceRefs = cloneArray(state.evidenceRefs).map((ref: any) => refWithResource(ref, ref && ref.resource));
   const actionDescriptors = cloneArray(options.actions || state.actions);
   const actionRefs = mergeRefs(
-    cloneArray(state.actionRefs).map((ref) => refWithResource(ref, ref && ref.resource)),
+    cloneArray(state.actionRefs).map((ref: any) => refWithResource(ref, ref && ref.resource)),
     actionDescriptors
-      .filter((action) => action && action.id)
+      .filter((action: any) => action && action.id)
       .map(actionToRef)
   );
 
@@ -59,7 +58,7 @@ function surfaceClaimStateToProjection(state, options = {}) {
   });
 }
 
-function surfaceFreshnessTransitionToEvent(transition, options = {}) {
+function surfaceFreshnessTransitionToEvent(transition: any, options: any = {}) {
   requireObject(transition, "transition");
   const claimId = requireString(transition.claimId || transition.id, "transition.claimId");
   const occurredAt = options.occurredAt || transition.occurredAt || transition.changedAt;
@@ -75,7 +74,7 @@ function surfaceFreshnessTransitionToEvent(transition, options = {}) {
       scope: options.claimScope || transition.claimScope
     }
   );
-  const refs = cloneArray(transition.refs).map((ref) => refWithResource(ref, ref && ref.resource));
+  const refs = cloneArray(transition.refs).map((ref: any) => refWithResource(ref, ref && ref.resource));
 
   if (!hasRef(refs, subject)) refs.unshift(clone(subject));
 
@@ -100,29 +99,29 @@ function surfaceFreshnessTransitionToEvent(transition, options = {}) {
   });
 }
 
-function requireObject(value, label) {
+function requireObject(value: any, label: any) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`${label} must be an object`);
   }
 }
 
-function requireString(value, label) {
+function requireString(value: any, label: any) {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${label} must be a non-empty string`);
   }
   return value;
 }
 
-function cloneArray(value) {
+function cloneArray(value: any) {
   return Array.isArray(value) ? clone(value) : [];
 }
 
-function clone(value) {
+function clone(value: any) {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
 }
 
-function actionToRef(action) {
+function actionToRef(action: any) {
   return refWithResource(clone(action.ref || {
     product: action.product || action.authority && action.authority.product || "surface",
     kind: "action",
@@ -135,13 +134,13 @@ function actionToRef(action) {
   });
 }
 
-function cleanActionDescriptor(action) {
+function cleanActionDescriptor(action: any) {
   const copy = compactObject(clone(action));
-  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key) => delete copy[key]);
+  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key: any) => delete copy[key]);
   return copy;
 }
 
-function refWithResource(ref, resource, fields = {}) {
+function refWithResource(ref: any, resource: any, fields: any = {}) {
   if (!ref) return ref;
   const copy = clone(ref);
   const metadata = resource && resource.metadata || {};
@@ -158,10 +157,10 @@ function refWithResource(ref, resource, fields = {}) {
   return copy;
 }
 
-function mergeRefs(primary, secondary) {
+function mergeRefs(primary: any, secondary: any) {
   const merged = primary.map(clone);
   for (const ref of secondary) {
-    const existing = merged.find((item) => hasRef([item], ref));
+    const existing = merged.find((item: any) => hasRef([item], ref));
     if (existing) {
       for (const key of ["apiVersion", "name", "uid", "scope", "label", "url"]) {
         if (existing[key] === undefined && ref[key] !== undefined) existing[key] = clone(ref[key]);
@@ -173,27 +172,27 @@ function mergeRefs(primary, secondary) {
   return merged;
 }
 
-function firstDefined(...values) {
-  return values.find((value) => value !== undefined);
+function firstDefined(...values: any[]) {
+  return values.find((value: any) => value !== undefined);
 }
 
-function hasRef(refs, ref) {
-  return refs.some((item) => item && ref && item.product === ref.product && item.kind === ref.kind && item.id === ref.id);
+function hasRef(refs: any, ref: any) {
+  return refs.some((item: any) => item && ref && item.product === ref.product && item.kind === ref.kind && item.id === ref.id);
 }
 
-function freshnessKey(value) {
+function freshnessKey(value: any) {
   if (value && typeof value === "object") return value.status || stableStringify(value);
   return String(value);
 }
 
-function stableStringify(value) {
+function stableStringify(value: any): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   if (!value || typeof value !== "object") return JSON.stringify(value);
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  return `{${Object.keys(value).sort().map((key: any) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
 }
 
-function compactObject(object) {
-  return Object.keys(object).reduce((copy, key) => {
+function compactObject(object: any) {
+  return Object.keys(object).reduce((copy: any, key: any) => {
     if (object[key] !== undefined) copy[key] = object[key];
     return copy;
   }, {});

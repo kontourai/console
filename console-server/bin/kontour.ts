@@ -1,5 +1,4 @@
 #!/usr/bin/env -S node --import tsx
-// @ts-nocheck
 
 const {
   DEFAULT_HOST,
@@ -8,7 +7,13 @@ const {
 } = require("../src/console-foundation/console-hub-server");
 const path = require("node:path");
 
-function main(argv) {
+interface ServeOptions {
+  host: string;
+  port: number;
+  kontourRoot?: string;
+}
+
+function main(argv: any) {
   const command = argv[2] || "help";
   if (command === "serve") {
     serve(parseServeOptions(argv.slice(3)));
@@ -19,7 +24,7 @@ function main(argv) {
   process.exitCode = command === "help" || command === "--help" || command === "-h" ? 0 : 2;
 }
 
-function serve(options) {
+function serve(options: any) {
   const app = createConsoleHubServer({
     rootDir: repoRoot(),
     kontourRoot: options.kontourRoot,
@@ -39,8 +44,8 @@ function repoRoot() {
     : process.cwd();
 }
 
-function parseServeOptions(args) {
-  const options = {
+function parseServeOptions(args: any): ServeOptions {
+  const options: ServeOptions = {
     host: DEFAULT_HOST,
     port: DEFAULT_PORT
   };
@@ -74,7 +79,7 @@ function parseServeOptions(args) {
   return options;
 }
 
-function requiredValue(args, index, label) {
+function requiredValue(args: any, index: any, label: any) {
   const value = args[index + 1];
   if (!value || value.startsWith("--")) {
     console.error(`${label} requires a value`);

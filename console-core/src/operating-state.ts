@@ -80,6 +80,18 @@ export interface ConsoleAction {
   subjectRefs?: ConsoleRef[];
 }
 
+export interface ConsoleEvidence {
+  id: string;
+  label?: string;
+  sourceRef?: ConsoleRef;
+  status?: string;
+  capturedAt?: string;
+  summary?: string;
+  claimRefs?: ConsoleRef[];
+  gateRefs?: ConsoleRef[];
+  processRefs?: ConsoleRef[];
+}
+
 export interface ConsoleLearning {
   id: string;
   sourceEventId?: string;
@@ -116,8 +128,10 @@ export interface OperatingState {
   processes?: ConsoleProcess[];
   gates?: ConsoleGate[];
   claims?: ConsoleClaim[];
+  evidence?: ConsoleEvidence[];
   learnings?: ConsoleLearning[];
   actions?: ConsoleAction[];
+  links?: ConsoleLink[];
   timeline?: TimelineItem[];
 }
 

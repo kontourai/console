@@ -1,6 +1,14 @@
 import http = require("node:http");
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./sse-stream";
+import type {
+  ConsoleHubServer,
+  ConsoleHubServerOptions,
+  DeliveryResult,
+  Hub,
+  ListenOptions,
+  RequestError
+} from "./types";
 
 const { LocalConsoleHub } = require("./console-hub");
 
@@ -8,48 +16,10 @@ export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
 
-interface ConsoleHubServerOptions {
-  hub?: Hub;
-  rootDir?: string;
-  kontourRoot?: string;
-  localRoot?: string;
-  host?: string;
-  port?: number;
-}
-
-interface ListenOptions {
-  host?: string;
-  port?: number;
-}
-
-interface Hub {
-  append(record: unknown): Promise<DeliveryResult>;
-  inspect(): unknown;
-  currentOperatingState(): unknown;
-}
-
-interface DeliveryResult {
-  outcome: string;
-  [key: string]: unknown;
-}
-
-interface ConsoleHubServer {
-  hub: Hub;
-  server: Server;
-  listen(listenOptions?: ListenOptions, callback?: () => void): Server;
-  close(callback?: (error?: Error) => void): Server;
-}
-
-interface RequestError extends Error {
-  code?: string;
-  statusCode?: number;
-  safeMessage?: string;
-}
-
 export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): ConsoleHubServer {
   const hub = options.hub || new LocalConsoleHub(options);
   const events = createSseBroker();
-  const server = http.createServer((request, response) => {
+  const server = http.createServer((request: any, response: any) => {
     routeRequest(hub, events, request, response);
   });
 
@@ -122,8 +92,8 @@ async function routeRequest(hub: Hub, events: SseBroker, request: IncomingMessag
   }
 }
 
-function readJsonBody(request: IncomingMessage): Promise<unknown> {
-  return new Promise((resolve, reject) => {
+function readJsonBody(request: IncomingMessage): Promise<import("./types").ConsoleRecord> {
+  return new Promise((resolve: any, reject: any) => {
     let size = 0;
     let body = "";
     let rejected = false;
@@ -146,7 +116,7 @@ function readJsonBody(request: IncomingMessage): Promise<unknown> {
     request.on("end", () => {
       if (rejected) return;
       try {
-        resolve(JSON.parse(body || "{}"));
+        resolve(JSON.parse(body || "{}") as import("./types").ConsoleRecord);
       } catch (error) {
         const invalid = new Error("invalid JSON body") as RequestError;
         invalid.code = "INVALID_JSON";

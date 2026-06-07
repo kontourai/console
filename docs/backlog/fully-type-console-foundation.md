@@ -1,5 +1,7 @@
 # Fully Type Console Foundation Internals
 
+Status: completed.
+
 ## Context
 
 The console package split moves source ownership toward TypeScript-only packages:

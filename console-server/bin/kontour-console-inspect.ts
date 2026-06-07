@@ -1,5 +1,4 @@
 #!/usr/bin/env -S node --import tsx
-// @ts-nocheck
 
 const {
   inspectFixtures,
@@ -7,9 +6,10 @@ const {
   getSurfaceClaimStatus,
   getSurveyReviewState
 } = require("../src/console-foundation");
+import type { InspectionReport } from "../src/console-foundation";
 const path = require("node:path");
 
-function main(argv) {
+function main(argv: any) {
   const command = argv[2] || "inspect";
   const rootDir = repoRoot();
 
@@ -48,10 +48,10 @@ function main(argv) {
     for (const review of reviews) {
       console.log(`${review.reviewItem.id}: ${review.reviewItem.status}`);
       console.log(`  claim: ${review.claim && review.claim.id} (${review.claim && review.claim.status})`);
-      console.log(`  evidence: ${review.evidence.map((item) => item.id).join(", ")}`);
-      console.log(`  decisions: ${review.decisions.map((item) => item.id).join(", ")}`);
-      console.log(`  actions: ${review.actions.map((item) => item.id).join(", ")}`);
-      console.log(`  links: ${review.links.map((item) => item.relation).join(", ")}`);
+      console.log(`  evidence: ${review.evidence.map((item: any) => item.id).join(", ")}`);
+      console.log(`  decisions: ${review.decisions.map((item: any) => item.id).join(", ")}`);
+      console.log(`  actions: ${review.actions.map((item: any) => item.id).join(", ")}`);
+      console.log(`  links: ${review.links.map((item: any) => item.relation).join(", ")}`);
     }
     exitForValidation(report);
     return;
@@ -67,7 +67,7 @@ function repoRoot() {
     : process.cwd();
 }
 
-function printInspection(report, options = {}) {
+function printInspection(report: InspectionReport, options: any = {}) {
   console.log(options.title || "Kontour Console inspection");
   console.log("");
   console.log(`Event streams: ${report.eventStreams.length}`);
@@ -94,7 +94,7 @@ function printInspection(report, options = {}) {
   }
 }
 
-function printCurrentState(state) {
+function printCurrentState(state: any) {
   for (const claim of state.claims) {
     console.log(`  claim ${claim.id}: ${claim.status} freshness=${claim.freshnessStatus || "unknown"}`);
   }
@@ -112,16 +112,16 @@ function printCurrentState(state) {
   }
 }
 
-function formatCounts(counts) {
-  return Object.keys(counts).sort().map((key) => `${key}=${counts[key]}`).join(", ");
+function formatCounts(counts: any) {
+  return Object.keys(counts).sort().map((key: any) => `${key}=${counts[key]}`).join(", ");
 }
 
-function formatSource(item) {
+function formatSource(item: any) {
   if (!item.sourceKind) return item.relativePath;
   return `${item.sourceKind}:${item.relativePath}`;
 }
 
-function exitForValidation(report) {
+function exitForValidation(report: InspectionReport) {
   if (report.validation.errors.length > 0) {
     process.exitCode = 1;
   }

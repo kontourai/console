@@ -1,6 +1,7 @@
 export type {
   ConsoleAction,
   ConsoleClaim,
+  ConsoleEvidence,
   ConsoleGate,
   ConsoleLearning,
   ConsoleLink,

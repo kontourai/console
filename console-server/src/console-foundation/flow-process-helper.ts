@@ -1,8 +1,7 @@
-// @ts-nocheck
 const DEFAULT_VERSION = "0.1";
 const DEFAULT_PRODUCER = { product: "flow", id: "flow-console-producer" };
 
-function flowProcessStateToProjection(state, options = {}) {
+function flowProcessStateToProjection(state: any, options: any = {}) {
   requireObject(state, "state");
   const stateProcess = state.process || {};
   const processId = requireString(stateProcess.id || state.processId || state.id, "state.processId");
@@ -50,18 +49,18 @@ function flowProcessStateToProjection(state, options = {}) {
   });
 }
 
-function deriveNextActionRefs(state, actions) {
+function deriveNextActionRefs(state: any, actions: any) {
   const stateProcess = state.process || {};
   const suppliedNextActionRefs = cloneArray(stateProcess.nextActionRefs || state.nextActionRefs);
   return suppliedNextActionRefs.concat(
     actions
-      .filter((action) => action && action.id)
+      .filter((action: any) => action && action.id)
       .map(actionToRef)
-      .filter((ref) => !hasRef(suppliedNextActionRefs, ref))
+      .filter((ref: any) => !hasRef(suppliedNextActionRefs, ref))
   );
 }
 
-function actionToRef(action) {
+function actionToRef(action: any) {
   return refWithResource({
     product: action.product || action.authority && action.authority.product || "flow",
     kind: "action",
@@ -75,13 +74,13 @@ function actionToRef(action) {
   });
 }
 
-function cleanActionDescriptor(action) {
+function cleanActionDescriptor(action: any) {
   const copy = compactObject(clone(action));
-  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key) => delete copy[key]);
+  ["resource", "ref", "apiVersion", "name", "uid", "scope"].forEach((key: any) => delete copy[key]);
   return copy;
 }
 
-function buildPrimaryProcess(state, stateProcess, processId, nextActionRefs) {
+function buildPrimaryProcess(state: any, stateProcess: any, processId: any, nextActionRefs: any) {
   return compactObject({
     id: processId,
     definitionId: stateProcess.definitionId || state.definitionId,
@@ -100,8 +99,8 @@ function buildPrimaryProcess(state, stateProcess, processId, nextActionRefs) {
   });
 }
 
-function normalizeGates(gates, processRef) {
-  return cloneArray(gates).map((gate) => {
+function normalizeGates(gates: any, processRef: any) {
+  return cloneArray(gates).map((gate: any) => {
     const {
       gateResource,
       resource,
@@ -129,13 +128,13 @@ function normalizeGates(gates, processRef) {
       ...publicGate,
       gateRef,
       processRef: clone(gate.processRef || processRef),
-      expectationRefs: cloneArray(gate.expectationRefs).map((ref) => refWithResource(ref, ref && ref.resource)),
-      evidenceRefs: cloneArray(gate.evidenceRefs).map((ref) => refWithResource(ref, ref && ref.resource))
+      expectationRefs: cloneArray(gate.expectationRefs).map((ref: any) => refWithResource(ref, ref && ref.resource)),
+      evidenceRefs: cloneArray(gate.evidenceRefs).map((ref: any) => refWithResource(ref, ref && ref.resource))
     });
   });
 }
 
-function flowGateTransitionToEvent(transition, options = {}) {
+function flowGateTransitionToEvent(transition: any, options: any = {}) {
   requireObject(transition, "transition");
   const gateId = requireString(transition.gateId || transition.id, "transition.gateId");
   const occurredAt = options.occurredAt || transition.occurredAt || transition.changedAt;
@@ -167,7 +166,7 @@ function flowGateTransitionToEvent(transition, options = {}) {
       scope: options.processScope || transition.processScope
     }
   ) : undefined;
-  const refs = cloneArray(transition.refs).map((ref) => refWithResource(ref, ref && ref.resource));
+  const refs = cloneArray(transition.refs).map((ref: any) => refWithResource(ref, ref && ref.resource));
 
   if (!hasRef(refs, subject)) refs.unshift(clone(subject));
   if (enrichedProcessRef && !hasRef(refs, enrichedProcessRef)) refs.push(enrichedProcessRef);
@@ -198,7 +197,7 @@ function flowGateTransitionToEvent(transition, options = {}) {
   });
 }
 
-function eventTypeFor(type, before, after, status) {
+function eventTypeFor(type: any, before: any, after: any, status: any) {
   if (typeof type === "string" && type.startsWith("gate.")) return type;
   const normalized = normalizeStatus(status);
   if (normalized === "open" || normalized === "opened") return "gate.opened";
@@ -209,50 +208,50 @@ function eventTypeFor(type, before, after, status) {
   return `gate.${normalized}`;
 }
 
-function hasRouteBackMetadata(before, after) {
+function hasRouteBackMetadata(before: any, after: any) {
   return Boolean(
     after && (after.routeBackTo || after.routedBackTo || after.routeBackReason) ||
     before && (before.routeBackTo || before.routedBackTo || before.routeBackReason)
   );
 }
 
-function mergePrimaryProcess(processes, primaryProcess) {
-  if (processes.some((process) => process && process.id === primaryProcess.id)) return processes.map(compactObject);
+function mergePrimaryProcess(processes: any, primaryProcess: any) {
+  if (processes.some((process: any) => process && process.id === primaryProcess.id)) return processes.map(compactObject);
   return [primaryProcess].concat(processes.map(compactObject));
 }
 
-function countOpenGates(gates, openGateRefs) {
-  const explicitIds = new Set(cloneArray(openGateRefs).map((ref) => ref.id));
-  return gates.filter((gate) => isOpenGate(gate) || explicitIds.has(gate.id)).length;
+function countOpenGates(gates: any, openGateRefs: any) {
+  const explicitIds = new Set(cloneArray(openGateRefs).map((ref: any) => ref.id));
+  return gates.filter((gate: any) => isOpenGate(gate) || explicitIds.has(gate.id)).length;
 }
 
-function isOpenGate(gate) {
+function isOpenGate(gate: any) {
   return gate && ["open", "waiting", "routed_back"].includes(gate.status);
 }
 
-function requireObject(value, label) {
+function requireObject(value: any, label: any) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`${label} must be an object`);
   }
 }
 
-function requireString(value, label) {
+function requireString(value: any, label: any) {
   if (typeof value !== "string" || value.length === 0) {
     throw new TypeError(`${label} must be a non-empty string`);
   }
   return value;
 }
 
-function cloneArray(value) {
+function cloneArray(value: any) {
   return Array.isArray(value) ? clone(value) : [];
 }
 
-function clone(value) {
+function clone(value: any) {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
 }
 
-function refWithResource(ref, resource, fields = {}) {
+function refWithResource(ref: any, resource: any, fields: any = {}) {
   if (!ref) return ref;
   const copy = clone(ref);
   const metadata = resource && resource.metadata || {};
@@ -271,37 +270,37 @@ function refWithResource(ref, resource, fields = {}) {
   return copy;
 }
 
-function firstDefined(...values) {
-  return values.find((value) => value !== undefined);
+function firstDefined(...values: any[]) {
+  return values.find((value: any) => value !== undefined);
 }
 
-function hasRef(refs, ref) {
-  return refs.some((item) => item && ref && item.product === ref.product && item.kind === ref.kind && item.id === ref.id);
+function hasRef(refs: any, ref: any) {
+  return refs.some((item: any) => item && ref && item.product === ref.product && item.kind === ref.kind && item.id === ref.id);
 }
 
-function normalizeStatus(value) {
+function normalizeStatus(value: any) {
   return String(value || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
 }
 
-function statusKey(value) {
+function statusKey(value: any) {
   if (value && typeof value === "object") return value.status || stableStringify(value);
   return String(value);
 }
 
-function stableStringify(value) {
+function stableStringify(value: any): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   if (!value || typeof value !== "object") return JSON.stringify(value);
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  return `{${Object.keys(value).sort().map((key: any) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
 }
 
-function compactObject(object) {
-  return Object.keys(object).reduce((copy, key) => {
+function compactObject(object: any) {
+  return Object.keys(object).reduce((copy: any, key: any) => {
     if (isSafeObjectKey(key) && object[key] !== undefined) copy[key] = object[key];
     return copy;
   }, {});
 }
 
-function isSafeObjectKey(key) {
+function isSafeObjectKey(key: any) {
   return key !== "__proto__" && key !== "constructor" && key !== "prototype";
 }
 

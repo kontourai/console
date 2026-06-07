@@ -1,4 +1,3 @@
-// @ts-nocheck
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
@@ -10,7 +9,7 @@ const rootDir = process.env.KONTOUR_REPO_ROOT || process.cwd();
 
 test("replays Surface and Flow handoff events into current operating state", () => {
   const report = inspectFixtures({ rootDir });
-  const stream = report.eventStreams.find((item) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+  const stream = report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
   const state = buildCurrentOperatingState([stream], { generatedAt: "2026-06-03T10:01:45Z" });
 
   assert.equal(state.generatedAt, "2026-06-03T10:01:45Z");
@@ -56,7 +55,7 @@ test("replays Surface and Flow handoff events into current operating state", () 
   assert.equal(state.actions[0].authority.command, "flow.run.resume");
   assert.equal(state.actions[0].subjectRefs[0].uid, "flow-run-provider-directory-refresh");
 
-  const relations = new Set(state.links.map((link) => link.relation));
+  const relations = new Set(state.links.map((link: any) => link.relation));
   assert.equal(relations.has("controls"), true);
   assert.equal(relations.has("blocks"), true);
   assert.equal(relations.has("evidenced_by"), true);
@@ -66,7 +65,7 @@ test("replays Surface and Flow handoff events into current operating state", () 
 
 test("replay accepts inspection reports and ignores duplicate event ids", () => {
   const report = inspectFixtures({ rootDir });
-  const stream = report.eventStreams.find((item) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+  const stream = report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
   const duplicated = {
     ...stream,
     events: [stream.events[0], ...stream.events]
@@ -84,7 +83,7 @@ test("replay accepts inspection reports and ignores duplicate event ids", () => 
 
 test("replay orders accepted events by sequence before file order", () => {
   const report = inspectFixtures({ rootDir });
-  const stream = report.eventStreams.find((item) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+  const stream = report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
   const shuffled = {
     ...stream,
     events: [...stream.events].reverse()
@@ -99,7 +98,7 @@ test("replay orders accepted events by sequence before file order", () => {
 
 test("replay defaults generatedAt from the last accepted event", () => {
   const report = inspectFixtures({ rootDir });
-  const stream = report.eventStreams.find((item) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+  const stream = report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
   const state = buildCurrentOperatingState([stream]);
 
   assert.equal(state.generatedAt, "2026-06-03T10:01:42Z");
@@ -262,7 +261,7 @@ test("replay associates advisory learning with claim and run refs without mutati
   assert.equal(after.learnings.length, 1);
   assert.equal(after.learnings[0].nonAuthority, true);
   assert.equal(after.learnings[0].sourceRef.id, "run-learning-check");
-  assert.deepEqual(after.learnings[0].refs.map((ref) => `${ref.product}:${ref.kind}:${ref.id}`), [
+  assert.deepEqual(after.learnings[0].refs.map((ref: any) => `${ref.product}:${ref.kind}:${ref.id}`), [
     "flow:run:run-learning-check",
     "surface:claim:claim-learning-check"
   ]);

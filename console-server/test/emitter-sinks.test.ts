@@ -1,4 +1,3 @@
-// @ts-nocheck
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -29,7 +28,7 @@ test("event fanout delivers the same event id to local JSONL and memory sinks", 
 
   assert.equal(result.outcome, "accepted");
   assert.equal(result.children.length, 2);
-  assert.deepEqual(result.children.map((child) => child.outcome), ["accepted", "accepted"]);
+  assert.deepEqual(result.children.map((child: any) => child.outcome), ["accepted", "accepted"]);
   assert.equal(memory.records[0].id, event.id);
 
   const jsonlPath = path.join(root, "events", event.producer.id, `${event.scope.kind}-${event.scope.id}.jsonl`);
@@ -48,12 +47,12 @@ test("local projection snapshots are compatible with the existing loader", () =>
 
   const loaded = loadProjectionSnapshots(path.join(root, "projections", projection.producer.id), root);
   assert.equal(loaded.length, 1);
-  assert.equal(loaded[0].validation.filter((item) => item.severity === "error").length, 0);
+  assert.equal(loaded[0].validation.filter((item: any) => item.severity === "error").length, 0);
   assert.equal(loaded[0].snapshot.generatedAt, projection.generatedAt);
   assert.equal(loaded[0].actions[0].readOnly, true);
   assert.equal(loaded[0].actions[0].authority.command, "flow.run.start");
   assert.equal(loaded[0].actions[0].authority.endpoint, "kontour-local-action");
-  assert.equal(loaded[0].actions[0].warnings.some((warning) => warning.message.includes("inert descriptor only")), true);
+  assert.equal(loaded[0].actions[0].warnings.some((warning: any) => warning.message.includes("inert descriptor only")), true);
 });
 
 test("local discovery loads events written through LocalFileSink", async () => {
@@ -110,8 +109,8 @@ test("local discovery loads projections written through LocalFileSink with inert
   assert.equal(loaded.actions[0].readOnly, true);
   assert.equal(loaded.actions[0].authority.command, "flow.run.start");
   assert.equal(loaded.actions[0].authority.endpoint, "kontour-local-action");
-  assert.equal(loaded.actions[0].warnings.some((warning) => warning.message.includes("authority.command is an inert descriptor only")), true);
-  assert.equal(loaded.actions[0].warnings.some((warning) => warning.message.includes("authority.endpoint is an inert descriptor only")), true);
+  assert.equal(loaded.actions[0].warnings.some((warning: any) => warning.message.includes("authority.command is an inert descriptor only")), true);
+  assert.equal(loaded.actions[0].warnings.some((warning: any) => warning.message.includes("authority.endpoint is an inert descriptor only")), true);
 });
 
 test("composite results preserve per-sink failures and sibling successes", async () => {
@@ -349,7 +348,7 @@ function tempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "kontour-console-"));
 }
 
-function validEvent(overrides = {}) {
+function validEvent(overrides: any = {}) {
   return {
     schema: "kontour.console.event",
     version: "0.1",
@@ -368,7 +367,7 @@ function validEvent(overrides = {}) {
   };
 }
 
-function validProjection(overrides = {}) {
+function validProjection(overrides: any = {}) {
   return {
     schema: "kontour.console.projection",
     version: "0.1",
@@ -410,8 +409,8 @@ function validProjection(overrides = {}) {
   };
 }
 
-function without(source, keys) {
+function without(source: any, keys: any) {
   const copy = { ...source };
-  keys.forEach((key) => delete copy[key]);
+  keys.forEach((key: any) => delete copy[key]);
   return copy;
 }

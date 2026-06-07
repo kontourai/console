@@ -1,4 +1,3 @@
-// @ts-nocheck
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -9,6 +8,11 @@ const {
   createConsoleHubServer,
   inspectFixtures
 } = require("../src/console-foundation");
+
+type RawResponse = { statusCode?: number; headers: Record<string, any>; body: string };
+type JsonResponse = { statusCode?: number; body: any };
+type SseEvent = { event: string; data: any };
+type SseHolder = { request?: any; headers?: Record<string, any> };
 
 test("local hub server accepts records and exposes current state", async () => {
   const rootDir = tempRoot();
@@ -28,7 +32,7 @@ test("local hub server accepts records and exposes current state", async () => {
     const state = await requestJson("GET", `${baseUrl}/state`);
     const inspection = await requestJson("GET", `${baseUrl}/inspect`);
 
-    assert.deepEqual(results.map((item) => item.statusCode), [202, 202, 202, 202, 202, 202, 202]);
+    assert.deepEqual(results.map((item: any) => item.statusCode), [202, 202, 202, 202, 202, 202, 202]);
     assert.equal(state.body.source.acceptedEventCount, 7);
     assert.equal(state.body.gates[0].status, "passed");
     assert.equal(state.body.claims[0].freshness.status, "fresh");
@@ -37,7 +41,7 @@ test("local hub server accepts records and exposes current state", async () => {
     assert.equal(state.body.currentStage, "Provider directory freshness passed; Provider directory refresh can continue.");
     assert.equal(state.body.learnings[0].id, "learning-provider-directory-operator-note");
     assert.equal(state.body.learnings[0].nonAuthority, true);
-    assert.deepEqual(state.body.learnings[0].refs.map((ref) => `${ref.product}:${ref.kind}:${ref.id}`), [
+    assert.deepEqual(state.body.learnings[0].refs.map((ref: any) => `${ref.product}:${ref.kind}:${ref.id}`), [
       "flow:run:run-provider-directory-refresh",
       "surface:claim:claim-provider-directory-current"
     ]);
@@ -52,7 +56,7 @@ test("local hub server streams accepted record updates over SSE", async () => {
   const rootDir = tempRoot();
   const app = createConsoleHubServer({ rootDir, port: 0 });
   await listen(app);
-  const streamClient = { request: null };
+  const streamClient: SseHolder = {};
   try {
     const baseUrl = serverUrl(app);
     const eventStream = connectSse(`${baseUrl}/events`, streamClient);
@@ -72,7 +76,7 @@ test("local hub server streams accepted record updates over SSE", async () => {
 
     assert.equal(ready.event, "ready");
     assert.equal(initialState.event, "state");
-    assert.equal(streamClient.headers["access-control-allow-origin"], "*");
+    assert.equal(streamClient.headers!["access-control-allow-origin"], "*");
     assert.equal(initialState.data.source.acceptedEventCount, 0);
     assert.equal(invalid.statusCode, 400);
     assert.equal(result.statusCode, 202);
@@ -98,7 +102,7 @@ test("local hub server keeps learning-only updates advisory over SSE", async () 
   const rootDir = tempRoot();
   const app = createConsoleHubServer({ rootDir, port: 0 });
   await listen(app);
-  const streamClient = { request: null };
+  const streamClient: SseHolder = {};
   try {
     const baseUrl = serverUrl(app);
     const eventStream = connectSse(`${baseUrl}/events`, streamClient);
@@ -177,7 +181,7 @@ test("local hub server rejects malformed requests safely", async () => {
 
 function surfaceFlowHandoffStream() {
   const report = inspectFixtures({ rootDir: process.env.KONTOUR_REPO_ROOT || process.cwd() });
-  return report.eventStreams.find((item) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+  return report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
 }
 
 function advisoryLearningEvent() {
@@ -219,34 +223,34 @@ function advisoryLearningEvent() {
   };
 }
 
-function listen(app) {
-  return new Promise((resolve) => app.listen({ port: 0 }, resolve));
+function listen(app: any) {
+  return new Promise((resolve: any) => app.listen({ port: 0 }, resolve));
 }
 
-function close(app) {
-  return new Promise((resolve, reject) => {
-    app.close((error) => {
+function close(app: any) {
+  return new Promise((resolve: any, reject: any) => {
+    app.close((error: any) => {
       if (error) reject(error);
       else resolve();
     });
   });
 }
 
-function serverUrl(app) {
+function serverUrl(app: any) {
   const address = app.server.address();
   return `http://${address.address}:${address.port}`;
 }
 
-function requestJson(method, url, payload) {
+function requestJson(method: any, url: any, payload?: any): Promise<JsonResponse> {
   const body = payload === undefined ? undefined : JSON.stringify(payload);
-  return rawRequest(method, url, body).then((result) => ({
+  return rawRequest(method, url, body).then((result: any) => ({
     statusCode: result.statusCode,
     body: JSON.parse(result.body)
   }));
 }
 
-function rawRequest(method, url, body) {
-  return new Promise((resolve, reject) => {
+function rawRequest(method: any, url: any, body?: any): Promise<RawResponse> {
+  return new Promise((resolve: any, reject: any) => {
     const request = http.request(url, {
       method,
       headers: body === undefined
@@ -255,10 +259,10 @@ function rawRequest(method, url, body) {
           "content-type": "application/json",
           "content-length": Buffer.byteLength(body)
         }
-    }, (response) => {
+    }, (response: any) => {
       let responseBody = "";
       response.setEncoding("utf8");
-      response.on("data", (chunk) => {
+      response.on("data", (chunk: any) => {
         responseBody += chunk;
       });
       response.on("end", () => {
@@ -275,17 +279,17 @@ function rawRequest(method, url, body) {
   });
 }
 
-function connectSse(url, holder = {}) {
-  const queue = [];
-  const waiting = [];
+function connectSse(url: any, holder: SseHolder = {}) {
+  const queue: SseEvent[] = [];
+  const waiting: Array<(event: SseEvent) => void> = [];
   let buffer = "";
-  let currentEvent = null;
-  let currentData = [];
+  let currentEvent: string | null = null;
+  let currentData: string[] = [];
 
-  const request = http.request(url, { method: "GET" }, (response) => {
+  const request = http.request(url, { method: "GET" }, (response: any) => {
     holder.headers = response.headers;
     response.setEncoding("utf8");
-    response.on("data", (chunk) => {
+    response.on("data", (chunk: any) => {
       buffer += chunk;
       let boundary = buffer.indexOf("\n\n");
       while (boundary !== -1) {
@@ -311,14 +315,14 @@ function connectSse(url, holder = {}) {
   request.end();
 
   return {
-    nextEvent() {
-      if (queue.length) return Promise.resolve(queue.shift());
-      return new Promise((resolve) => waiting.push(resolve));
+    nextEvent(): Promise<SseEvent> {
+      if (queue.length) return Promise.resolve(queue.shift()!);
+      return new Promise((resolve: any) => waiting.push(resolve));
     }
   };
 
-  function enqueueEvent(event) {
-    if (waiting.length) waiting.shift()(event);
+  function enqueueEvent(event: SseEvent) {
+    if (waiting.length) waiting.shift()!(event);
     else queue.push(event);
   }
 }

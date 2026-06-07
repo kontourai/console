@@ -1,20 +1,32 @@
-// @ts-nocheck
 const fs = require("node:fs");
 const path = require("node:path");
+import type {
+  ClassifiedRecord,
+  CompositeSinkOptions,
+  ConsoleRecord,
+  DeliveryOutcome,
+  DeliveryResult,
+  InMemorySinkOptions,
+  KontourEmitterOptions,
+  LocalFileSinkOptions,
+  Sink
+} from "./types";
 
 const DEFAULT_ROOT = ".kontour";
 
 class KontourEmitter {
-  constructor(options = {}) {
+  sink: Sink;
+
+  constructor(options: KontourEmitterOptions) {
     if (!options.sink || typeof options.sink.deliver !== "function") {
       throw new TypeError("KontourEmitter requires a sink with deliver(record)");
     }
     this.sink = options.sink;
   }
 
-  emit(record) {
+  emit(record: ConsoleRecord): Promise<DeliveryResult> {
     const classified = classifyRecord(record);
-    if (classified.validation.some((item) => item.severity === "error")) {
+    if (classified.validation.some((item: any) => item.severity === "error")) {
       return Promise.resolve(formatDeliveryResult({
         sinkId: "kontour-emitter",
         sinkRole: "emitter",
@@ -22,31 +34,35 @@ class KontourEmitter {
         recordId: classified.recordId,
         recordKind: classified.recordKind,
         errorCode: "INVALID_RECORD",
-        safeMessage: classified.validation.find((item) => item.severity === "error").message
+        safeMessage: classified.validation.find((item: any) => item.severity === "error")!.message
       }));
     }
     return Promise.resolve(this.sink.deliver(record));
   }
 
-  emitEvent(event) {
+  emitEvent(event: ConsoleRecord): Promise<DeliveryResult> {
     return this.emit(event);
   }
 
-  emitProjection(projection) {
+  emitProjection(projection: ConsoleRecord): Promise<DeliveryResult> {
     return this.emit(projection);
   }
 }
 
 class LocalFileSink {
-  constructor(options = {}) {
+  root: string;
+  sinkId: string;
+  sinkRole: string;
+
+  constructor(options: LocalFileSinkOptions = {}) {
     this.root = path.resolve(options.root || DEFAULT_ROOT);
     this.sinkId = options.sinkId || "local-file";
     this.sinkRole = options.sinkRole || "LocalFileSink";
   }
 
-  deliver(record) {
+  deliver(record: ConsoleRecord): DeliveryResult {
     const classified = classifyRecord(record);
-    if (classified.validation.some((item) => item.severity === "error")) {
+    if (classified.validation.some((item: any) => item.severity === "error")) {
       return formatDeliveryResult({
         sinkId: this.sinkId,
         sinkRole: this.sinkRole,
@@ -54,7 +70,7 @@ class LocalFileSink {
         recordId: classified.recordId,
         recordKind: classified.recordKind,
         errorCode: "INVALID_RECORD",
-        safeMessage: classified.validation.find((item) => item.severity === "error").message
+        safeMessage: classified.validation.find((item: any) => item.severity === "error")!.message
       });
     }
 
@@ -98,14 +114,14 @@ class LocalFileSink {
     }
   }
 
-  eventPath(event) {
+  eventPath(event: any): string {
     const producer = sanitizePathToken(event.producer && event.producer.id, "producer.id");
     const scopeKind = sanitizePathToken(event.scope && event.scope.kind, "scope.kind");
     const scopeId = sanitizePathToken(event.scope && event.scope.id, "scope.id");
     return path.resolve(this.root, "events", producer, `${scopeKind}-${scopeId}.jsonl`);
   }
 
-  projectionPath(projection) {
+  projectionPath(projection: any): string {
     const producer = sanitizePathToken(projection.producer && projection.producer.id, "producer.id");
     const scopeKind = sanitizePathToken(projection.scope && projection.scope.kind, "scope.kind");
     const scopeId = sanitizePathToken(projection.scope && projection.scope.id, "scope.id");
@@ -114,11 +130,15 @@ class LocalFileSink {
 }
 
 class CompositeSink {
-  constructor(sinks, options = {}) {
+  sinks: Sink[];
+  sinkId: string;
+  sinkRole: string;
+
+  constructor(sinks: Sink[], options: CompositeSinkOptions = {}) {
     if (!Array.isArray(sinks) || sinks.length === 0) {
       throw new TypeError("CompositeSink requires at least one child sink");
     }
-    sinks.forEach((sink, index) => {
+    sinks.forEach((sink: any, index: any) => {
       if (!sink || typeof sink.deliver !== "function") {
         throw new TypeError(`CompositeSink child ${index} must provide deliver(record)`);
       }
@@ -128,9 +148,9 @@ class CompositeSink {
     this.sinkRole = options.sinkRole || "CompositeSink";
   }
 
-  async deliver(record) {
+  async deliver(record: ConsoleRecord): Promise<DeliveryResult> {
     const classified = classifyRecord(record);
-    const childResults = await Promise.all(this.sinks.map(async (sink, index) => {
+    const childResults = await Promise.all(this.sinks.map(async (sink: any, index: any) => {
       try {
         return normalizeChildResult(await sink.deliver(record), sink, index, classified);
       } catch (error) {
@@ -159,14 +179,19 @@ class CompositeSink {
 }
 
 class InMemorySink {
-  constructor(options = {}) {
+  sinkId: string;
+  sinkRole: string;
+  records: ConsoleRecord[];
+  results: DeliveryResult[];
+
+  constructor(options: InMemorySinkOptions = {}) {
     this.sinkId = options.sinkId || "in-memory";
     this.sinkRole = options.sinkRole || "InMemorySink";
     this.records = [];
     this.results = [];
   }
 
-  deliver(record) {
+  deliver(record: ConsoleRecord): DeliveryResult {
     const classified = classifyRecord(record);
     this.records.push(record);
     const result = formatDeliveryResult({
@@ -181,7 +206,7 @@ class InMemorySink {
   }
 }
 
-function classifyRecord(record) {
+function classifyRecord(record: ConsoleRecord): ClassifiedRecord {
   const { validateEvent, validateProjection } = require("./index");
   const recordKind = record && record.schema === "kontour.console.projection" ? "projection" : "event";
   const validation = recordKind === "projection"
@@ -194,11 +219,11 @@ function classifyRecord(record) {
   };
 }
 
-function eventRecordId(event) {
+function eventRecordId(event: any) {
   return event && typeof event.id === "string" && event.id ? event.id : "unknown-event";
 }
 
-function projectionRecordId(projection) {
+function projectionRecordId(projection: any) {
   if (projection && typeof projection.id === "string" && projection.id) return projection.id;
   return [
     projection && projection.schema,
@@ -208,30 +233,30 @@ function projectionRecordId(projection) {
     projection && projection.scope && projection.scope.kind,
     projection && projection.scope && projection.scope.id,
     stableDerivedFromIdentity(projection && projection.derivedFrom)
-  ].map((value) => value || "unknown").join(":");
+  ].map((value: any) => value || "unknown").join(":");
 }
 
-function stableDerivedFromIdentity(derivedFrom) {
+function stableDerivedFromIdentity(derivedFrom: any) {
   if (!derivedFrom || typeof derivedFrom !== "object") return "unknown";
   return stableStringify(stripGeneratedAt(derivedFrom));
 }
 
-function stripGeneratedAt(value) {
+function stripGeneratedAt(value: any): any {
   if (Array.isArray(value)) return value.map(stripGeneratedAt);
   if (!value || typeof value !== "object") return value;
-  return Object.keys(value).sort().reduce((copy, key) => {
+  return Object.keys(value).sort().reduce((copy: any, key: any) => {
     if (key !== "generatedAt") copy[key] = stripGeneratedAt(value[key]);
     return copy;
   }, {});
 }
 
-function stableStringify(value) {
+function stableStringify(value: any): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
   if (!value || typeof value !== "object") return JSON.stringify(value);
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  return `{${Object.keys(value).sort().map((key: any) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
 }
 
-function normalizeChildResult(result, sink, index, classified) {
+function normalizeChildResult(result: any, sink: any, index: any, classified: ClassifiedRecord): DeliveryResult {
   if (!result || typeof result !== "object") {
     return formatDeliveryResult({
       sinkId: sink.sinkId || sink.id || `sink-${index}`,
@@ -242,7 +267,7 @@ function normalizeChildResult(result, sink, index, classified) {
     });
   }
   const children = Array.isArray(result.children)
-    ? result.children.map((child, childIndex) => normalizeNestedResult(child, classified, childIndex))
+    ? result.children.map((child: any, childIndex: any) => normalizeNestedResult(child, classified, childIndex))
     : undefined;
   const outcome = children && children.some(hasFailedResult)
     ? "failed"
@@ -263,24 +288,24 @@ function normalizeChildResult(result, sink, index, classified) {
   });
 }
 
-function normalizeNestedResult(result, classified, index) {
+function normalizeNestedResult(result: any, classified: ClassifiedRecord, index: any): DeliveryResult {
   return normalizeChildResult(result, { sinkId: `child-${index}`, sinkRole: "nested" }, index, classified);
 }
 
-function hasFailedResult(result) {
+function hasFailedResult(result: any): boolean {
   return result && (
     result.outcome === "failed" ||
     (Array.isArray(result.children) && result.children.some(hasFailedResult))
   );
 }
 
-function normalizeOutcome(value) {
+function normalizeOutcome(value: any): DeliveryOutcome {
   if (value === "accepted" || value === "skipped" || value === "failed") return value;
   return "failed";
 }
 
-function formatDeliveryResult(fields) {
-  const result = {
+function formatDeliveryResult(fields: any): DeliveryResult {
+  const result: DeliveryResult = {
     sinkId: fields.sinkId,
     sinkRole: fields.sinkRole,
     outcome: fields.outcome,
@@ -297,7 +322,7 @@ function formatDeliveryResult(fields) {
   return result;
 }
 
-function sanitizePathToken(value, label) {
+function sanitizePathToken(value: any, label: any) {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`${label} must be a non-empty path token`);
   }
@@ -307,14 +332,14 @@ function sanitizePathToken(value, label) {
   return value;
 }
 
-function ensureContained(root, target) {
+function ensureContained(root: any, target: any) {
   const relative = path.relative(root, target);
   if (relative === "" || relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error("destination must stay inside the configured kontour root");
   }
 }
 
-function ensureSafeDestination(realRoot, target) {
+function ensureSafeDestination(realRoot: any, target: any) {
   const realParent = fs.realpathSync.native(path.dirname(target));
   const parentRelative = path.relative(realRoot, realParent);
   if (parentRelative.startsWith("..") || path.isAbsolute(parentRelative)) {
@@ -325,7 +350,7 @@ function ensureSafeDestination(realRoot, target) {
   }
 }
 
-function ensureSafeDirectory(root, realRoot, targetDir) {
+function ensureSafeDirectory(root: any, realRoot: any, targetDir: any) {
   ensureContained(root, targetDir);
   const relative = path.relative(root, targetDir);
   let current = root;
@@ -352,11 +377,11 @@ function ensureSafeDirectory(root, realRoot, targetDir) {
   }
 }
 
-function safeErrorCode(error) {
+function safeErrorCode(error: any) {
   return error && error.code ? String(error.code) : "SINK_DELIVERY_FAILED";
 }
 
-function safeErrorMessage(error, options = {}) {
+function safeErrorMessage(error: any, options: any = {}) {
   if (!error || !error.message) return "sink delivery failed";
   const message = String(error.message).split(/\r?\n/)[0];
   if (options.exposeKnown === false) return "sink delivery failed";

@@ -1,4 +1,3 @@
-// @ts-nocheck
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
@@ -19,10 +18,10 @@ test("inspects checked-in event streams and projections", () => {
   assert.equal(report.projections.length, 3);
   assert.equal(report.validation.errors.length, 0);
 
-  const eventCount = report.eventStreams.reduce((sum, stream) => sum + stream.events.length, 0);
+  const eventCount = report.eventStreams.reduce((sum: any, stream: any) => sum + stream.events.length, 0);
   assert.equal(eventCount, 19);
 
-  const surface = report.projections.find((projection) => projection.relativePath.endsWith("surface-current-claim-status.json"));
+  const surface = report.projections.find((projection: any) => projection.relativePath.endsWith("surface-current-claim-status.json"));
   assert.equal(report.eventStreams[0].sourceKind, "fixture");
   assert.equal(surface.sourceKind, "fixture");
   assert.match(surface.relativePath, /^docs\/examples\/projections\//);
@@ -33,8 +32,8 @@ test("inspects checked-in event streams and projections", () => {
 
 test("surface and flow handoff fixture preserves enriched refs and inert actions", () => {
   const report = inspectFixtures({ rootDir });
-  const stream = report.eventStreams.find((item) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
-  const projection = report.projections.find((item) => item.relativePath.endsWith("surface-flow-handoff-current.json"));
+  const stream = report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
+  const projection = report.projections.find((item: any) => item.relativePath.endsWith("surface-flow-handoff-current.json"));
   const statuses = getFlowProcessStatus(report.projections, { processId: "run-provider-directory-refresh" });
   const action = projection.actions[0];
 
@@ -57,8 +56,8 @@ test("surface and flow handoff fixture preserves enriched refs and inert actions
 
 test("projection loading preserves v0 boundaries and original objects", () => {
   const report = inspectFixtures({ rootDir });
-  const surface = report.projections.find((projection) => projection.relativePath.endsWith("surface-current-claim-status.json"));
-  const survey = report.projections.find((projection) => projection.relativePath.endsWith("survey-field-review.json"));
+  const surface = report.projections.find((projection: any) => projection.relativePath.endsWith("surface-current-claim-status.json"));
+  const survey = report.projections.find((projection: any) => projection.relativePath.endsWith("survey-field-review.json"));
 
   assert.equal(surface.snapshot.derivedFrom.directSnapshot.sourceRef.product, "surface");
   assert.equal(surface.snapshot.claims[0].extensions.authority.product, "surface");
@@ -69,7 +68,7 @@ test("projection loading preserves v0 boundaries and original objects", () => {
   assert.equal(survey.snapshot.claims[0].sourceRef.product, "survey");
   assert.equal(survey.snapshot.processes[0].extensions.authority.product, "flow");
   assert.equal(survey.snapshot.reviewItems[0].subjectRef.id, "provider-118:npi");
-  assert.equal(survey.snapshot.links.some((link) => link.relation === "reviews"), true);
+  assert.equal(survey.snapshot.links.some((link: any) => link.relation === "reviews"), true);
 });
 
 test("surface claim query does not require a selected Flow run", () => {
@@ -97,7 +96,7 @@ test("survey review query composes claim, review, evidence, decision, action, an
   assert.equal(reviews[0].decisions[0].id, "decision-provider-118-npi-approved");
   assert.equal(reviews[0].actions[0].id, "action-apply-provider-118-npi");
 
-  const relations = new Set(reviews[0].links.map((link) => link.relation));
+  const relations = new Set(reviews[0].links.map((link: any) => link.relation));
   assert.equal(relations.has("reviews"), true);
   assert.equal(relations.has("evidenced_by"), true);
   assert.equal(relations.has("updates"), true);
@@ -106,15 +105,15 @@ test("survey review query composes claim, review, evidence, decision, action, an
 
 test("action descriptors are inert read-only data", () => {
   const report = inspectFixtures({ rootDir });
-  const surface = report.projections.find((projection) => projection.relativePath.endsWith("surface-current-claim-status.json"));
+  const surface = report.projections.find((projection: any) => projection.relativePath.endsWith("surface-current-claim-status.json"));
   const action = surface.actions[0];
 
   assert.equal(action.id, "action-refresh-provider-directory");
   assert.equal(action.readOnly, true);
   assert.equal(action.authority.command, "flow.run.start");
   assert.equal(action.authority.externalUrl, "https://example.test/flow/definitions/refresh-provider-directory");
-  assert.equal(action.warnings.some((warning) => warning.message.includes("authority.command is an inert descriptor only")), true);
-  assert.equal(action.warnings.some((warning) => warning.message.includes("authority.externalUrl is an inert descriptor only")), true);
+  assert.equal(action.warnings.some((warning: any) => warning.message.includes("authority.command is an inert descriptor only")), true);
+  assert.equal(action.warnings.some((warning: any) => warning.message.includes("authority.externalUrl is an inert descriptor only")), true);
 });
 
 test("projection validation reports malformed nested object refs", () => {
@@ -192,8 +191,8 @@ test("projection validation reports malformed nested object refs", () => {
   };
 
   const errors = validateProjection(invalidProjection, "invalid-projection.json")
-    .filter((item) => item.severity === "error");
-  const paths = new Set(errors.map((item) => item.path));
+    .filter((item: any) => item.severity === "error");
+  const paths = new Set(errors.map((item: any) => item.path));
 
   assert.equal(paths.has("invalid-projection.json.claims[0].evidenceRefs[0].id"), true);
   assert.equal(paths.has("invalid-projection.json.claims[0].actionRefs"), true);
@@ -241,8 +240,8 @@ test("projection validation reports malformed enriched ref fields", () => {
   };
 
   const errors = validateProjection(invalidProjection, "invalid-enriched.json")
-    .filter((item) => item.severity === "error");
-  const paths = new Set(errors.map((item) => item.path));
+    .filter((item: any) => item.severity === "error");
+  const paths = new Set(errors.map((item: any) => item.path));
 
   assert.equal(paths.has("invalid-enriched.json.claims[0].evidenceRefs[0].uid"), true);
   assert.equal(paths.has("invalid-enriched.json.claims[0].evidenceRefs[0].scope"), true);
@@ -276,7 +275,7 @@ test("learning event validation accepts thin non-authoritative payloads", () => 
     }
   };
 
-  const errors = validateEvent(event, "learning.jsonl:1").filter((item) => item.severity === "error");
+  const errors = validateEvent(event, "learning.jsonl:1").filter((item: any) => item.severity === "error");
 
   assert.equal(errors.length, 0);
 });
@@ -315,7 +314,7 @@ test("learning projection validation accepts thin non-authoritative objects", ()
     ]
   };
 
-  const errors = validateProjection(projection, "learning-projection.json").filter((item) => item.severity === "error");
+  const errors = validateProjection(projection, "learning-projection.json").filter((item: any) => item.severity === "error");
 
   assert.equal(errors.length, 0);
 });
@@ -356,11 +355,11 @@ test("learning validation rejects missing family and non-authority fields", () =
   };
 
   const eventPaths = new Set(validateEvent(event, "learning.jsonl:2")
-    .filter((item) => item.severity === "error")
-    .map((item) => item.path));
+    .filter((item: any) => item.severity === "error")
+    .map((item: any) => item.path));
   const projectionPaths = new Set(validateProjection(projection, "learning-projection.json")
-    .filter((item) => item.severity === "error")
-    .map((item) => item.path));
+    .filter((item: any) => item.severity === "error")
+    .map((item: any) => item.path));
 
   assert.equal(eventPaths.has("learning.jsonl:2.payload.data.family"), true);
   assert.equal(eventPaths.has("learning.jsonl:2.payload.data.nonAuthority"), true);
@@ -390,8 +389,8 @@ test("learning event validation rejects invalid optional id and sourceRef fields
   };
 
   const paths = new Set(validateEvent(event, "learning.jsonl:3")
-    .filter((item) => item.severity === "error")
-    .map((item) => item.path));
+    .filter((item: any) => item.severity === "error")
+    .map((item: any) => item.path));
 
   assert.equal(paths.has("learning.jsonl:3.payload.data.id"), true);
   assert.equal(paths.has("learning.jsonl:3.payload.data.sourceRef.id"), true);

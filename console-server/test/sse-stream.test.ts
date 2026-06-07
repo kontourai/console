@@ -1,4 +1,3 @@
-// @ts-nocheck
 import assert = require("node:assert/strict");
 import test = require("node:test");
 import { createSseBroker, writeSse } from "../src/console-foundation/sse-stream";

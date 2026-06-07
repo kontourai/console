@@ -1,4 +1,3 @@
-// @ts-nocheck
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -24,7 +23,7 @@ test("flow process helper emits local process and gate status without selected S
   });
   const projection = flowProcessStateToProjection(state);
   const validationErrors = validateProjection(projection, "flow-projection")
-    .filter((item) => item.severity === "error");
+    .filter((item: any) => item.severity === "error");
   const emitter = new KontourEmitter({
     sink: new LocalFileSink({ root: path.join(rootDir, ".kontour") })
   });
@@ -46,7 +45,7 @@ test("flow process helper emits local process and gate status without selected S
   assert.equal(statuses[0].openGateRefs[0].id, "gate-provider-review");
   assert.equal(statuses[0].openGateRefs[0].uid, "flow-gate-provider-review");
   assert.equal(statuses[0].gates.length, 2);
-  assert.deepEqual(statuses[0].gates.map((gate) => gate.status).sort(), ["open", "passed"]);
+  assert.deepEqual(statuses[0].gates.map((gate: any) => gate.status).sort(), ["open", "passed"]);
   assert.equal(statuses[0].gates[0].gateRef.uid, "flow-gate-provider-review");
   assert.equal(statuses[0].gates[0].processRef.uid, "flow-run-provider-onboarding-42");
   assert.equal(statuses[0].gates[0].expectationRefs[0].uid, "surface-claim-provider-directory-current");
@@ -92,7 +91,7 @@ test("flow gate transition helper emits a stable local gate event", async () => 
     sequence: 7
   });
   const validationErrors = validateEvent(event, "flow-event")
-    .filter((item) => item.severity === "error");
+    .filter((item: any) => item.severity === "error");
   const emitter = new KontourEmitter({
     sink: new LocalFileSink({ root: path.join(rootDir, ".kontour") })
   });
@@ -138,8 +137,8 @@ test("flow helpers preserve lightweight refs and validate malformed enriched ref
 
   assert.deepEqual(lightweight.processes[0].nextActionRefs, []);
   assert.deepEqual(lightweight.gates, []);
-  assert.equal(validateProjection(lightweight, "lightweight-flow").filter((item) => item.severity === "error").length, 0);
-  assert.equal(validateEvent(invalid, "invalid-flow").some((item) => item.path === "invalid-flow.subject.uid"), true);
+  assert.equal(validateProjection(lightweight, "lightweight-flow").filter((item: any) => item.severity === "error").length, 0);
+  assert.equal(validateEvent(invalid, "invalid-flow").some((item: any) => item.path === "invalid-flow.subject.uid"), true);
 });
 
 function tempRoot() {

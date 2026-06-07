@@ -1,4 +1,3 @@
-// @ts-nocheck
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -19,7 +18,7 @@ test("surface claim helper emits a local projection queryable without a Flow run
   const rootDir = tempRoot();
   const projection = surfaceClaimStateToProjection(surfaceClaimState());
   const validationErrors = validateProjection(projection, "surface-projection")
-    .filter((item) => item.severity === "error");
+    .filter((item: any) => item.severity === "error");
   const emitter = new KontourEmitter({
     sink: new LocalFileSink({ root: path.join(rootDir, ".kontour") })
   });
@@ -67,7 +66,7 @@ test("surface freshness helper emits a stable local freshness changed event", as
     ]
   });
   const validationErrors = validateEvent(event, "surface-event")
-    .filter((item) => item.severity === "error");
+    .filter((item: any) => item.severity === "error");
   const emitter = new KontourEmitter({
     sink: new LocalFileSink({ root: path.join(rootDir, ".kontour") })
   });
@@ -105,8 +104,8 @@ test("surface helpers preserve lightweight refs and validate malformed enriched 
   });
 
   assert.deepEqual(lightweight.claims[0].sourceRef, { product: "surface", kind: "claim", id: "claim-lightweight" });
-  assert.equal(validateProjection(lightweight, "lightweight").filter((item) => item.severity === "error").length, 0);
-  assert.equal(validateEvent(invalid, "invalid").some((item) => item.path === "invalid.subject.uid"), true);
+  assert.equal(validateProjection(lightweight, "lightweight").filter((item: any) => item.severity === "error").length, 0);
+  assert.equal(validateEvent(invalid, "invalid").some((item: any) => item.path === "invalid.subject.uid"), true);
 });
 
 function tempRoot() {

@@ -1,13 +1,12 @@
-// @ts-nocheck
-function buildCurrentOperatingState(input, options = {}) {
+function buildCurrentOperatingState(input: any, options: any = {}): any {
   const eventStreams = normalizeEventStreams(input);
   const prepared = prepareEvents(eventStreams);
   const generatedAt = options.generatedAt || replayGeneratedAt(prepared.acceptedEvents);
-  const state = {
+  const state: any = {
     generatedAt,
     source: {
       mode: "event_replay",
-      streamIds: eventStreams.map((stream, index) => stream.relativePath || stream.filePath || `stream-${index + 1}`),
+      streamIds: eventStreams.map((stream: any, index: any) => stream.relativePath || stream.filePath || `stream-${index + 1}`),
       acceptedEventCount: prepared.acceptedEvents.length,
       duplicateEventCount: prepared.duplicateEventCount,
       lastAcceptedEventId: prepared.acceptedEvents.length
@@ -25,25 +24,25 @@ function buildCurrentOperatingState(input, options = {}) {
     timeline: []
   };
 
-  const working = {
-    processes: new Map(),
-    gates: new Map(),
-    claims: new Map(),
-    evidence: new Map(),
-    learnings: new Map(),
-    actions: new Map(),
-    links: new Map(),
-    timeline: []
+  const working: any = {
+    processes: new Map<string, any>(),
+    gates: new Map<string, any>(),
+    claims: new Map<string, any>(),
+    evidence: new Map<string, any>(),
+    learnings: new Map<string, any>(),
+    actions: new Map<string, any>(),
+    links: new Map<string, any>(),
+    timeline: [] as any[]
   };
 
-  prepared.acceptedEvents.forEach((entry) => applyEvent(working, entry.event, entry.streamId));
+  prepared.acceptedEvents.forEach((entry: any) => applyEvent(working, entry.event, entry.streamId));
 
   state.processes = sortById([...working.processes.values()]);
   state.gates = sortById([...working.gates.values()]);
   state.claims = sortById([...working.claims.values()]);
   state.evidence = sortById([...working.evidence.values()]);
   state.learnings = sortById([...working.learnings.values()]);
-  state.actions = sortById([...working.actions.values()]).map((action) => ({
+  state.actions = sortById([...working.actions.values()]).map((action: any) => ({
     ...action,
     readOnly: true
   }));
@@ -54,10 +53,10 @@ function buildCurrentOperatingState(input, options = {}) {
   return state;
 }
 
-function normalizeEventStreams(input) {
+function normalizeEventStreams(input: any): any[] {
   if (!input) return [];
   if (Array.isArray(input)) {
-    if (input.every((item) => item && Array.isArray(item.events))) return input;
+    if (input.every((item: any) => item && Array.isArray(item.events))) return input;
     return [{ relativePath: "inline-events", events: input }];
   }
   if (Array.isArray(input.eventStreams)) return input.eventStreams;
@@ -65,14 +64,14 @@ function normalizeEventStreams(input) {
   return [];
 }
 
-function prepareEvents(eventStreams) {
+function prepareEvents(eventStreams: any): { acceptedEvents: any[]; duplicateEventCount: number } {
   const seen = new Set();
-  const acceptedEvents = [];
+  const acceptedEvents: any[] = [];
   let duplicateEventCount = 0;
 
-  eventStreams.forEach((stream, streamIndex) => {
+  eventStreams.forEach((stream: any, streamIndex: any) => {
     const streamId = stream.relativePath || stream.filePath || `stream-${streamIndex + 1}`;
-    arrayOf(stream.events).forEach((event, eventIndex) => {
+    arrayOf(stream.events).forEach((event: any, eventIndex: any) => {
       if (!event || typeof event !== "object") return;
       if (event.id && seen.has(event.id)) {
         duplicateEventCount += 1;
@@ -87,7 +86,7 @@ function prepareEvents(eventStreams) {
   return { acceptedEvents, duplicateEventCount };
 }
 
-function compareEventEntries(left, right) {
+function compareEventEntries(left: any, right: any) {
   return compareMaybeNumber(left.event.sequence, right.event.sequence)
     || compareMaybeString(left.event.occurredAt, right.event.occurredAt)
     || compareMaybeString(left.event.observedAt, right.event.observedAt)
@@ -95,13 +94,13 @@ function compareEventEntries(left, right) {
     || left.eventIndex - right.eventIndex;
 }
 
-function replayGeneratedAt(acceptedEvents) {
+function replayGeneratedAt(acceptedEvents: any) {
   if (!acceptedEvents.length) return null;
   const last = acceptedEvents[acceptedEvents.length - 1].event;
   return last.observedAt || last.occurredAt || null;
 }
 
-function applyEvent(state, event, streamId) {
+function applyEvent(state: any, event: any, streamId: any) {
   const subject = clone(event.subject);
   const payload = event.payload || {};
   const refs = arrayOf(payload.refs);
@@ -134,13 +133,13 @@ function applyEvent(state, event, streamId) {
       break;
   }
 
-  arrayOf(event.links).forEach((link) => {
+  arrayOf(event.links).forEach((link: any) => {
     state.links.set(linkKey(link), clone(link));
   });
   if (!isLearningEvent(event)) {
-    arrayOf(payload.actions).concat(arrayOf(after.nextActionRefs).map((ref) => actionFromRef(ref)))
+    arrayOf(payload.actions).concat(arrayOf(after.nextActionRefs).map((ref: any) => actionFromRef(ref)))
       .filter(Boolean)
-      .forEach((action) => {
+      .forEach((action: any) => {
         state.actions.set(action.id, compactObject(clone(action)));
       });
   }
@@ -157,7 +156,7 @@ function applyEvent(state, event, streamId) {
   });
 }
 
-function upsertProcess(state, event, subject, refs, after) {
+function upsertProcess(state: any, event: any, subject: any, refs: any, after: any) {
   const existing = state.processes.get(subject.id) || {
     id: subject.id,
     label: subject.label,
@@ -178,13 +177,13 @@ function upsertProcess(state, event, subject, refs, after) {
     updatedAt: event.occurredAt || existing.updatedAt
   };
 
-  next.claimRefs = mergeRefs(existing.claimRefs, refs.filter((ref) => ref.product === "surface" && ref.kind === "claim"));
-  next.gateRefs = mergeRefs(existing.gateRefs, refs.filter((ref) => ref.product === "flow" && ref.kind === "gate"));
-  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref) => ref.kind === "evidence"));
+  next.claimRefs = mergeRefs(existing.claimRefs, refs.filter((ref: any) => ref.product === "surface" && ref.kind === "claim"));
+  next.gateRefs = mergeRefs(existing.gateRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "gate"));
+  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: any) => ref.kind === "evidence"));
   state.processes.set(subject.id, compactObject(next));
 }
 
-function upsertGate(state, event, subject, refs, after) {
+function upsertGate(state: any, event: any, subject: any, refs: any, after: any) {
   const existing = state.gates.get(subject.id) || {
     id: subject.id,
     label: subject.label,
@@ -205,13 +204,13 @@ function upsertGate(state, event, subject, refs, after) {
     updatedAt: event.occurredAt || existing.updatedAt
   };
 
-  next.expectationRefs = mergeRefs(existing.expectationRefs, refs.filter((ref) => ref.product === "surface" && ref.kind === "claim"));
-  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref) => ref.kind === "evidence"));
+  next.expectationRefs = mergeRefs(existing.expectationRefs, refs.filter((ref: any) => ref.product === "surface" && ref.kind === "claim"));
+  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: any) => ref.kind === "evidence"));
   state.gates.set(subject.id, compactObject(next));
   updateProcessFromGate(state, event, refs, after, next);
 }
 
-function upsertClaim(state, event, subject, refs, after) {
+function upsertClaim(state: any, event: any, subject: any, refs: any, after: any) {
   const existing = state.claims.get(subject.id) || {
     id: subject.id,
     label: subject.label,
@@ -236,13 +235,13 @@ function upsertClaim(state, event, subject, refs, after) {
     next.lastVerifiedAt = after.freshness.lastCheckedAt;
   }
 
-  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref) => ref.kind === "evidence"));
-  next.gateRefs = mergeRefs(existing.gateRefs, refs.filter((ref) => ref.product === "flow" && ref.kind === "gate"));
-  next.processRefs = mergeRefs(existing.processRefs, refs.filter((ref) => ref.product === "flow" && ref.kind === "run"));
+  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: any) => ref.kind === "evidence"));
+  next.gateRefs = mergeRefs(existing.gateRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "gate"));
+  next.processRefs = mergeRefs(existing.processRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "run"));
   state.claims.set(subject.id, compactObject(next));
 }
 
-function upsertEvidence(state, event, subject, refs, summary) {
+function upsertEvidence(state: any, event: any, subject: any, refs: any, summary: any) {
   const existing = state.evidence.get(subject.id) || {
     id: subject.id,
     label: subject.label,
@@ -259,15 +258,15 @@ function upsertEvidence(state, event, subject, refs, summary) {
     status: existing.status || "available",
     capturedAt: existing.capturedAt || event.occurredAt,
     summary: summary || existing.summary,
-    claimRefs: mergeRefs(existing.claimRefs, refs.filter((ref) => ref.product === "surface" && ref.kind === "claim")),
-    gateRefs: mergeRefs(existing.gateRefs, refs.filter((ref) => ref.product === "flow" && ref.kind === "gate")),
-    processRefs: mergeRefs(existing.processRefs, refs.filter((ref) => ref.product === "flow" && ref.kind === "run"))
+    claimRefs: mergeRefs(existing.claimRefs, refs.filter((ref: any) => ref.product === "surface" && ref.kind === "claim")),
+    gateRefs: mergeRefs(existing.gateRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "gate")),
+    processRefs: mergeRefs(existing.processRefs, refs.filter((ref: any) => ref.product === "flow" && ref.kind === "run"))
   };
 
   state.evidence.set(subject.id, compactObject(next));
 }
 
-function upsertLearning(state, event, subject, refs, payload, summary) {
+function upsertLearning(state: any, event: any, subject: any, refs: any, payload: any, summary: any) {
   const data = payload.data && typeof payload.data === "object" ? payload.data : {};
   if (!summary || !["workflow", "domain"].includes(data.family) || data.nonAuthority !== true) return;
 
@@ -302,11 +301,11 @@ function upsertLearning(state, event, subject, refs, payload, summary) {
   state.learnings.set(id, compactObject(next));
 }
 
-function isLearningEvent(event) {
+function isLearningEvent(event: any) {
   return typeof event.type === "string" && event.type.startsWith("learning.");
 }
 
-function updateProcessFromGate(state, event, refs, after, gate) {
+function updateProcessFromGate(state: any, event: any, refs: any, after: any, gate: any) {
   if (!gate.processRef || !gate.processRef.id) return;
   const existing = state.processes.get(gate.processRef.id) || {
     id: gate.processRef.id,
@@ -327,24 +326,24 @@ function updateProcessFromGate(state, event, refs, after, gate) {
     updatedAt: event.occurredAt || existing.updatedAt
   };
 
-  next.claimRefs = mergeRefs(existing.claimRefs, refs.filter((ref) => ref.product === "surface" && ref.kind === "claim"));
+  next.claimRefs = mergeRefs(existing.claimRefs, refs.filter((ref: any) => ref.product === "surface" && ref.kind === "claim"));
   next.gateRefs = mergeRefs(existing.gateRefs, [gate.sourceRef]);
-  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref) => ref.kind === "evidence"));
+  next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: any) => ref.kind === "evidence"));
   next.nextActionRefs = mergeRefs(existing.nextActionRefs, processPatch.nextActionRefs);
   state.processes.set(gate.processRef.id, compactObject(next));
 }
 
-function pickProcessPatch(after) {
-  const patch = {};
-  ["currentStep", "percentComplete", "nextActionRefs"].forEach((key) => {
+function pickProcessPatch(after: any): any {
+  const patch: any = {};
+  ["currentStep", "percentComplete", "nextActionRefs"].forEach((key: any) => {
     if (after[key] !== undefined) patch[key] = clone(after[key]);
   });
   return patch;
 }
 
-function actionFromRef(ref) {
+function actionFromRef(ref: any) {
   if (!ref || ref.kind !== "action" || !ref.id) return null;
-  const action = {
+  const action: any = {
     id: ref.id,
     label: ref.label,
     kind: ref.name && ref.name.startsWith("resume-") ? "resume" : undefined,
@@ -358,32 +357,32 @@ function actionFromRef(ref) {
   return action;
 }
 
-function describeCurrentStage(state) {
-  const waitingGate = state.gates.find((gate) => ["waiting", "open", "routed_back"].includes(gate.status));
+function describeCurrentStage(state: any) {
+  const waitingGate = state.gates.find((gate: any) => ["waiting", "open", "routed_back"].includes(gate.status));
   if (waitingGate) {
-    const claim = state.claims.find((item) => arrayOf(waitingGate.expectationRefs).some((ref) => ref.id === item.id));
+    const claim = state.claims.find((item: any) => arrayOf(waitingGate.expectationRefs).some((ref: any) => ref.id === item.id));
     if (claim) return `Still waiting on ${claim.label || claim.id}.`;
     return `Still waiting on ${waitingGate.label || waitingGate.id}.`;
   }
 
-  const failedGate = state.gates.find((gate) => gate.status === "failed");
+  const failedGate = state.gates.find((gate: any) => gate.status === "failed");
   if (failedGate) return `${failedGate.label || failedGate.id} failed.`;
 
-  const passedGate = [...state.gates].reverse().find((gate) => gate.status === "passed");
+  const passedGate = [...state.gates].reverse().find((gate: any) => gate.status === "passed");
   if (passedGate) {
-    const process = state.processes.find((item) => passedGate.processRef && item.id === passedGate.processRef.id);
+    const process = state.processes.find((item: any) => passedGate.processRef && item.id === passedGate.processRef.id);
     return `${passedGate.label || passedGate.id} passed; ${(process && (process.label || process.id)) || "the process"} can continue.`;
   }
 
-  const activeProcess = state.processes.find((process) => ["running", "active", "waiting"].includes(process.status));
+  const activeProcess = state.processes.find((process: any) => ["running", "active", "waiting"].includes(process.status));
   if (activeProcess) return `${activeProcess.label || activeProcess.id} is ${activeProcess.status}.`;
 
-  const latestAuthoritativeEvent = [...state.timeline].reverse().find((item) => !isLearningEvent(item));
+  const latestAuthoritativeEvent = [...state.timeline].reverse().find((item: any) => !isLearningEvent(item));
   if (latestAuthoritativeEvent) return latestAuthoritativeEvent.summary || "Events replayed.";
   return state.timeline.length ? "No authoritative events replayed." : "No events replayed.";
 }
 
-function statusFromGateEvent(type) {
+function statusFromGateEvent(type: any) {
   if (type === "gate.opened") return "waiting";
   if (type === "gate.passed") return "passed";
   if (type === "gate.failed") return "failed";
@@ -391,21 +390,21 @@ function statusFromGateEvent(type) {
   return undefined;
 }
 
-function processRefFromScope(scope) {
+function processRefFromScope(scope: any) {
   if (!scope || scope.kind !== "run" || !scope.id) return undefined;
   return clone(scope);
 }
 
-function mergeRefs(existing, refs) {
+function mergeRefs(existing: any, refs: any) {
   const byKey = new Map();
-  arrayOf(existing).concat(arrayOf(refs)).forEach((ref) => {
+  arrayOf(existing).concat(arrayOf(refs)).forEach((ref: any) => {
     if (!ref || !ref.id) return;
     byKey.set(refKey(ref), clone(ref));
   });
   return [...byKey.values()].sort(compareRefs);
 }
 
-function isRef(ref) {
+function isRef(ref: any) {
   return Boolean(ref
     && typeof ref === "object"
     && !Array.isArray(ref)
@@ -417,20 +416,20 @@ function isRef(ref) {
     && ref.id.length > 0);
 }
 
-function mergeLinks(existing, links) {
+function mergeLinks(existing: any, links: any) {
   const byKey = new Map();
-  arrayOf(existing).concat(arrayOf(links)).forEach((link) => {
+  arrayOf(existing).concat(arrayOf(links)).forEach((link: any) => {
     if (!link) return;
     byKey.set(linkKey(link), clone(link));
   });
   return [...byKey.values()].sort(compareLinks);
 }
 
-function refKey(ref) {
+function refKey(ref: any) {
   return [ref.product, ref.kind, ref.id].join(":");
 }
 
-function linkKey(link) {
+function linkKey(link: any) {
   return [
     link && link.from && refKey(link.from),
     link && link.relation,
@@ -439,20 +438,20 @@ function linkKey(link) {
   ].join("|");
 }
 
-function compareRefs(left, right) {
+function compareRefs(left: any, right: any) {
   return refKey(left).localeCompare(refKey(right));
 }
 
-function compareLinks(left, right) {
+function compareLinks(left: any, right: any) {
   return compareMaybeString(left.createdAt, right.createdAt)
     || compareMaybeString(linkKey(left), linkKey(right));
 }
 
-function sortById(items) {
-  return items.sort((left, right) => String(left.id).localeCompare(String(right.id)));
+function sortById(items: any) {
+  return items.sort((left: any, right: any) => String(left.id).localeCompare(String(right.id)));
 }
 
-function compareMaybeNumber(left, right) {
+function compareMaybeNumber(left: any, right: any) {
   const leftNumber = Number(left);
   const rightNumber = Number(right);
   const leftComparable = Number.isFinite(leftNumber);
@@ -462,15 +461,15 @@ function compareMaybeNumber(left, right) {
   return 0;
 }
 
-function compareMaybeString(left, right) {
+function compareMaybeString(left: any, right: any) {
   if (left && right && left !== right) return String(left).localeCompare(String(right));
   if (left && !right) return -1;
   if (!left && right) return 1;
   return 0;
 }
 
-function compactObject(object) {
-  const result = {};
+function compactObject(object: any): any {
+  const result: any = {};
   Object.entries(object).forEach(([key, value]) => {
     if (value === undefined) return;
     if (Array.isArray(value) && value.length === 0) return;
@@ -479,12 +478,12 @@ function compactObject(object) {
   return result;
 }
 
-function clone(value) {
+function clone(value: any) {
   if (value === undefined) return undefined;
   return JSON.parse(JSON.stringify(value));
 }
 
-function arrayOf(value) {
+function arrayOf(value: any) {
   return Array.isArray(value) ? value : [];
 }
 
