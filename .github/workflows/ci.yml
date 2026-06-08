@@ -48,6 +48,10 @@ jobs:
         run: npm ci
         working-directory: kontour-console
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: kontour-console
+
       - name: Run tests
         run: npm test
         working-directory: kontour-console

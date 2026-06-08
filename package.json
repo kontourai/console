@@ -17,13 +17,15 @@
     "inspect:fixtures": "npm --workspace @kontour/console-server run inspect:fixtures",
     "prototype:handoff": "node --import tsx scripts/serve-prototype.ts docs/prototypes/handoff-replay",
     "serve": "npm --workspace @kontour/console-server run serve --",
-    "test": "npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontour/console-core test && npm --workspace @kontour/console-server test && npm --workspace @kontour/console-ui test && npm --workspace @kontour/console-ui run typecheck",
+    "test": "npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontour/console-core test && npm --workspace @kontour/console-server test && npm --workspace @kontour/console-ui test && npm --workspace @kontour/console-ui run typecheck && npx playwright test",
+    "test:browser": "playwright test",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontour/console-core run typecheck && npm --workspace @kontour/console-server run typecheck && npm --workspace @kontour/console-ui run typecheck",
     "check:content-boundary": "node --import tsx scripts/check-content-boundary.ts",
     "setup:repo-hooks": "node --import tsx scripts/setup-repo-hooks.ts",
     "validate:repo-hooks": "node --import tsx scripts/validate-repo-hooks.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
