@@ -1,5 +1,4 @@
-import { Empty } from "../components/Empty";
-import { Panel } from "../components/Panel";
+import { Empty, Panel } from "@kontourai/console-kit/react";
 import { ProcessFlowDiagram } from "../components/ProcessFlowDiagram";
 import { ProcessView } from "../components/ProcessView";
 import { ActionRow, ClaimRow, GateRow, LearningRow } from "../components/Rows";

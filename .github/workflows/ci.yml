@@ -18,15 +18,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          path: kontour-console
+
+      - name: Checkout Console Kit
+        uses: actions/checkout@v4
+        with:
+          repository: kontourai/console-ui
+          path: console-ui
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: kontour-console/package-lock.json
 
       - name: Install dependencies
         run: npm ci
+        working-directory: kontour-console
 
       - name: Run tests
         run: npm test
+        working-directory: kontour-console

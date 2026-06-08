@@ -1,7 +1,6 @@
 import { formatStep, type ConsoleLearning, type ConsoleProcess } from "@kontour/console-core";
+import { Badge, Progress } from "@kontourai/console-kit/react";
 import { formatTime } from "../utils/format";
-import { Badge } from "./Badge";
-import { Progress } from "./Progress";
 import { LearningNotes } from "./Rows";
 
 export function ProcessView({ process, advisoryLearnings = [] }: { process: ConsoleProcess; advisoryLearnings?: ConsoleLearning[] }) {

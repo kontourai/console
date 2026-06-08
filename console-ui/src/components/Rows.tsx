@@ -1,6 +1,6 @@
 import type { ConsoleAction, ConsoleClaim, ConsoleGate, ConsoleLearning, ConsoleRef, TimelineItem } from "@kontour/console-core";
+import { Badge } from "@kontourai/console-kit/react";
 import { formatTime } from "../utils/format";
-import { Badge } from "./Badge";
 
 export function GateRow({ gate }: { gate: ConsoleGate }) {
   return (

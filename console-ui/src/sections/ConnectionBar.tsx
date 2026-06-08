@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { StatusBadge } from "../components/StatusBadge";
+import { Button, StatusBadge, Topbar } from "@kontourai/console-kit/react";
 import type { ConnectionStatus } from "../types";
 
 interface ConnectionBarProps {
@@ -11,22 +11,25 @@ interface ConnectionBarProps {
 
 export function ConnectionBar({ draftHubUrl, status, onDraftHubUrlChange, onSubmit }: ConnectionBarProps) {
   return (
-    <section className="topbar" aria-label="Hub connection">
-      <div>
-        <p className="eyebrow">Kontour Console</p>
-        <h1>Local operating plane</h1>
-      </div>
-      <form className="hub-form" onSubmit={onSubmit}>
-        <label htmlFor="hub-url">Hub URL</label>
-        <input
-          id="hub-url"
-          value={draftHubUrl}
-          onChange={(event) => onDraftHubUrlChange(event.target.value)}
-          spellCheck={false}
-        />
-        <button type="submit">Reconnect</button>
-      </form>
-      <StatusBadge status={status} />
-    </section>
+    <Topbar
+      eyebrow="Kontour Console"
+      title="Local operating plane"
+      ariaLabel="Hub connection"
+      actions={
+        <>
+          <form className="hub-form" onSubmit={onSubmit}>
+            <label htmlFor="hub-url">Hub URL</label>
+            <input
+              id="hub-url"
+              value={draftHubUrl}
+              onChange={(event) => onDraftHubUrlChange(event.target.value)}
+              spellCheck={false}
+            />
+            <Button variant="primary" type="submit">Reconnect</Button>
+          </form>
+          <StatusBadge status={status} />
+        </>
+      }
+    />
   );
 }

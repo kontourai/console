@@ -1,3 +1,2 @@
-export function Empty({ label }: { label: string }) {
-  return <p className="empty">{label}</p>;
-}
+export { Empty } from "@kontourai/console-kit/react";
+export type { EmptyProps } from "@kontourai/console-kit/react";
