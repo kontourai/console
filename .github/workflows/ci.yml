@@ -24,8 +24,8 @@ jobs:
       - name: Checkout Console Kit
         uses: actions/checkout@v4
         with:
-          repository: kontourai/console-ui
-          path: console-ui
+          repository: kontourai/console-kit
+          path: console-kit
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -34,15 +34,15 @@ jobs:
           cache: npm
           cache-dependency-path: |
             kontour-console/package-lock.json
-            console-ui/package-lock.json
+            console-kit/package-lock.json
 
       - name: Install Console Kit dependencies
         run: npm ci
-        working-directory: console-ui
+        working-directory: console-kit
 
       - name: Build Console Kit
         run: npm run build
-        working-directory: console-ui
+        working-directory: console-kit
 
       - name: Install dependencies
         run: npm ci
