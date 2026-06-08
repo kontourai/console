@@ -1,6 +1,6 @@
 # Kontour Console
 
-Kontour Console is the suite-level management and visibility product for Kontour. It brings portable primitives from Surface, Flow, Survey, Veritas, and Flow Agents into one operating plane, with vertical products extending those primitive consoles rather than depending on Kontour Console directly.
+Kontour Console is the suite-level management and visibility product for Kontour. It brings portable state from the foundational primitives (Surface, Flow, Survey) and the products built on them (Veritas, Flow Agents) into one operating plane, with vertical products extending those primitive consoles rather than depending on Kontour Console directly.
 
 ## Language
 
@@ -9,15 +9,19 @@ The comprehensive cross-product workspace for understanding what is true, what i
 _Avoid_: Shared component library only, product-specific admin screen, required hosted service for primitives
 
 **Primitive**:
-A portable product capability that remains useful without Kontour Console, such as Surface claim status, Flow Runs, Survey fact-review records, Veritas readiness evidence, or Flow Agents runtime state.
-_Avoid_: Console-only data, proprietary backend dependency, hidden hosted requirement
+A foundational, portable Kontour building block that other products and producers build on and that stays useful without Kontour Console. The foundational primitives are Surface (claim trust state), Flow (process transparency and gates), and Survey (producer fact-review records).
+_Avoid_: Console-only data, proprietary backend dependency, hidden hosted requirement, treating a product built on primitives (Veritas, Flow Agents) as a primitive
+
+**Product (built on primitives)**:
+An off-the-shelf Kontour product an end user adopts directly, built on the foundational primitives. Veritas (repo/change governance, built on Surface) and Flow Agents (an agent-facing runtime that applies Flow and Veritas discipline) are products. Products still expose portable, Console-readable state.
+_Avoid_: Treating a product as a primitive, hiding the underlying primitive, requiring Console to use the product
 
 **Management Plane**:
 The suite-level layer that aggregates, correlates, filters, routes, and manages cross-product state. The management plane may host collaboration and monitoring, but it must not own the core semantics of the products it observes.
 _Avoid_: Product kernel, replacement for Surface or Flow, hidden workflow authority
 
 **Console Projection**:
-A product-owned read model shaped for console display and action. Surface, Flow, Survey, Veritas, and Flow Agents publish primitive projections; vertical products may contribute extension metadata through the primitive they build on. Kontour Console composes projections without redefining their core meaning. Projections are cached views; product event streams are the durable integration contract when available.
+A product-owned read model shaped for console display and action. Surface, Flow, and Survey publish primitive projections, and the products built on them (Veritas, Flow Agents) publish product projections; vertical products may contribute extension metadata through the primitive they build on. Kontour Console composes projections without redefining their core meaning. Projections are cached views; product event streams are the durable integration contract when available.
 _Avoid_: New source of truth, arbitrary BI model, direct database dependency
 
 **Product Event Stream**:
@@ -56,7 +60,7 @@ _Avoid_: Final truth, run-only status, single score
 
 Kontour primitives make transparency portable. Kontour Console makes transparency operable.
 
-Users can adopt Surface, Flow, Survey, Veritas, or Flow Agents without Kontour Console. Kontour Console is the suite-level product that makes those primitives easier to manage together: one place for claim state, workflow state, proof, queues, decisions, freshness, exceptions, and next actions.
+Users can adopt Surface, Flow, Survey, Veritas, or Flow Agents without Kontour Console. Kontour Console is the suite-level product that makes the primitives and the products built on them easier to manage together: one place for claim state, workflow state, proof, queues, decisions, freshness, exceptions, and next actions.
 
 ## Boundary
 
