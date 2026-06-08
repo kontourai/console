@@ -12,15 +12,15 @@
   },
   "dependencies": {
     "@kontour/console-core": "file:../console-core",
-    "@kontourai/console-kit": "file:../../console-kit",
+    "@kontourai/console-kit": "^0.1.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^5.1.1",
     "@types/node": "^25.9.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vite": "^7.2.6"
