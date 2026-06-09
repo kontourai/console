@@ -255,7 +255,7 @@ test("learning event validation accepts thin non-authoritative payloads", () => 
     type: "learning.recorded",
     occurredAt: "2026-06-04T12:00:00Z",
     producer: { product: "flow-agents", id: "flow-agents-local" },
-    scope: { kind: "repo", id: "kontour-console" },
+    scope: { kind: "repo", id: "console" },
     subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-001" },
     payload: {
       summary: "Route-back outcomes need a short operator-facing reason.",
@@ -287,7 +287,7 @@ test("learning projection validation accepts thin non-authoritative objects", ()
     generatedAt: "2026-06-04T12:00:00Z",
     derivedFrom: {},
     producer: { product: "flow-agents", id: "flow-agents-local" },
-    scope: { kind: "repo", id: "kontour-console" },
+    scope: { kind: "repo", id: "console" },
     learnings: [
       {
         id: "learning-route-back-reason",
@@ -327,7 +327,7 @@ test("learning validation rejects missing family and non-authority fields", () =
     type: "learning.recorded",
     occurredAt: "2026-06-04T12:00:00Z",
     producer: { product: "flow-agents", id: "flow-agents-local" },
-    scope: { kind: "repo", id: "kontour-console" },
+    scope: { kind: "repo", id: "console" },
     subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-invalid" },
     payload: {
       summary: "Invalid learning.",
@@ -342,7 +342,7 @@ test("learning validation rejects missing family and non-authority fields", () =
     generatedAt: "2026-06-04T12:00:00Z",
     derivedFrom: {},
     producer: { product: "flow-agents", id: "flow-agents-local" },
-    scope: { kind: "repo", id: "kontour-console" },
+    scope: { kind: "repo", id: "console" },
     learnings: [
       {
         id: "learning-invalid",
@@ -375,7 +375,7 @@ test("learning event validation rejects invalid optional id and sourceRef fields
     type: "learning.recorded",
     occurredAt: "2026-06-04T12:00:00Z",
     producer: { product: "flow-agents", id: "flow-agents-local" },
-    scope: { kind: "repo", id: "kontour-console" },
+    scope: { kind: "repo", id: "console" },
     subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-invalid-ref" },
     payload: {
       summary: "Invalid optional fields.",

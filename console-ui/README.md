@@ -1,18 +1,18 @@
-# Kontour Console UI
+# Console UI
 
-React + Vite starter for the local Kontour Console hub.
+React + Vite starter for the local Console hub.
 
 Run the hub from the parent package:
 
 ```sh
-cd /Users/brian/dev/github/kontourai/kontour-console
+cd /Users/brian/dev/github/kontourai/console
 npm run serve
 ```
 
 Run the UI in another terminal:
 
 ```sh
-cd /Users/brian/dev/github/kontourai/kontour-console/console-ui
+cd /Users/brian/dev/github/kontourai/console/console-ui
 npm install
 npm run dev
 ```

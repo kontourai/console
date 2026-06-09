@@ -8,17 +8,17 @@ Accepted
 
 ## Context
 
-Kontour Console needs to show learnings that come from product operation, reviews, workflow runs, agents, retrospectives, and product-specific improvement loops. Those learnings may explain why a process changed, why a future action is recommended, or what a product learned from an outcome.
+Console needs to show learnings that come from product operation, reviews, workflow runs, agents, retrospectives, and product-specific improvement loops. Those learnings may explain why a process changed, why a future action is recommended, or what a product learned from an outcome.
 
 Existing Console architecture already separates semantic control-plane records from operational telemetry-plane records. It also keeps source schemas and product truth owned by Surface, Flow, Survey, Veritas, Flow Agents, and vertical products.
 
 ## Decision
 
-Learnings enter Kontour Console through the existing control plane as non-authoritative `learning.*` product-owned semantic records. Kontour Console will not introduce a separate third learning plane.
+Learnings enter Console through the existing control plane as non-authoritative `learning.*` product-owned semantic records. Console will not introduce a separate third learning plane.
 
 A learning record may be emitted as a Console event type such as `learning.recorded`, `learning.updated`, or another product-owned `learning.*` extension. It may also appear in projection payloads or product namespaced extensions when a producer needs a current read model. The producing product owns the source schema, lifecycle, meaning, and any product-local identifiers.
 
-Kontour Console may aggregate, correlate, display, filter, and route learning records through product authority. It must not treat learning as authority to revoke, change, or override claims, gates, decisions, actions, product records, source facts, or product truth. If a learning causes a product-owned change, the owning product must emit the corresponding authoritative control-plane event, such as `claim.status.changed`, `gate.routed_back`, `decision.recorded`, or `action.requested`.
+Console may aggregate, correlate, display, filter, and route learning records through product authority. It must not treat learning as authority to revoke, change, or override claims, gates, decisions, actions, product records, source facts, or product truth. If a learning causes a product-owned change, the owning product must emit the corresponding authoritative control-plane event, such as `claim.status.changed`, `gate.routed_back`, `decision.recorded`, or `action.requested`.
 
 `decision.recorded` remains the event for a durable product-owned decision. A learning can explain, reference, or be derived from a decision, but it is not the decision itself unless the owning product also records a decision event.
 

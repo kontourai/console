@@ -49,8 +49,8 @@ function repoRoot() {
 
 function parseServeOptions(args: string[]): ServeOptions {
   const options: ServeOptions = {
-    host: DEFAULT_HOST,
-    port: DEFAULT_PORT
+    host: process.env.CONSOLE_HOST || DEFAULT_HOST,
+    port: process.env.CONSOLE_PORT ? Number(process.env.CONSOLE_PORT) : DEFAULT_PORT
   };
 
   for (let index = 0; index < args.length; index += 1) {

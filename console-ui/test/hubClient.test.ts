@@ -4,6 +4,7 @@ import {
   connectHubEvents,
   connectStream,
   getEvents,
+  getTelemetry,
   getState,
   postRecord
 } from "../src/hubClient";
@@ -55,17 +56,28 @@ class FakeEventSource {
 test("hub client fetches state and events from typed endpoints", async () => {
   const fetchCalls = installFetch([
     jsonResponse({ currentStage: "Ready" }),
-    jsonResponse([{ relativePath: "events/local.jsonl", events: [] }])
+    jsonResponse([{ relativePath: "events/local.jsonl", events: [] }]),
+    jsonResponse({
+      generatedAt: "2026-06-08T15:00:00.000Z",
+      totals: { recordCount: 1, sessionCount: 1, eventTypeCounts: { "tool.invoke": 1 }, productRecordCount: 0 },
+      analytics: { facets: [], flows: [] },
+      sources: [],
+      records: [],
+      warnings: []
+    })
   ]);
 
   const state = await getState("http://127.0.0.1:3737");
   const events = await getEvents("http://127.0.0.1:3737");
+  const telemetry = await getTelemetry("http://127.0.0.1:3737");
 
   assert.equal(state.currentStage, "Ready");
   assert.equal(events[0].relativePath, "events/local.jsonl");
+  assert.equal(telemetry.totals.recordCount, 1);
   assert.equal(fetchCalls[0].url, "http://127.0.0.1:3737/state");
   assert.deepEqual(fetchCalls[0].init?.headers, { accept: "application/json" });
   assert.equal(fetchCalls[1].url, "http://127.0.0.1:3737/events");
+  assert.equal(fetchCalls[2].url, "http://127.0.0.1:3737/api/telemetry");
 });
 
 test("hub client posts records to the records endpoint", async () => {
@@ -91,15 +103,48 @@ test("hub client posts records to the records endpoint", async () => {
   assert.equal(JSON.parse(String(fetchCalls[0].init?.body)).schema, "kontour.console.event");
 });
 
+test("hub client sends hosted auth headers for typed requests", async () => {
+  const fetchCalls = installFetch([
+    jsonResponse({ currentStage: "Hosted" }),
+    jsonResponse({ outcome: "accepted", recordId: "evt-1" })
+  ]);
+  const auth = { token: "secret-token", tenantId: "tenant-a" };
+
+  await getState("https://console.example.test", auth);
+  await postRecord("https://console.example.test", {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-1",
+    type: "claim.status.changed",
+    occurredAt: "2026-06-07T00:00:00Z",
+    producer: { product: "surface" },
+    subject: { product: "surface", kind: "claim", id: "claim-1" },
+    payload: {}
+  }, auth);
+
+  assert.deepEqual(fetchCalls[0].init?.headers, {
+    authorization: "Bearer secret-token",
+    "x-console-tenant-id": "tenant-a",
+    accept: "application/json"
+  });
+  assert.deepEqual(fetchCalls[1].init?.headers, {
+    authorization: "Bearer secret-token",
+    "x-console-tenant-id": "tenant-a",
+    "content-type": "application/json"
+  });
+});
+
 test("hub client opens canonical stream endpoint and handles accepted payloads", () => {
   installEventSource();
   const states: unknown[] = [];
   const accepted: unknown[] = [];
+  const telemetryUpdates: unknown[] = [];
   const statuses: string[] = [];
   const connection = connectStream("http://127.0.0.1:3737", {
     onStatus: (status) => statuses.push(status),
     onState: (state) => states.push(state),
     onRecordAccepted: (event) => accepted.push(event),
+    onTelemetryUpdated: (event) => telemetryUpdates.push(event),
     onError: () => undefined
   });
   const source = FakeEventSource.instances[0];
@@ -109,12 +154,16 @@ test("hub client opens canonical stream endpoint and handles accepted payloads",
     delivery: { recordId: "evt-1" },
     state: { currentStage: "Updated" }
   });
+  source.emit("telemetry.updated", {
+    telemetry: { generatedAt: "2026-06-08T15:00:00.000Z", recordCount: 1 }
+  });
   connection.close();
 
   assert.equal(source.url, "http://127.0.0.1:3737/stream");
   assert.deepEqual(statuses, ["connecting", "disconnected"]);
   assert.deepEqual(states, [{ currentStage: "Connected" }, { currentStage: "Updated" }]);
   assert.deepEqual(accepted, [{ delivery: { recordId: "evt-1" }, state: { currentStage: "Updated" } }]);
+  assert.deepEqual(telemetryUpdates, [{ telemetry: { generatedAt: "2026-06-08T15:00:00.000Z", recordCount: 1 } }]);
   assert.equal(source.closed, true);
 });
 

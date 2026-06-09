@@ -69,6 +69,74 @@ const hubState = {
   ],
 };
 
+const telemetryState = {
+  generatedAt: "2026-06-08T15:01:00.000Z",
+  totals: {
+    recordCount: 42,
+    sessionCount: 4,
+    eventTypeCounts: {
+      "tool.invoke": 18,
+      "tool.result": 16,
+      "agent.delegate": 6,
+      "session.start": 2,
+      "workflow.state": 9,
+    },
+    productRecordCount: 9,
+  },
+  sources: [
+    {
+      id: "flow-agents-full",
+      kind: "jsonl",
+      path: "../.telemetry/full.jsonl",
+      status: "observed",
+      recordCount: 42,
+      warningCount: 0,
+      warnings: [],
+      lastObservedAt: "2026-06-08T15:01:00.000Z",
+    },
+  ],
+  analytics: {
+    facets: [
+      { id: "tools", label: "Tools", counts: [{ name: "execute_bash", count: 18 }] },
+      { id: "skills", label: "Skills", counts: [{ name: "deliver", count: 6 }] },
+      { id: "events", label: "Events", counts: [{ name: "tool.invoke", count: 18 }] },
+    ],
+    flows: [
+      {
+        id: "builder.shape",
+        label: "Builder shape",
+        total: 2,
+        items: [
+          { slug: "shape-provider-settings", title: "Shape provider settings", status: "done", updatedAt: "2026-06-08T15:00:00.000Z" },
+        ],
+      },
+    ],
+  },
+  records: [
+    {
+      eventId: "evt-telemetry-1",
+      sourceId: "flow-agents-full",
+      sourceKind: "runtime",
+      eventType: "tool.invoke",
+      observedAt: "2026-06-08T15:01:00.000Z",
+      sessionId: "session-1",
+      agentName: "dev",
+      runtime: "codex",
+      toolName: "execute_bash",
+    },
+    {
+      eventId: "telemetry-task:state.json",
+      sourceId: "flow-agents-sidecars",
+      sourceKind: "workflow-sidecar",
+      eventType: "workflow.state",
+      observedAt: "2026-06-08T15:00:00.000Z",
+      sessionId: "telemetry-task",
+      status: "execution",
+    },
+  ],
+  warnings: [],
+};
+
 test.beforeEach(async ({ page }) => {
   await installHubMock(page);
 });
@@ -76,7 +144,7 @@ test.beforeEach(async ({ page }) => {
 test("renders the console operating plane from hub events", async ({ page }) => {
   const consoleErrors = await loadConsole(page);
 
-  await expect(page).toHaveTitle("Kontour Console");
+  await expect(page).toHaveTitle("Console");
   await expect(page.getByRole("main")).toContainText("Local operating plane");
   await expect(page.getByRole("main")).toContainText("connected");
   await expect(page.getByLabel("Current stage")).toContainText("Survey review ready");
@@ -100,6 +168,31 @@ test("reconnects to a submitted hub URL without leaving the console shell", asyn
   await expect(page.getByRole("main")).toContainText("Survey review ready");
   const urls = await page.evaluate(() => window.__kontourConsoleEventSourceUrls ?? []);
   expect(urls).toContain("http://127.0.0.1:4747/stream");
+  expect(consoleErrors).toEqual([]);
+});
+
+test("renders telemetry usage from the console API", async ({ page }) => {
+  const consoleErrors = await loadConsole(page);
+
+  await page.getByRole("button", { name: "Telemetry" }).click();
+
+  await expect(page.getByRole("main")).toContainText("Runtime and workflow usage");
+  await expect(page.getByLabel("Telemetry totals")).toContainText("42");
+  await expect(page.getByRole("main")).toContainText("flow-agents-full");
+  await expect(page.getByRole("main")).toContainText("Builder shape");
+  await expect(page.getByRole("main")).toContainText("deliver");
+  await expect(page.getByRole("main")).toContainText("execute_bash");
+  expect(consoleErrors).toEqual([]);
+});
+
+test("opens telemetry directly from the browser route", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  await page.goto("/telemetry");
+
+  await expect(page.getByRole("button", { name: "Telemetry" })).toHaveClass(/active/);
+  await expect(page.getByRole("main")).toContainText("Runtime and workflow usage");
   expect(consoleErrors).toEqual([]);
 });
 
@@ -160,7 +253,7 @@ async function installHubMock(page: Page): Promise<void> {
         window.setTimeout(() => {
           this.readyState = MockEventSource.OPEN;
           this.dispatchEvent(new Event("open"));
-          this.dispatchEvent(new MessageEvent("state", { data: JSON.stringify(state) }));
+          this.dispatchEvent(new MessageEvent("state", { data: JSON.stringify(state.hubState) }));
         }, 0);
       }
 
@@ -170,7 +263,19 @@ async function installHubMock(page: Page): Promise<void> {
     }
 
     window.EventSource = MockEventSource as unknown as typeof EventSource;
-  }, hubState);
+    const telemetryResponse = state.telemetry;
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/api/telemetry")) {
+        return Promise.resolve(new Response(JSON.stringify(telemetryResponse), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }
+      return nativeFetch(input, init);
+    };
+  }, { hubState, telemetry: telemetryState });
 }
 
 async function assertTokenStylesResolved(page: Page): Promise<void> {

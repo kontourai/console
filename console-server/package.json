@@ -8,10 +8,11 @@
   },
   "bin": {
     "kontour": "bin/kontour.ts",
-    "kontour-console-inspect": "bin/kontour-console-inspect.ts"
+    "console-inspect": "bin/console-inspect.ts"
   },
   "scripts": {
-    "inspect:fixtures": "KONTOUR_REPO_ROOT=.. node --import tsx bin/kontour-console-inspect.ts",
+    "db:migrate": "node --import tsx bin/console-db-migrate.ts",
+    "inspect:fixtures": "KONTOUR_REPO_ROOT=.. node --import tsx bin/console-inspect.ts",
     "serve": "KONTOUR_REPO_ROOT=.. node --import tsx bin/kontour.ts serve",
     "test": "KONTOUR_REPO_ROOT=.. node --import tsx --test test/*.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"

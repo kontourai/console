@@ -109,7 +109,7 @@ test("surface helpers preserve lightweight refs and validate malformed enriched 
 });
 
 function tempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "kontour-console-surface-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "console-surface-"));
 }
 
 function surfaceClaimState() {

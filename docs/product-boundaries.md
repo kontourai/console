@@ -1,6 +1,6 @@
 # Product Boundaries
 
-Kontour Console exists to make Kontour primitives operable together without turning the suite-level console into the authority for each product's core semantics.
+Console exists to make Kontour primitives operable together without turning the suite-level console into the authority for each product's core semantics.
 
 ## Product Stack
 
@@ -25,14 +25,14 @@ Flow Agents
   Agent-facing workflow distribution built with Flow.
   Modes, skills, runtime adapters, provider settings, hooks, agent-specific console extensions.
 
-Kontour Console
+Console
   Suite-level management and visibility product built over the primitives.
   Cross-product claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.
 ```
 
 ## Primitive Boundary
 
-Kontour primitives must remain useful without Kontour Console:
+Kontour primitives must remain useful without Console:
 
 - Surface trust state remains portable, schema-first, and inspectable without a hosted service.
 - Flow Runs and Flow Reports remain local, file-backed, and useful without a hosted service.
@@ -40,11 +40,11 @@ Kontour primitives must remain useful without Kontour Console:
 - Veritas readiness and evidence checks remain repo/change governance.
 - Flow Agents runtime adapters and kits remain usable outside a suite-level console.
 
-Kontour Console may host, aggregate, correlate, and manage cross-product state, but it must preserve each product's authority boundary.
+Console may host, aggregate, correlate, and manage cross-product state, but it must preserve each product's authority boundary.
 
 ## Suite-Level Boundary
 
-Kontour Console owns the integrated operating experience:
+Console owns the integrated operating experience:
 
 - cross-product navigation
 - current operating state
@@ -55,7 +55,7 @@ Kontour Console owns the integrated operating experience:
 - primitive-console and vertical extension composition
 - hosted collaboration, monitoring, and notification features when present
 
-Kontour Console should answer:
+Console should answer:
 
 - What is currently true?
 - What is stale or disputed?
@@ -68,7 +68,7 @@ Kontour Console should answer:
 
 ## Product Authority
 
-Kontour Console must not redefine:
+Console must not redefine:
 
 - Surface status, freshness, conflict, or trust derivation semantics
 - Flow gate, transition, route-back, exception, or run-control semantics
@@ -81,11 +81,11 @@ Suite-level actions must route through the product that owns the authority for t
 
 ## Survey And Vertical Review Boundary
 
-Survey is the primitive review surface for source-to-candidate-to-review workflows. A Survey Console can expose review queues, review item detail, candidate/evidence context, reviewer decisions, and publication intent without requiring Kontour Console.
+Survey is the primitive review surface for source-to-candidate-to-review workflows. A Survey Console can expose review queues, review item detail, candidate/evidence context, reviewer decisions, and publication intent without requiring Console.
 
 A vertical product should extend Survey Console for domain-specific admin review UX. It can provide domain labels, subject refs, field renderers, vertical action context, and domain links, but Survey owns review item lifecycle and decision semantics. Surface owns the resulting claims/evidence/trust state. Flow owns process, gate, route-back, and run-control semantics.
 
-The vertical product should not need to know about `.kontour` or Kontour Console in the normal path. The primitive layer can emit Console records locally or to future sinks; Kontour Console reads those primitive records and composes the suite-level view. A vertical may later expose an optional Kontour Console extension, but that should be additive, not a requirement for using Survey, Surface, or Flow.
+The vertical product should not need to know about `.kontour` or Console in the normal path. The primitive layer can emit Console records locally or to future sinks; Console reads those primitive records and composes the suite-level view. A vertical may later expose an optional Console extension, but that should be additive, not a requirement for using Survey, Surface, or Flow.
 
 ## Console Contract Foundation
 
@@ -101,10 +101,10 @@ The shared foundation should be contracts first:
 
 ## Console Producers
 
-For Kontour Console contracts, a producer is the Kontour product or product runtime emitting control-plane records for suite-level visibility. The primary producers are the portable primitives: Surface, Flow, Survey, Veritas, and Flow Agents. Vertical products usually contribute through those primitives as extension metadata and cross-product refs; they should not be required to emit `.kontour` or Kontour Console records directly.
+For Console contracts, a producer is the Kontour product or product runtime emitting control-plane records for suite-level visibility. The primary producers are the portable primitives: Surface, Flow, Survey, Veritas, and Flow Agents. Vertical products usually contribute through those primitives as extension metadata and cross-product refs; they should not be required to emit `.kontour` or Console records directly.
 
 That meaning is separate from product-native producers inside each product. A crawler, extractor, verifier, importer, workflow runner, agent, or policy clock should be preserved as an actor/source/provenance detail, but it does not replace the top-level product authority boundary.
 
-Shared UI code can come later, after Surface Console, Flow Console, and Survey Console prove which primitives are actually common. Vertical admin review UX is expected to extend Survey Console first, then appear in Kontour Console through Survey/Surface/Flow records.
+Shared UI code can come later, after Surface Console, Flow Console, and Survey Console prove which primitives are actually common. Vertical admin review UX is expected to extend Survey Console first, then appear in Console through Survey/Surface/Flow records.
 
 See [Event And Projection Schema](specs/projection-schema.md) for the v0.1 local event stream and projection envelope, and [Emitter, Sink, And Plane Contract](specs/emitter-sink-plane-contract.md) for the Console producer boundary between semantic records, required local file output, future sinks, and telemetry.

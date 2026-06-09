@@ -81,7 +81,8 @@ export type ConsoleStateResponse = OperatingState;
 export type ConsoleEventsResponse = EventStreamInspection[];
 export type ConsoleRecordsRequest = ConsoleRecord;
 export type ConsoleRecordsResponse = DeliveryResult | ConsoleApiError;
-export type ConsoleSseEventName = "ready" | "state" | "record.accepted";
+export type TelemetryRecordKind = "runtime" | "workflow-sidecar";
+export type ConsoleSseEventName = "ready" | "state" | "record.accepted" | "telemetry.updated";
 export type ConsoleStreamPath = "/stream";
 export type ConsoleEventsCompatibilityPath = "/events";
 
@@ -96,10 +97,18 @@ export interface ConsoleAcceptedRecordSsePayload {
   state: OperatingState;
 }
 
+export interface ConsoleTelemetryUpdatedSsePayload {
+  telemetry: {
+    generatedAt: string;
+    recordCount: number;
+  };
+}
+
 export interface ConsoleSsePayloadMap {
   ready: ConsoleReadySsePayload;
   state: ConsoleStateSsePayload;
   "record.accepted": ConsoleAcceptedRecordSsePayload;
+  "telemetry.updated": ConsoleTelemetryUpdatedSsePayload;
 }
 
 export type ConsoleStreamSsePayload = ConsoleSsePayloadMap[ConsoleSseEventName];
@@ -341,6 +350,18 @@ export interface ConsoleHubServerOptions extends LocalConsoleHubOptions {
   host?: string;
   port?: number;
   allowedOrigins?: string[];
+  runtimeMode?: ConsoleRuntimeMode;
+  hostedAuthTokens?: ConsoleHostedAuthToken[];
+  hostedTenantIds?: string[];
+  defaultTenantId?: string;
+  telemetryStorageAdapter?: TelemetryStorageAdapterName;
+  telemetryDatabaseUrl?: string;
+  telemetrySqlClient?: ConsoleSqlClient;
+  telemetryDescriptorPaths?: string[];
+  telemetryRoot?: string;
+  telemetryFlowAgentsRoot?: string;
+  telemetrySinkRoot?: string;
+  telemetryToken?: string;
 }
 
 export interface ListenOptions {
@@ -369,6 +390,126 @@ export interface RequestError extends Error {
   safeMessage?: string;
   validation?: ValidationIssue[];
 }
+
+export type ConsoleRuntimeMode = "local" | "hosted";
+
+export interface ConsoleHostedAuthToken {
+  token: string;
+  tenantId: string;
+  label?: string;
+}
+
+export interface ConsoleRequestContext {
+  tenantId: string;
+  runtimeMode: ConsoleRuntimeMode;
+}
+
+export interface ConsoleSqlQueryResult<Row = OpenRecord> {
+  rows: Row[];
+  rowCount?: number | null;
+}
+
+export interface ConsoleSqlClient {
+  query<Row = OpenRecord>(text: string, values?: unknown[]): Promise<ConsoleSqlQueryResult<Row>>;
+}
+
+export interface TelemetryRecord extends JsonObject {
+  schema_version: string;
+  event_type: string;
+  session_id: string;
+  event_id: string;
+}
+
+export interface TelemetryRecordSummary {
+  sourceId: string;
+  sourceKind: TelemetryRecordKind;
+  eventId: string;
+  eventType: string;
+  sessionId: string;
+  observedAt?: string;
+  status?: string;
+  outcome?: string;
+  durationMs?: number;
+  agentName?: string;
+  runtime?: string;
+  toolName?: string;
+  taskSlug?: string;
+  title?: string;
+  attributes?: Record<string, string>;
+  path?: string;
+}
+
+export interface TelemetryCountSummary {
+  name: string;
+  count: number;
+}
+
+export interface TelemetryFlowItem {
+  slug: string;
+  title?: string;
+  status?: string;
+  updatedAt?: string;
+  attributes?: Record<string, string>;
+}
+
+export interface TelemetryFacetSummary {
+  id: string;
+  label: string;
+  counts: TelemetryCountSummary[];
+}
+
+export interface TelemetryFlowSummary {
+  id: string;
+  label: string;
+  total: number;
+  items: TelemetryFlowItem[];
+}
+
+export interface TelemetryAnalyticsSummary {
+  facets: TelemetryFacetSummary[];
+  flows: TelemetryFlowSummary[];
+}
+
+export interface TelemetrySourceSummary {
+  id: string;
+  kind: TelemetryRecordKind;
+  path: string;
+  recordCount: number;
+  warningCount: number;
+  warnings: ValidationIssue[];
+}
+
+export interface TelemetrySummary {
+  generatedAt: string;
+  sources: TelemetrySourceSummary[];
+  totals: {
+    recordCount: number;
+    sessionCount: number;
+    eventTypeCounts: Record<string, number>;
+    productRecordCount: number;
+  };
+  analytics: TelemetryAnalyticsSummary;
+  records: TelemetryRecordSummary[];
+  warnings: ValidationIssue[];
+}
+
+export type TelemetryRecordsRequest = TelemetryRecord;
+
+export interface TelemetryDeliveryResult {
+  sinkId: string;
+  sinkRole: string;
+  outcome: "accepted" | "failed";
+  status: string;
+  recordId: string;
+  recordKind: "telemetry";
+  observedAt: string;
+  destination?: string;
+  retryable?: boolean;
+  errorCode?: string;
+  safeMessage?: string;
+}
+
+export type TelemetryStorageAdapterName = "local-jsonl" | "sqlite" | "postgres" | "sql";
 
 export interface ReplayEventStream {
   filePath?: string;

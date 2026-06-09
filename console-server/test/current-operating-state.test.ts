@@ -144,7 +144,7 @@ test("replay folds learning events as deduped non-authoritative context", () => 
     type: "learning.recorded",
     occurredAt: "2026-06-04T12:00:00Z",
     producer: { product: "flow-agents", id: "flow-agents-local" },
-    scope: { kind: "repo", id: "kontour-console" },
+    scope: { kind: "repo", id: "console" },
     subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-route-back" },
     payload: {
       summary: "Route-back outcomes need a short operator-facing reason.",
@@ -347,7 +347,7 @@ test("replay ignores unsafe learning id and sourceRef payload fields", () => {
     type: "learning.recorded",
     occurredAt: "2026-06-04T12:00:00Z",
     producer: { product: "flow-agents", id: "flow-agents-local" },
-    scope: { kind: "repo", id: "kontour-console" },
+    scope: { kind: "repo", id: "console" },
     subject: { product: "flow-agents", kind: "workflow-learning", id: "workflow-learning-safe-fallback" },
     payload: {
       summary: "Invalid optional payload fields should not affect replay.",

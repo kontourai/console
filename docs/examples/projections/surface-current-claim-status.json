@@ -40,8 +40,8 @@
   },
   "scope": {
     "kind": "repo",
-    "id": "kontourai/kontour-console",
-    "label": "Kontour Console"
+    "id": "kontourai/console",
+    "label": "Console"
   },
   "summary": {
     "claimCount": 1,

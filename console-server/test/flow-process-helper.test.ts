@@ -142,7 +142,7 @@ test("flow helpers preserve lightweight refs and validate malformed enriched ref
 });
 
 function tempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "kontour-console-flow-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "console-flow-"));
 }
 
 function flowProcessState() {

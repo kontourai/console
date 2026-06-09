@@ -1,8 +1,11 @@
 {
-  "name": "kontour-console",
+  "name": "console",
   "version": "0.0.0",
   "private": true,
   "type": "commonjs",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "workspaces": [
     "console-core",
     "console-server",
@@ -10,7 +13,7 @@
   ],
   "bin": {
     "kontour": "console-server/bin/kontour.ts",
-    "kontour-console-inspect": "console-server/bin/kontour-console-inspect.ts"
+    "console-inspect": "console-server/bin/console-inspect.ts"
   },
   "scripts": {
     "build": "npm run typecheck",
