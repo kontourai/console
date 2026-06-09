@@ -1,10 +1,15 @@
 import http = require("node:http");
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
+const path = require("node:path");
+const crypto = require("node:crypto");
+import { assertConsoleRuntimeConfig, resolveConsoleRuntimeConfig, type ConsoleRuntimeConfig } from "./config";
 import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./sse-stream";
+import { createTelemetryStore, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
 import type {
   ConsoleRecord,
   ConsoleHubServer,
   ConsoleHubServerOptions,
+  ConsoleRequestContext,
   DeliveryResult,
   Hub,
   ListenOptions,
@@ -18,17 +23,32 @@ const { LocalConsoleHub } = require("./console-hub");
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records"];
+const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/api/telemetry", "/api/telemetry/records", "/healthz", "/readyz"];
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://127.0.0.1:5173",
   "http://localhost:5173"
 ];
 
 export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): ConsoleHubServer {
+  const runtimeConfig = resolveConsoleRuntimeConfig(options);
+  assertConsoleRuntimeConfig(runtimeConfig);
   const hub = options.hub || new LocalConsoleHub(options);
-  const events = createSseBroker();
+  const localEvents = createSseBroker();
+  const hostedHubs = new Map<string, Hub>();
+  const hostedEvents = new Map<string, SseBroker>();
+  const telemetry = createTelemetryStore(options);
   const server = http.createServer((request: IncomingMessage, response: ServerResponse) => {
-    routeRequest(hub, events, options, request, response);
+    routeRequest({
+      localHub: hub,
+      localEvents,
+      hostedHubs,
+      hostedEvents,
+      telemetry,
+      options,
+      runtimeConfig,
+      request,
+      response
+    });
   });
 
   return {
@@ -40,15 +60,30 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
       return server.listen(port, host, callback);
     },
     close(callback?: (error?: Error) => void) {
-      events.closeAll();
-      return server.close(callback);
+      localEvents.closeAll();
+      for (const broker of hostedEvents.values()) broker.closeAll();
+      return server.close((error?: Error) => {
+        telemetry.close();
+        callback?.(error);
+      });
     }
   };
 }
 
-async function routeRequest(hub: Hub, events: SseBroker, options: ConsoleHubServerOptions, request: IncomingMessage, response: ServerResponse): Promise<void> {
+async function routeRequest(input: {
+  localHub: Hub;
+  localEvents: SseBroker;
+  hostedHubs: Map<string, Hub>;
+  hostedEvents: Map<string, SseBroker>;
+  telemetry: TelemetryStore;
+  options: ConsoleHubServerOptions;
+  runtimeConfig: ConsoleRuntimeConfig;
+  request: IncomingMessage;
+  response: ServerResponse;
+}): Promise<void> {
+  const { telemetry, options, runtimeConfig, request, response } = input;
   const url = new URL(request.url || "/", `http://${request.headers.host || DEFAULT_HOST}`);
-  if (!applyCorsPolicy(request, response, options)) return;
+  if (!applyCorsPolicy(request, response, runtimeConfig)) return;
 
   try {
     if (request.method === "OPTIONS") {
@@ -56,6 +91,26 @@ async function routeRequest(hub: Hub, events: SseBroker, options: ConsoleHubServ
       response.end();
       return;
     }
+
+    if (request.method === "GET" && url.pathname === "/healthz") {
+      writeJson(response, 200, { ok: true, mode: runtimeConfig.mode });
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/readyz") {
+      const readiness = await telemetry.ready();
+      writeJson(response, readiness.ok ? 200 : 503, readiness);
+      return;
+    }
+
+    const auth = authenticateRequest(request, runtimeConfig, options);
+    if (!auth.ok) {
+      writeApiError(response, auth.statusCode, auth.error, auth.safeMessage);
+      return;
+    }
+    const context = auth.context;
+    const hub = runtimeConfig.mode === "hosted" ? hostedHubForTenant(input.hostedHubs, options, context.tenantId) : input.localHub;
+    const events = runtimeConfig.mode === "hosted" ? hostedEventsForTenant(input.hostedEvents, context.tenantId) : input.localEvents;
 
     if (request.method === "GET" && (url.pathname === "/stream" || url.pathname === "/events")) {
       handleEvents(hub, events, request, response, url.pathname);
@@ -74,6 +129,16 @@ async function routeRequest(hub: Hub, events: SseBroker, options: ConsoleHubServ
 
     if (request.method === "POST" && url.pathname === "/records") {
       await handleRecords(hub, events, request, response);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/telemetry") {
+      writeJson(response, 200, await telemetry.summarize(context));
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/telemetry/records") {
+      await handleTelemetryRecords(telemetry, events, request, response, context);
       return;
     }
 
@@ -109,6 +174,23 @@ async function handleRecords(hub: Hub, events: SseBroker, request: IncomingMessa
   events.broadcast("record.accepted", {
     delivery: result,
     state: hub.currentOperatingState()
+  });
+  writeJson(response, 202, result);
+}
+
+async function handleTelemetryRecords(telemetry: TelemetryStore, events: SseBroker, request: IncomingMessage, response: ServerResponse, context: ConsoleRequestContext): Promise<void> {
+  const body = await readJsonBody(request);
+  const record = validateTelemetryRecordBody(body);
+  const result = await telemetry.accept(record, context);
+  if (result.outcome !== "accepted") {
+    writeApiError(response, 500, result.errorCode || "TELEMETRY_DELIVERY_FAILED", result.safeMessage || "telemetry delivery failed");
+    return;
+  }
+  events.broadcast("telemetry.updated", {
+    telemetry: {
+      generatedAt: result.observedAt,
+      recordCount: 1
+    }
   });
   writeJson(response, 202, result);
 }
@@ -228,7 +310,7 @@ function corsHeaders(origin?: string): Record<string, string> {
   return compactHeaders({
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type",
+    "access-control-allow-headers": "authorization, content-type, x-console-api-token, x-console-telemetry-token, x-console-tenant-id",
     "vary": "origin"
   });
 }
@@ -241,9 +323,9 @@ function prefersSse(request: IncomingMessage): boolean {
   return String(request.headers.accept || "").split(",").some((value: string) => value.trim().toLowerCase().startsWith("text/event-stream"));
 }
 
-function applyCorsPolicy(request: IncomingMessage, response: ServerResponse, options: ConsoleHubServerOptions): boolean {
+function applyCorsPolicy(request: IncomingMessage, response: ServerResponse, runtimeConfig: ConsoleRuntimeConfig): boolean {
   const origin = request.headers.origin;
-  if (Array.isArray(origin) || !isAllowedOrigin(origin, options.allowedOrigins)) {
+  if (Array.isArray(origin) || !isAllowedOrigin(origin, runtimeConfig)) {
     writeApiError(response, 403, "ORIGIN_NOT_ALLOWED", "origin is not allowed for the local console hub");
     return false;
   }
@@ -251,13 +333,108 @@ function applyCorsPolicy(request: IncomingMessage, response: ServerResponse, opt
   return true;
 }
 
-function isAllowedOrigin(origin: string | undefined, allowedOrigins: string[] = []): boolean {
+function isAllowedOrigin(origin: string | undefined, runtimeConfig: ConsoleRuntimeConfig): boolean {
   if (!origin) return true;
-  return DEFAULT_ALLOWED_ORIGINS.concat(allowedOrigins).includes(origin);
+  const allowedOrigins = runtimeConfig.mode === "hosted"
+    ? runtimeConfig.allowedOrigins
+    : DEFAULT_ALLOWED_ORIGINS.concat(runtimeConfig.allowedOrigins);
+  return allowedOrigins.includes(origin);
 }
 
 function isKnownRoute(pathname: string): boolean {
   return KNOWN_ROUTES.includes(pathname);
+}
+
+function authenticateRequest(request: IncomingMessage, runtimeConfig: ConsoleRuntimeConfig, options: ConsoleHubServerOptions): { ok: true; context: ConsoleRequestContext } | { ok: false; statusCode: number; error: string; safeMessage: string } {
+  if (runtimeConfig.mode !== "hosted") {
+    if (!authorizeLocalRequest(request, runtimeConfig)) {
+      return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "console token is required for non-loopback clients" };
+    }
+    return { ok: true, context: { tenantId: runtimeConfig.defaultTenantId, runtimeMode: "local" } };
+  }
+  const token = apiRequestToken(request);
+  if (!token) {
+    return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "authorization token is required" };
+  }
+  const tokenConfig = runtimeConfig.hostedAuthTokens.find((candidate) => tokenMatches(candidate.token, token));
+  if (!tokenConfig) {
+    return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "authorization token is invalid" };
+  }
+  const requestedTenant = requestTenantId(request);
+  if (requestedTenant && requestedTenant !== tokenConfig.tenantId) {
+    return { ok: false, statusCode: 403, error: "TENANT_FORBIDDEN", safeMessage: "tenant is not allowed for this token" };
+  }
+  return { ok: true, context: { tenantId: tokenConfig.tenantId, runtimeMode: "hosted" } };
+}
+
+function authorizeLocalRequest(request: IncomingMessage, runtimeConfig: ConsoleRuntimeConfig): boolean {
+  if (isLoopbackAddress(request.socket.remoteAddress)) return true;
+  const expected = runtimeConfig.localAuthToken;
+  if (!expected) return false;
+  const token = apiRequestToken(request) || telemetryRequestToken(request);
+  return Boolean(token && tokenMatches(expected, token));
+}
+
+function apiRequestToken(request: IncomingMessage): string | undefined {
+  const headerToken = request.headers["x-console-api-token"];
+  if (typeof headerToken === "string" && headerToken) return headerToken;
+  return bearerToken(request);
+}
+
+function telemetryRequestToken(request: IncomingMessage): string | undefined {
+  const headerToken = request.headers["x-console-telemetry-token"];
+  if (typeof headerToken === "string" && headerToken) return headerToken;
+  return bearerToken(request);
+}
+
+function tokenMatches(expected: string, actual: string): boolean {
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(actual);
+  return expectedBuffer.length === actualBuffer.length && crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function bearerToken(request: IncomingMessage): string | undefined {
+  const authorization = request.headers.authorization || "";
+  if (authorization.toLowerCase().startsWith("bearer ")) return authorization.slice("bearer ".length);
+  return undefined;
+}
+
+function requestTenantId(request: IncomingMessage): string | undefined {
+  const headerTenant = request.headers["x-console-tenant-id"];
+  return typeof headerTenant === "string" && headerTenant ? headerTenant : undefined;
+}
+
+function hostedHubForTenant(hostedHubs: Map<string, Hub>, options: ConsoleHubServerOptions, tenantId: string): Hub {
+  const safeTenantId = safePathToken(tenantId);
+  const existing = hostedHubs.get(safeTenantId);
+  if (existing) return existing;
+  const baseRoot = options.kontourRoot || options.localRoot || ".kontour";
+  const tenantHub = new LocalConsoleHub({
+    ...options,
+    hub: undefined,
+    sink: undefined,
+    kontourRoot: path.join(baseRoot, "tenants", safeTenantId)
+  });
+  hostedHubs.set(safeTenantId, tenantHub);
+  return tenantHub;
+}
+
+function hostedEventsForTenant(hostedEvents: Map<string, SseBroker>, tenantId: string): SseBroker {
+  const safeTenantId = safePathToken(tenantId);
+  const existing = hostedEvents.get(safeTenantId);
+  if (existing) return existing;
+  const broker = createSseBroker();
+  hostedEvents.set(safeTenantId, broker);
+  return broker;
+}
+
+function safePathToken(value: string): string {
+  return crypto.createHash("sha256").update(value).digest("hex").slice(0, 32);
+}
+
+function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return true;
+  return address === "::1" || address === "127.0.0.1" || address.startsWith("127.") || address.startsWith("::ffff:127.");
 }
 
 function compactHeaders(headers: Record<string, string | undefined>): Record<string, string> {

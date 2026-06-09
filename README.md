@@ -1,6 +1,6 @@
-# Kontour Console
+# Console
 
-Kontour Console is the suite-level management and visibility product for Kontour.
+Console is the suite-level management and visibility product for Kontour.
 
 The primitives remain portable:
 
@@ -10,7 +10,7 @@ The primitives remain portable:
 - Veritas owns repo/change governance.
 - Flow Agents owns agent-facing runtime distribution.
 
-Kontour Console brings those products together into one operating plane for claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.
+Console brings those products together into one operating plane for claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.
 
 This repo ships local-first Console foundation code alongside the product context and architecture decisions. It includes fixture inspection, local file sinks, deterministic replay, and a loopback-only development server; it is not a hosted production service.
 
@@ -44,7 +44,7 @@ Validate the hook wiring and drift checks with:
 npm run validate:repo-hooks
 ```
 
-For local/private boundary checks, set `KONTOUR_CONSOLE_BOUNDARY_DENYLIST` to a comma- or newline-separated list before running validation.
+For local/private boundary checks, set `CONSOLE_BOUNDARY_DENYLIST` to a comma- or newline-separated list before running validation.
 
 Hook setup is not required for a fresh checkout to run package verification; `npm test` remains the direct verification command. These hooks are local contributor tooling, not Console event, projection, or control-plane semantics. The hook docs use generic suite products and producers language because product boundaries remain owned by suite primitives. When a push must intentionally skip local hooks, use Git's standard `--no-verify` mechanism.
 
@@ -60,7 +60,7 @@ The command reads checked-in files under `docs/examples/event-streams/` and `doc
 
 ## Local Console Producer Emission
 
-A Console producer is the Kontour product or product runtime that emits control-plane records for Kontour Console. Surface, Flow, Survey, Veritas, and Flow Agents are the primary Console producers. Vertical products usually contribute through those primitives as extension metadata and refs, rather than depending on `.kontour` or Kontour Console directly. This is separate from any product-native "producer" concept inside those products, such as a crawler, verifier, importer, workflow runner, or agent.
+A Console producer is the Kontour product or product runtime that emits control-plane records for Console. Surface, Flow, Survey, Veritas, and Flow Agents are the primary Console producers. Vertical products usually contribute through those primitives as extension metadata and refs, rather than depending on `.kontour` or Console directly. This is separate from any product-native "producer" concept inside those products, such as a crawler, verifier, importer, workflow runner, or agent.
 
 Products can write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under a configured `.kontour` root, appending events below `.kontour/events/` and writing current projection snapshots below `.kontour/projections/`.
 
@@ -104,7 +104,7 @@ console.log(result.children.map((child) => ({
 After a producer writes local records, inspect the generated `.kontour` tree without copying files into `docs/examples`:
 
 ```sh
-node --import tsx console-server/bin/kontour-console-inspect.ts local
+node --import tsx console-server/bin/console-inspect.ts local
 ```
 
 The same local read path is exported for programmatic consumers:
@@ -136,7 +136,7 @@ The `kontour serve` command binds to `127.0.0.1:3737` by default and exposes:
 - `GET /stream`
 - `GET /events`
 
-`GET /stream` is the canonical server-sent event stream. It sends an initial `ready` event, an initial `state` event, and a `record.accepted` event after an accepted `POST /records`. `GET /events` returns local event stream JSON by default and remains an SSE compatibility path for `Accept: text/event-stream` clients. Browser-origin access is limited to loopback origins unless explicitly configured. The local hub persists through `.kontour` files and does not add a database, auth model, remote execution channel, product API fetcher, or action executor.
+`GET /stream` is the canonical server-sent event stream. It sends an initial `ready` event, an initial `state` event, and a `record.accepted` event after an accepted `POST /records`. `GET /events` returns local event stream JSON by default and remains an SSE compatibility path for `Accept: text/event-stream` clients. Browser-origin access is limited to loopback origins unless explicitly configured. Non-loopback local requests require the configured console token (`telemetryToken`, `CONSOLE_AUTH_TOKEN`, or `CONSOLE_TELEMETRY_TOKEN`) through `Authorization: Bearer ...` or `x-console-api-token`. The local hub persists through `.kontour` files and does not add a remote execution channel, product API fetcher, or action executor.
 
 ### Surface Claim Status/Freshness Producer Helper
 
@@ -225,10 +225,40 @@ const statuses = getFlowProcessStatus(report.projections, {
 console.log(statuses[0].status, statuses[0].actions[0].readOnly);
 ```
 
+## Telemetry Storage
+
+Console server telemetry uses a named storage adapter. The default is
+`local-jsonl`, which preserves local behavior and writes accepted records to
+`.kontour/telemetry/records.jsonl`.
+
+Adapter selection can be configured through `ConsoleHubServerOptions`:
+
+```ts
+createConsoleHubServer({
+  telemetryStorageAdapter: "sqlite",
+  telemetryDatabaseUrl: ".kontour/telemetry/console.sqlite"
+});
+```
+
+The same selection is available through explicit environment variables:
+
+- `CONSOLE_TELEMETRY_STORAGE=local-jsonl|sqlite|postgres|sql`
+- `CONSOLE_TELEMETRY_DATABASE_URL=...`
+- `CONSOLE_DATABASE_URL=...`
+
+Use `sqlite` for local SQL-backed testing without adding a package; it writes to
+`CONSOLE_DATABASE_URL` / `CONSOLE_TELEMETRY_DATABASE_URL`, or defaults to
+`.kontour/telemetry/console.sqlite`. Relative SQLite paths resolve under the
+repo root; absolute paths and `file:` URLs are trusted local operator
+configuration. Use `postgres` for hosted deployments such as Supabase. Console
+does not fall back to local JSONL when a SQL adapter is selected; writes fail
+safely if the selected adapter cannot be opened.
+
 ## Docs
 
 - [Product Boundaries](docs/product-boundaries.md)
 - [Event And Projection Schema](docs/specs/projection-schema.md)
 - [Emitter, Sink, And Plane Contract](docs/specs/emitter-sink-plane-contract.md)
+- [Telemetry Descriptor](docs/specs/telemetry-descriptor.md)
 - [Example event streams](docs/examples/event-streams/)
-- [ADR 0001: Kontour Console As Suite Management Plane](docs/adr/0001-kontour-console-as-suite-management-plane.md)
+- [ADR 0001: Console As Suite Management Plane](docs/adr/0001-console-as-suite-management-plane.md)

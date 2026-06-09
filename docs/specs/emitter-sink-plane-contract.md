@@ -2,17 +2,17 @@
 
 Status: v0.1 draft
 
-Kontour products emit product-owned records into Kontour Console without making the console, a hosted service, or a generic sink the authority for product semantics. This contract defines the Console producer boundary between semantic records and delivery adapters.
+Kontour products emit product-owned records into Console without making the console, a hosted service, or a generic sink the authority for product semantics. This contract defines the Console producer boundary between semantic records and delivery adapters.
 
 The event and projection schemas remain the record shape contract. This spec defines how those records move from a Console producer to local files now and to future hosted or telemetry destinations later.
 
 ## Terminology
 
-A **Portable Product Record** is a product-owned durable record shaped for reuse across Kontour products, agents, consoles, APIs, and exported evidence packages. It usually follows the shared Kontour Resource Shape (`apiVersion`, `kind`, `metadata`, `spec`, `status`, and optional `proof`). Portable Product Records remain meaningful without Kontour Console.
+A **Portable Product Record** is a product-owned durable record shaped for reuse across Kontour products, agents, consoles, APIs, and exported evidence packages. It usually follows the shared Kontour Resource Shape (`apiVersion`, `kind`, `metadata`, `spec`, `status`, and optional `proof`). Portable Product Records remain meaningful without Console.
 
-A **Console handoff record** is the management-plane event or projection a Console producer emits so Kontour Console can aggregate, replay, correlate, display, and route through product authority. Console handoff records may carry, reference, or be derived from Portable Product Records, but they do not replace the product-owned record.
+A **Console handoff record** is the management-plane event or projection a Console producer emits so Console can aggregate, replay, correlate, display, and route through product authority. Console handoff records may carry, reference, or be derived from Portable Product Records, but they do not replace the product-owned record.
 
-A **Console producer** is the Kontour product or product runtime that emits control-plane records for Kontour Console. Surface, Flow, Survey, Veritas, and Flow Agents are the primary Console producers. Vertical products usually contribute through those primitives as extension metadata and refs, rather than depending on `.kontour` or Kontour Console directly.
+A **Console producer** is the Kontour product or product runtime that emits control-plane records for Console. Surface, Flow, Survey, Veritas, and Flow Agents are the primary Console producers. Vertical products usually contribute through those primitives as extension metadata and refs, rather than depending on `.kontour` or Console directly.
 
 A **domain producer** is a product-native source inside one of those products, such as a crawler, extractor, verifier, importer, workflow runner, agent, or policy clock. Domain producers may appear as `actor`, `derivedFrom`, `evidence`, `payload.data`, or product-specific `extensions`, but they do not replace the top-level `producer` field's Console meaning.
 
@@ -61,11 +61,11 @@ This contract does not implement a hosted API, HTTP sink, OTLP exporter, retry d
 
 ## Planes And Authority
 
-Kontour Console composes two related but separate planes:
+Console composes two related but separate planes:
 
 | Plane | Records | Authority |
 | --- | --- | --- |
-| Control plane | Product-owned events, projection snapshots, evidence refs, identity links, decisions, review items, gates, process state, learning records, and action descriptors. | The producing product or primitive owns domain meaning. Surface owns claim trust state; Flow owns gate, transition, exception, and run-control semantics; Survey owns fact-review records; Veritas owns repo/change governance; Flow Agents owns runtime adapter state and workflow-learning source records; vertical products own their domain truth. Kontour Console may aggregate, correlate, display, and route through product authority, but it does not redefine product truth. |
+| Control plane | Product-owned events, projection snapshots, evidence refs, identity links, decisions, review items, gates, process state, learning records, and action descriptors. | The producing product or primitive owns domain meaning. Surface owns claim trust state; Flow owns gate, transition, exception, and run-control semantics; Survey owns fact-review records; Veritas owns repo/change governance; Flow Agents owns runtime adapter state and workflow-learning source records; vertical products own their domain truth. Console may aggregate, correlate, display, and route through product authority, but it does not redefine product truth. |
 | Telemetry plane | Traces, spans, metrics, logs, usage/cost observations, health checks, delivery diagnostics, and operational events. | Telemetry describes operation and performance. It is not authority for claims, gates, review decisions, product domain facts, product state transitions, or action execution. |
 
 Control-plane records answer what a product says is true, in progress, blocked, decided, evidenced, or available as a next action. They include:
@@ -110,6 +110,12 @@ Re-emitting the same semantic record keeps the same identity. Sinks may wrap or 
 
 Sinks adapt delivery format and transport. They do not adapt product meaning. A sink must not rewrite a Surface claim status into a different trust meaning, reinterpret a Flow gate result, normalize vertical domain truth, mint new product object identities, or turn an action descriptor into an executed action.
 
+For Flow Agents producer guidance, including local and hosted sink selection,
+descriptor location, trusted producer identity, tenant headers, and token
+headers, see [Flow Agents Console Integration](../integrations/flow-agents-console.md).
+That guidance is intentionally transport-focused. Flow remains the owner of Flow
+Definition gate semantics and typed `expects`.
+
 ## Local-First Output
 
 `LocalFileSink` is required because Kontour primitives must remain portable and useful without a hosted dependency. A Console producer that supports this contract must be able to emit control-plane records locally even when future hosted, org, telemetry, or network sinks are absent or failing.
@@ -118,7 +124,7 @@ Local file output follows the local JSONL and projection conventions in [Event A
 
 `LocalConsoleHub` is the local-first server-shaped adapter for this same contract. It is intentionally in-process for v0: products can append `KontourConsoleEvent` and projection records to it, the hub persists them through `LocalFileSink` under `.kontour`, `inspect` reads the local store, and `currentOperatingState` folds accepted local events with deterministic replay. This keeps local files as the default user experience while giving producers a stable hub-shaped integration point that can later map to a hosted Console Sink without changing the semantic record shape.
 
-`kontour serve` exposes that local hub over a loopback HTTP server for development. Its v0 boundary is deliberately narrow: bind locally by default, accept `POST /records`, expose `GET /state`, `GET /inspect`, `GET /events` local event-stream JSON, canonical `GET /stream` server-sent events, and `/events` as an SSE compatibility path for `Accept: text/event-stream` clients, persist through local files, and do not introduce a database, auth model, remote execution channel, product API fetcher, or action executor. Browser-origin access is limited to loopback origins unless explicitly configured. Hosted Console work must add production auth, origin, and storage concerns explicitly instead of treating the local dev server as production security or storage architecture.
+`kontour serve` exposes that local hub over a loopback HTTP server for development. Its v0 boundary is deliberately narrow: bind locally by default, accept `POST /records`, expose `GET /state`, `GET /inspect`, `GET /events` local event-stream JSON, canonical `GET /stream` server-sent events, and `/events` as an SSE compatibility path for `Accept: text/event-stream` clients, persist through local files, and do not introduce a remote execution channel, product API fetcher, or action executor. Browser-origin access is limited to loopback origins unless explicitly configured. Non-loopback local requests require the configured console token (`telemetryToken`, `CONSOLE_AUTH_TOKEN`, or `CONSOLE_TELEMETRY_TOKEN`) through `Authorization: Bearer ...` or `x-console-api-token`. Hosted Console work must add production auth, origin, and storage concerns explicitly instead of treating the local dev server as production security or storage architecture.
 
 Local success and future network success are separate results. A hosted/API sink failure must not erase a successful local write. A local write failure must be reported directly and must not be hidden by success from another sink.
 

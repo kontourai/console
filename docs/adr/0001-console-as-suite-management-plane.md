@@ -1,4 +1,4 @@
-# ADR 0001: Kontour Console As Suite Management Plane
+# ADR 0001: Console As Suite Management Plane
 
 Date: 2026-05-31
 
@@ -18,13 +18,13 @@ Kontour is splitting into focused primitives:
 
 Each primitive should remain portable and useful on its own. At the same time, the strongest product value is the comprehensive operating view across those primitives: one place to see what is true, what is in progress, what is stale, what is blocked, what proof exists, what decisions were made, and what should happen next.
 
-If every product ships an isolated console, operators must reconstruct the actual state of work by jumping between Surface claim status, Flow Run state, Survey candidate reviews, Veritas readiness, Flow Agents sessions, and vertical product admin screens. If Kontour Console owns primitive semantics directly, the suite loses the portability and clarity of the underlying products.
+If every product ships an isolated console, operators must reconstruct the actual state of work by jumping between Surface claim status, Flow Run state, Survey candidate reviews, Veritas readiness, Flow Agents sessions, and vertical product admin screens. If Console owns primitive semantics directly, the suite loses the portability and clarity of the underlying products.
 
 ## Decision
 
-Create Kontour Console as a suite-level management and visibility product.
+Create Console as a suite-level management and visibility product.
 
-Kontour Console owns the integrated operating plane:
+Console owns the integrated operating plane:
 
 - cross-product navigation
 - current operating state
@@ -35,7 +35,7 @@ Kontour Console owns the integrated operating plane:
 - hosted collaboration and monitoring when present
 - extension composition across products and verticals
 
-Kontour Console does not own the primitive semantics underneath it. Surface, Flow, Survey, Veritas, Flow Agents, and vertical products remain the authorities for their own status models, policies, actions, and domain truth.
+Console does not own the primitive semantics underneath it. Surface, Flow, Survey, Veritas, Flow Agents, and vertical products remain the authorities for their own status models, policies, actions, and domain truth.
 
 The early foundation should be event-first contracts and composition, not a premature shared UI package:
 
@@ -48,7 +48,7 @@ The early foundation should be event-first contracts and composition, not a prem
 - freshness, refresh, and reverification semantics
 - event and decision timelines
 
-Surface Console and Flow Console should converge architecturally so Kontour Console can bridge them without rewriting either product's core model. Events should be the durable integration contract; projections and snapshots should be derived read models for fast rendering. A shared shell or component package can emerge after the shared console primitives prove stable.
+Surface Console and Flow Console should converge architecturally so Console can bridge them without rewriting either product's core model. Events should be the durable integration contract; projections and snapshots should be derived read models for fast rendering. A shared shell or component package can emerge after the shared console primitives prove stable.
 
 ## Consequences
 
@@ -63,20 +63,20 @@ Positive:
 Trade-offs:
 
 - There is another product boundary to explain.
-- Early implementation must avoid turning Kontour Console into a hidden dependency.
+- Early implementation must avoid turning Console into a hidden dependency.
 - Product projections need stable identity links and action contracts.
 - Product event streams need stable event IDs, ordering, correlation, and replay semantics.
 - Some UI duplication between Surface Console and Flow Console may be tolerated until the shared shell is justified.
 
 ## Alternatives Considered
 
-### Keep Kontour Console As A Shared Component Package
+### Keep Console As A Shared Component Package
 
 Rejected because the product value is not only shared UI components. The suite-level product is the comprehensive management plane across primitives.
 
 ### Put Suite Management Inside Flow
 
-Rejected because Flow owns process transparency, not the entire Kontour operating plane. Flow Console should contribute process state to Kontour Console without becoming the suite product.
+Rejected because Flow owns process transparency, not the entire Kontour operating plane. Flow Console should contribute process state to Console without becoming the suite product.
 
 ### Let Each Product Keep A Separate Console Only
 

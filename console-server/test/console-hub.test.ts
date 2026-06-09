@@ -71,5 +71,5 @@ function surfaceFlowHandoffStream() {
 }
 
 function tempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "kontour-console-hub-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "console-hub-"));
 }

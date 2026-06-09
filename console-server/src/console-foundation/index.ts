@@ -28,6 +28,7 @@ export type {
   ConsoleEventsCompatibilityPath,
   ConsoleEventsSsePayload,
   ConsoleEventRecord,
+  ConsoleHostedAuthToken,
   ConsoleHubServer,
   ConsoleHubServerOptions,
   ConsoleProjectionRecord,
@@ -35,6 +36,10 @@ export type {
   ConsoleRecord,
   ConsoleRecordsRequest,
   ConsoleRecordsResponse,
+  ConsoleRequestContext,
+  ConsoleRuntimeMode,
+  ConsoleSqlClient,
+  ConsoleSqlQueryResult,
   CrossProductRef,
   CurrentOperatingStateOptions,
   DeliveryOutcome,
@@ -62,9 +67,48 @@ export type {
   ConsoleStreamPath,
   ConsoleStreamSsePayload,
   Sink,
+  TelemetryDeliveryResult,
+  TelemetryRecord,
+  TelemetryRecordKind,
+  TelemetryRecordsRequest,
+  TelemetryRecordSummary,
+  TelemetrySourceSummary,
+  TelemetryStorageAdapterName,
+  TelemetrySummary,
   ValidationIssue,
   ValidationSummary
 } from "./types";
+
+export {
+  assertConsoleRuntimeConfig,
+  redactConsoleRuntimeConfig,
+  resolveConsoleRuntimeConfig,
+  resolveTelemetryStorageAdapter
+} from "./config";
+export type {
+  ConsoleConfigValidationIssue,
+  ConsoleRuntimeConfig
+} from "./config";
+
+export {
+  applyConsoleMigrations,
+  loadConsoleMigrations
+} from "./migrations";
+export type {
+  ConsoleMigration,
+  ConsoleMigrationResult
+} from "./migrations";
+
+export {
+  createTelemetryRepository,
+  createTelemetryStore,
+  validateTelemetryRecordBody
+} from "./telemetry";
+export type {
+  TelemetryRepository,
+  TelemetryRepositoryConfig,
+  TelemetryStore
+} from "./telemetry";
 
 const EVENT_DIR = path.join("docs", "examples", "event-streams");
 const PROJECTION_DIR = path.join("docs", "examples", "projections");
@@ -753,6 +797,9 @@ const flowProcessHelper = require("./flow-process-helper");
 const currentOperatingState = require("./current-operating-state");
 const consoleHub = require("./console-hub");
 const consoleHubServer = require("./console-hub-server");
+const config = require("./config");
+const migrations = require("./migrations");
+const telemetry = require("./telemetry");
 
 module.exports = {
   inspectFixtures,
@@ -766,6 +813,15 @@ module.exports = {
   LocalConsoleHub: consoleHub.LocalConsoleHub,
   createLocalConsoleHub: consoleHub.createLocalConsoleHub,
   createConsoleHubServer: consoleHubServer.createConsoleHubServer,
+  applyConsoleMigrations: migrations.applyConsoleMigrations,
+  loadConsoleMigrations: migrations.loadConsoleMigrations,
+  assertConsoleRuntimeConfig: config.assertConsoleRuntimeConfig,
+  redactConsoleRuntimeConfig: config.redactConsoleRuntimeConfig,
+  resolveConsoleRuntimeConfig: config.resolveConsoleRuntimeConfig,
+  resolveTelemetryStorageAdapter: config.resolveTelemetryStorageAdapter,
+  createTelemetryRepository: telemetry.createTelemetryRepository,
+  createTelemetryStore: telemetry.createTelemetryStore,
+  validateTelemetryRecordBody: telemetry.validateTelemetryRecordBody,
   extractActionDescriptors,
   validateEvent,
   validateProjection,

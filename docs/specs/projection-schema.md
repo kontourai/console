@@ -1,8 +1,8 @@
-# Kontour Console Event And Projection Schema
+# Console Event And Projection Schema
 
 Status: v0.1 draft
 
-Kontour Console composes product-owned event streams and projections. It does not replace Surface Claims, Flow Runs, Survey records, Veritas readiness, Flow Agents runtime state, or vertical product records.
+Console composes product-owned event streams and projections. It does not replace Surface Claims, Flow Runs, Survey records, Veritas readiness, Flow Agents runtime state, or vertical product records.
 
 The event stream is the durable integration contract. Projections are cached read models derived from events so the suite-level console can render claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions quickly.
 
@@ -10,7 +10,7 @@ See [Emitter, Sink, And Plane Contract](emitter-sink-plane-contract.md) for the 
 
 ## Producer Terminology
 
-The top-level `producer` field identifies the **Console producer**: the Kontour product or product runtime that emitted the event or projection for Kontour Console. The primary Console producers are portable primitives such as `surface`, `flow`, `survey`, `veritas`, and `flow-agents`.
+The top-level `producer` field identifies the **Console producer**: the Kontour product or product runtime that emitted the event or projection for Console. The primary Console producers are portable primitives such as `surface`, `flow`, `survey`, `veritas`, and `flow-agents`.
 
 Vertical products usually contribute through primitive producers rather than emitting Console records directly. A provider-field admin review UX should extend Survey's review surface; Survey emits review records, Surface emits claims/evidence/trust state, and Flow emits process/gate state. Vertical-specific provider IDs, field names, and render hints belong in refs, `payload.data`, or namespaced `extensions`.
 
@@ -22,7 +22,7 @@ The JSON field remains named `producer`; in this schema, unqualified "producer" 
 
 Surface Claims are the trust backbone. Most products should emit Surface Claims when they need to say whether something is verified, stale, disputed, rejected, unsupported, fresh, or policy-compliant.
 
-Kontour Console also needs management objects that are not themselves claims:
+Console also needs management objects that are not themselves claims:
 
 - active or historical process runs
 - open gates
@@ -33,11 +33,11 @@ Kontour Console also needs management objects that are not themselves claims:
 - exceptions
 - cross-product identity links
 
-The event and projection schemas compose those objects without making Kontour Console the source of truth for any of them.
+The event and projection schemas compose those objects without making Console the source of truth for any of them.
 
 ## Event-First Contract
 
-Console producers should emit append-only events for meaningful state changes and decisions. Kontour Console can fold those events into snapshots/projections for fast rendering.
+Console producers should emit append-only events for meaningful state changes and decisions. Console can fold those events into snapshots/projections for fast rendering.
 
 Event-first gives the suite-level console:
 
@@ -55,7 +55,7 @@ The first deterministic handoff proof pair is Surface plus Flow:
 
 - Surface says whether a claim is fresh, stale, verified, disputed, or supported by evidence.
 - Flow says where a process is, which gate is active, and whether work is blocked, routed back, or ready.
-- Kontour Console joins those records through refs and links so an operator can see the current stage without making Console the authority for either product.
+- Console joins those records through refs and links so an operator can see the current stage without making Console the authority for either product.
 
 Concrete story:
 
@@ -85,7 +85,7 @@ The operator-facing Console view should prioritize the plain-language current st
 
 ## Local JSONL Stream Convention
 
-Kontour Console v0 starts with local JSONL event streams. A Console producer can emit events without a hosted event bus, hosted ingestion service, auth layer, product adapter, or action execution endpoint.
+Console v0 starts with local JSONL event streams. A Console producer can emit events without a hosted event bus, hosted ingestion service, auth layer, product adapter, or action execution endpoint.
 
 Recommended location:
 
@@ -150,13 +150,13 @@ type KontourConsoleEvent = {
 };
 ```
 
-`occurredAt` is when the product says the event happened. `observedAt` is when Kontour Console or another collector saw it. `correlationId` groups related events across products; `causationId` points to the event or action that caused this event.
+`occurredAt` is when the product says the event happened. `observedAt` is when Console or another collector saw it. `correlationId` groups related events across products; `causationId` points to the event or action that caused this event.
 
 ### Event Envelope Fields
 
 | Field | Required | Type | Responsibility |
 | --- | --- | --- | --- |
-| `schema` | Yes | `"kontour.console.event"` | Identifies the record as a Kontour Console event envelope. |
+| `schema` | Yes | `"kontour.console.event"` | Identifies the record as a Console event envelope. |
 | `version` | Yes | `"0.1"` | Identifies this v0.1 contract version. |
 | `id` | Yes | `string` | Stable event identity for idempotency, duplicate handling, and causal references. |
 | `type` | Yes | `ConsoleEventType` | Product-neutral event vocabulary used for routing, filtering, and projection folding. |
@@ -173,7 +173,7 @@ type KontourConsoleEvent = {
 | `links` | No | `CrossProductLink[]` | Explicit identity and relationship links across products. |
 | `extensions` | No | `Record<string, unknown>` | Namespaced product or deployment detail that is not part of the core v0 envelope. |
 
-`payload.data` and `extensions` are the only places for vertical-specific facts that Kontour Console does not need for core v0 behavior. For example, provider field names, source-specific confidence scores, render hints, and domain-specific review metadata belong there, not as new top-level envelope fields.
+`payload.data` and `extensions` are the only places for vertical-specific facts that Console does not need for core v0 behavior. For example, provider field names, source-specific confidence scores, render hints, and domain-specific review metadata belong there, not as new top-level envelope fields.
 
 Use `correlationId` when multiple events describe one user-visible workflow. Use `causationId` when one event follows another, such as `gate.routed_back` caused by `gate.failed`, or `review_item.approved` caused by a reviewer action. Use `links` when the relationship should survive projection rebuilding, such as a Flow gate controlling a Surface claim refresh or a provider field being reviewed by a review item.
 
@@ -209,9 +209,9 @@ type ConsoleEventType =
   | string;
 ```
 
-Event types should be specific enough for routing and filtering but not so product-specific that Kontour Console must understand every vertical domain model.
+Event types should be specific enough for routing and filtering but not so product-specific that Console must understand every vertical domain model.
 
-The `| string` extension point lets products emit additional names, but custom event types must not be required for Kontour Console v0 core behavior.
+The `| string` extension point lets products emit additional names, but custom event types must not be required for Console v0 core behavior.
 
 ### V0 Event Type Vocabulary
 
@@ -353,7 +353,7 @@ Rebuild behavior:
 - `acceptedEventCount` records the count of accepted, non-duplicate events folded into the projection, not the number of physical JSONL lines read.
 - `directSnapshot` records the direct snapshot identity, emitter, time, reason, and optional source object when a snapshot is used as the starting point or full read-model input.
 
-Event history remains preferred when available. A direct snapshot with `eventHistory: "unavailable"` or `eventHistory: "partial"` is a display fallback: it may tell the console what to render, but it does not prove historical transitions and does not grant Kontour Console authority to make product-owned decisions.
+Event history remains preferred when available. A direct snapshot with `eventHistory: "unavailable"` or `eventHistory: "partial"` is a display fallback: it may tell the console what to render, but it does not prove historical transitions and does not grant Console authority to make product-owned decisions.
 
 These rules describe the rebuild contract only. They do not require a hosted event bus, product adapter, action endpoint, UI, or shared reducer implementation.
 
@@ -370,7 +370,7 @@ The v0 projection envelope carries arrays of product-owned objects plus explicit
 | Review items | `reviewItems` | Survey owns source/candidate/review lifecycle semantics for fact review. Flow, Veritas, and Flow Agents may create review-like control items under their own semantics. Vertical products extend Survey review context instead of redefining review lifecycle. | Unified review queues and subject navigation. |
 | Evidence | `evidence` | The producer or Surface owns evidence integrity, availability, and privacy semantics. | Proof summaries, source navigation, and missing/stale evidence display. |
 | Decisions | `decisions` | The product or actor that recorded the decision owns the durable decision meaning. | Timeline entries and rationale display. |
-| Actions | `actions` | The authority descriptor identifies the owning product; Kontour Console must route execution through trusted product control paths. | Available next actions, disabled reasons, and pending/completed action state. |
+| Actions | `actions` | The authority descriptor identifies the owning product; Console must route execution through trusted product control paths. | Available next actions, disabled reasons, and pending/completed action state. |
 | Exceptions | `exceptions` | Flow or the product governance layer owns exception acceptance, rejection, expiry, and trust implications. | Exception requests and accepted exception visibility. |
 | Learnings | `learnings` | The emitting product owns the source schema, lifecycle, and meaning. Learning records are non-authoritative Console operating context only. | Explanatory context connected to workflows, decisions, source records, telemetry, or domain observations. |
 | Links | `links` | Emitting products own explicit identity and relationship assertions. | Cross-product navigation and correlation without global id minting. |
@@ -410,7 +410,7 @@ type ConsoleScope = {
 };
 ```
 
-Scope tells Kontour Console what boundary the projection describes: a repository, product, customer workspace, domain entity set, or other product-owned unit.
+Scope tells Console what boundary the projection describes: a repository, product, customer workspace, domain entity set, or other product-owned unit.
 
 ## Summary
 
@@ -453,7 +453,7 @@ type ClaimStatusProjection = {
 };
 ```
 
-Claims should be projected from Surface whenever possible. Kontour Console can display them, filter them, and link them to workflow state, but Surface remains the authority for trust derivation.
+Claims should be projected from Surface whenever possible. Console can display them, filter them, and link them to workflow state, but Surface remains the authority for trust derivation.
 
 ## Processes
 
@@ -501,7 +501,7 @@ type GateStatusProjection = {
 };
 ```
 
-Gates belong to Flow. Kontour Console can expose status and actions, but it must route mutations through Flow control semantics.
+Gates belong to Flow. Console can expose status and actions, but it must route mutations through Flow control semantics.
 
 ## Review Items
 
@@ -569,7 +569,7 @@ type DecisionProjection = {
 };
 ```
 
-Decision records should be immutable summaries of product-owned decisions. Kontour Console should not invent decision history after the fact.
+Decision records should be immutable summaries of product-owned decisions. Console should not invent decision history after the fact.
 
 ## Actions
 
@@ -592,7 +592,7 @@ type ConsoleActionProjection = {
 };
 ```
 
-Actions are routed through the product that owns the authority. Kontour Console may present and initiate actions, but it should not bypass product-owned APIs, CLIs, or control semantics.
+Actions are routed through the product that owns the authority. Console may present and initiate actions, but it should not bypass product-owned APIs, CLIs, or control semantics.
 
 `authority.endpoint`, `authority.command`, and `authority.externalUrl` are descriptors only. Consumers must not blindly call endpoints, execute commands, or open URLs from event or projection data. Action initiation must resolve through a trusted product adapter or registry, allowlist known commands and endpoints, avoid shell interpretation, require confirmation for sensitive actions, and treat URLs as untrusted until their scheme and host are validated.
 
@@ -634,7 +634,7 @@ type LearningProjection = {
 
 Learning projection objects are thin Console control-plane summaries of product-owned learning records. `family` is limited to `workflow` or `domain`, `nonAuthority` must be `true`, and `summary` is the operator-facing statement. Optional `confidence`, `sourceRef`, `refs`, `links`, and namespaced `extensions` can connect the learning to source records, decisions, telemetry, Flow Agents `workflow-learning` records, or domain objects.
 
-Kontour Console does not own or define the source learning schema. Product-specific learning fields remain in product-owned source records, event `payload.data`, refs, links, or namespaced extensions. A learning cannot revoke, change, or override claims, gates, decisions, actions, source facts, product records, or product truth; authoritative changes require the owning product's normal event.
+Console does not own or define the source learning schema. Product-specific learning fields remain in product-owned source records, event `payload.data`, refs, links, or namespaced extensions. A learning cannot revoke, change, or override claims, gates, decisions, actions, source facts, product records, or product truth; authoritative changes require the owning product's normal event.
 
 ## Freshness And Time Estimates
 
@@ -695,7 +695,7 @@ type CrossProductLink = {
 };
 ```
 
-Identity links are the core of the suite-level console. They let Kontour Console answer questions such as:
+Identity links are the core of the suite-level console. They let Console answer questions such as:
 
 - Which Flow Run is changing this Surface Claim?
 - Which Review Item is waiting on this Survey Candidate?
@@ -705,7 +705,7 @@ Identity links are the core of the suite-level console. They let Kontour Console
 
 ### CrossProductRef Minimum
 
-`product`, `kind`, and `id` form the minimum stable identity tuple. The producing product owns the meaning and lifecycle of each tuple; Kontour Console stores and displays refs but does not mint global ids, normalize product ids, or become the authority for product-local semantics.
+`product`, `kind`, and `id` form the minimum stable identity tuple. The producing product owns the meaning and lifecycle of each tuple; Console stores and displays refs but does not mint global ids, normalize product ids, or become the authority for product-local semantics.
 
 When a referenced object is also a Portable Product Record, producers should enrich the same ref with `apiVersion`, `name`, and `uid` from that resource. This avoids creating two unrelated reference systems: lightweight Console handoffs can start with `product + kind + id`, while stricter product records can add resource identity as adoption matures.
 
@@ -764,7 +764,7 @@ Example enriched Flow gate ref:
 
 ### CrossProductLink Minimum
 
-`from`, `to`, and `relation` are the required relationship tuple. Links are explicit product-emitted statements; v0 required console behavior must not depend on Kontour Console automatically inferring missing links.
+`from`, `to`, and `relation` are the required relationship tuple. Links are explicit product-emitted statements; v0 required console behavior must not depend on Console automatically inferring missing links.
 
 | Field | Required | Minimum meaning |
 | --- | --- | --- |
@@ -777,7 +777,7 @@ Example enriched Flow gate ref:
 
 ### Relation Vocabulary
 
-Relations are directed from `from` to `to`. Product owners may add relation extensions, but Kontour Console v0 core projections should rely on these terms for cross-product workflows.
+Relations are directed from `from` to `to`. Product owners may add relation extensions, but Console v0 core projections should rely on these terms for cross-product workflows.
 
 | Relation | Direction | Minimum use | Example pair |
 | --- | --- | --- | --- |
@@ -792,7 +792,7 @@ Relations are directed from `from` to `to`. Product owners may add relation exte
 
 ### Required V0 Links
 
-Products should emit these links when the referenced objects exist. They are the minimum links that make Kontour Console useful for claim status, workflow progress, proof, route-back, and review queues without giving the console authority over product semantics.
+Products should emit these links when the referenced objects exist. They are the minimum links that make Console useful for claim status, workflow progress, proof, route-back, and review queues without giving the console authority over product semantics.
 
 | Scenario | Required link | Why it is required |
 | --- | --- | --- |
@@ -929,13 +929,13 @@ The primitive producers can emit events as the workflow happens:
 - Surface claim updated -> `claim.status.changed`
 - Surface field verification expires by policy -> `claim.freshness.changed`
 
-The read model shown in Kontour Console can then be rebuilt from the event stream or loaded from the latest projection snapshot.
+The read model shown in Console can then be rebuilt from the event stream or loaded from the latest projection snapshot.
 
 The checked-in `survey-field-review` fixtures show Survey as the review producer with vertical details represented as generic refs and Survey extension metadata.
 
 ## Open Questions
 
 - After v0 local JSONL, should later versions add hosted stream ingestion as an optional transport?
-- Should each product emit one projection file, or should Kontour Console assemble projections from events and product-native APIs?
+- Should each product emit one projection file, or should Console assemble projections from events and product-native APIs?
 - Should action authority start as CLI commands, local HTTP endpoints, or both?
 - Which events must be emitted synchronously, and which can be backfilled from product snapshots?

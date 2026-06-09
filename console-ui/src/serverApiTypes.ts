@@ -2,6 +2,79 @@ import type { OperatingState } from "@kontour/console-core";
 
 export type ConsoleStateResponse = OperatingState;
 
+export interface ConsoleTelemetrySourceSummary {
+  id: string;
+  kind?: string;
+  path?: string;
+  status?: string;
+  recordCount: number;
+  sessionCount?: number;
+  lastObservedAt?: string | null;
+  warningCount?: number;
+  warnings?: Array<{ severity?: string; path?: string; message?: string }>;
+}
+
+export interface ConsoleTelemetryRecentEvent {
+  eventId: string;
+  sourceId: string;
+  sourceKind?: string;
+  eventType: string;
+  observedAt?: string | null;
+  sessionId?: string;
+  agentName?: string;
+  runtime?: string;
+  toolName?: string;
+  title?: string;
+  taskSlug?: string;
+  attributes?: Record<string, string>;
+  status?: string;
+}
+
+export interface ConsoleTelemetryCountSummary {
+  name: string;
+  count: number;
+}
+
+export interface ConsoleTelemetryFlowItem {
+  slug: string;
+  title?: string;
+  status?: string;
+  updatedAt?: string;
+  attributes?: Record<string, string>;
+}
+
+export interface ConsoleTelemetryFacetSummary {
+  id: string;
+  label: string;
+  counts: ConsoleTelemetryCountSummary[];
+}
+
+export interface ConsoleTelemetryFlowSummary {
+  id: string;
+  label: string;
+  total: number;
+  items: ConsoleTelemetryFlowItem[];
+}
+
+export interface ConsoleTelemetryAnalyticsSummary {
+  facets: ConsoleTelemetryFacetSummary[];
+  flows: ConsoleTelemetryFlowSummary[];
+}
+
+export interface ConsoleTelemetryResponse {
+  generatedAt: string;
+  sources: ConsoleTelemetrySourceSummary[];
+  totals: {
+    recordCount: number;
+    sessionCount: number;
+    eventTypeCounts: Record<string, number>;
+    productRecordCount: number;
+  };
+  analytics: ConsoleTelemetryAnalyticsSummary;
+  records: ConsoleTelemetryRecentEvent[];
+  warnings: Array<{ severity?: string; path?: string; message?: string }>;
+}
+
 export interface ConsoleEventStreamSummary {
   relativePath: string;
   sourceKind?: string;
@@ -59,7 +132,7 @@ export interface ConsoleDeliveryResult {
 
 export type ConsoleRecordsResponse = ConsoleDeliveryResult | ConsoleApiError;
 
-export type ConsoleSseEventName = "ready" | "state" | "record.accepted";
+export type ConsoleSseEventName = "ready" | "state" | "record.accepted" | "telemetry.updated";
 
 export interface ConsoleReadySsePayload {
   connectedAt: string;
@@ -70,8 +143,16 @@ export interface ConsoleAcceptedRecordSsePayload {
   state: ConsoleStateResponse;
 }
 
+export interface ConsoleTelemetryUpdatedSsePayload {
+  telemetry: {
+    generatedAt: string;
+    recordCount: number;
+  };
+}
+
 export interface ConsoleSsePayloadMap {
   ready: ConsoleReadySsePayload;
   state: ConsoleStateResponse;
   "record.accepted": ConsoleAcceptedRecordSsePayload;
+  "telemetry.updated": ConsoleTelemetryUpdatedSsePayload;
 }

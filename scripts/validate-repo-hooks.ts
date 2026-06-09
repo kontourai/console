@@ -116,7 +116,7 @@ const boundaryFiles = [
   "scripts/setup-repo-hooks.ts",
   "scripts/validate-repo-hooks.ts",
 ];
-const envDenylist = parseBoundaryDenylist(process.env.KONTOUR_CONSOLE_BOUNDARY_DENYLIST ?? "");
+const envDenylist = parseBoundaryDenylist(process.env.CONSOLE_BOUNDARY_DENYLIST ?? "");
 
 for (const filePath of boundaryFiles) {
   const content = readRepoFile(filePath);

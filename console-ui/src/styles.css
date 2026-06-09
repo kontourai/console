@@ -59,6 +59,8 @@ input {
 .stage-band,
 .flow-panel,
 .timeline-section,
+.telemetry-section,
+.telemetry-panel,
 .notice {
   border: 1px solid var(--line);
   background: var(--panel-shell);
@@ -179,6 +181,32 @@ h2 {
   margin-top: 14px;
   padding: 10px 14px;
   color: var(--bad);
+}
+
+.view-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(110px, 1fr));
+  gap: 1px;
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.view-tabs button {
+  min-height: 38px;
+  padding: 0 16px;
+  color: var(--muted);
+  font-weight: 900;
+  text-transform: uppercase;
+  background: var(--dark-row);
+  border: 0;
+  cursor: pointer;
+}
+
+.view-tabs button.active {
+  color: var(--k-brand-contrast);
+  background: var(--accent);
 }
 
 .work-grid {
@@ -476,6 +504,113 @@ dd {
   margin-top: 14px;
 }
 
+.telemetry-section {
+  min-width: 0;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.telemetry-notice {
+  margin: 14px 0 0;
+  box-shadow: none;
+}
+
+.telemetry-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  gap: 1px;
+  margin-top: 14px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.telemetry-metrics div {
+  min-width: 0;
+  padding: 12px;
+  background: var(--panel-2);
+}
+
+.telemetry-metrics dd {
+  font-size: 1.6rem;
+  font-weight: 900;
+}
+
+.telemetry-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.telemetry-panel {
+  min-width: 0;
+  min-height: 242px;
+  padding: 12px;
+  box-shadow: none;
+}
+
+.telemetry-panel h2 {
+  margin-top: 5px;
+  text-transform: uppercase;
+}
+
+.telemetry-source .row-title span {
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.bar-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.bar-row {
+  display: grid;
+  gap: 6px;
+}
+
+.bar-row div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bar-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-row strong {
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.bar-row i {
+  display: block;
+  block-size: 8px;
+  background: var(--accent);
+}
+
+.telemetry-recent {
+  box-shadow: none;
+}
+
+.telemetry-warnings {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px;
+  color: var(--warn);
+  background: var(--dark-row);
+  border: 1px solid var(--line);
+}
+
 .timeline {
   display: grid;
   margin-top: 12px;
@@ -508,7 +643,8 @@ dd {
 @media (max-width: 1100px) {
   .topbar,
   .stage-band,
-  .work-grid {
+  .work-grid,
+  .telemetry-grid {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -546,6 +682,8 @@ dd {
   .hub-form,
   .topbar-actions,
   .stage-metrics,
+  .telemetry-grid,
+  .telemetry-metrics,
   .details {
     grid-template-columns: 1fr;
   }

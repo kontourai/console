@@ -345,7 +345,7 @@ test("local discovery rejects symlink kontour root", { skip: process.platform ==
 });
 
 function tempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "kontour-console-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "console-"));
 }
 
 function validEvent(overrides: any = {}) {

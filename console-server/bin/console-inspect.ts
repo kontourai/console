@@ -32,14 +32,14 @@ function main(argv: string[]) {
 
   if (command === "inspect") {
     const report = inspectFixtures({ rootDir });
-    printInspection(report, { title: "Kontour Console fixture inspection" });
+    printInspection(report, { title: "Console fixture inspection" });
     exitForValidation(report);
     return;
   }
 
   if (command === "local") {
     const report = inspectLocalKontour({ rootDir, kontourRoot: argv[3] });
-    printInspection(report, { title: "Kontour Console local inspection" });
+    printInspection(report, { title: "Console local inspection" });
     exitForValidation(report);
     return;
   }
@@ -74,7 +74,7 @@ function main(argv: string[]) {
     return;
   }
 
-  console.error("Usage: kontour-console-inspect [inspect|local [kontourRoot]|surface-claim [claimId]|survey-review [reviewId]]");
+  console.error("Usage: console-inspect [inspect|local [kontourRoot]|surface-claim [claimId]|survey-review [reviewId]]");
   process.exitCode = 2;
 }
 
@@ -85,7 +85,7 @@ function repoRoot() {
 }
 
 function printInspection(report: InspectionReport, options: PrintOptions = {}) {
-  console.log(options.title || "Kontour Console inspection");
+  console.log(options.title || "Console inspection");
   console.log("");
   console.log(`Event streams: ${report.eventStreams.length}`);
   for (const stream of report.eventStreams) {
