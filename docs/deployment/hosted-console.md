@@ -55,7 +55,8 @@ runtime options. Do not add Kontour-specific names to base source.
 | `CONSOLE_TENANT_ID` | Default tenant id for single-tenant bootstrap auth. | Deployment-specific default. |
 | `CONSOLE_AUTH_TOKEN` | Single bootstrap bearer token mapped to `CONSOLE_TENANT_ID`. | Secret. Use only for simple deployments. |
 | `CONSOLE_AUTH_TOKENS_JSON` | Multi-token tenant mapping. | Secret JSON array of `{ "token", "tenantId", "label" }`. |
-| `CONSOLE_TELEMETRY_DESCRIPTOR_PATHS` | Descriptor path override list, if not using default search paths. | Comma-separated mounted descriptor files. |
+| `CONSOLE_TELEMETRY_PRODUCT_ROOTS` | Product id to mounted product root mappings. | Required when descriptors use `product:<id>:...` record sources. |
+| `CONSOLE_TELEMETRY_DESCRIPTOR_PATHS` | Descriptor path override list, if not using default search paths. | Prefer product-qualified mounted descriptor files such as `product:flow-agents:console.telemetry.json`. |
 
 For local SQL-backed testing, use `CONSOLE_TELEMETRY_STORAGE=sqlite` with
 `CONSOLE_DATABASE_URL` pointing at a `.sqlite` file. Hosted mode intentionally

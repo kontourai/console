@@ -863,55 +863,132 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
   const rootDir = tempRoot();
   const flowAgentsRepo = path.join(rootDir, "flow-agents");
   const flowAgentsRoot = path.join(flowAgentsRepo, ".flow-agents");
+  const widgetRepo = path.join(rootDir, "widget-product");
+  const widgetRoot = path.join(widgetRepo, ".workflows");
   const telemetryRoot = path.join(rootDir, ".telemetry");
   fs.mkdirSync(telemetryRoot, { recursive: true });
   fs.mkdirSync(path.join(flowAgentsRoot, "shape-provider-settings"), { recursive: true });
+  fs.mkdirSync(path.join(flowAgentsRoot, "deliver-console-telemetry"), { recursive: true });
+  fs.mkdirSync(path.join(widgetRoot, "release-forecast"), { recursive: true });
   fs.writeFileSync(path.join(flowAgentsRepo, "console.telemetry.json"), JSON.stringify({
     recordSources: [{
       id: "flow-agents-workflows",
-      root: "product:.flow-agents",
-      files: ["state.json"],
+      root: "product:flow-agents:.flow-agents",
+      files: ["state.json", "acceptance.json"],
       attributes: {
         taskSlug: "task_slug",
         status: "status",
         title: "summary",
+        skill: "skill_id",
+        tool: "tool_id",
+        flow: "flow_id",
+        project: "project",
+        runtime: "runtime",
+        cwd: "cwd",
         secretToken: "secret_token",
+        leakyTitle: "secret_token",
         observedAt: "updated_at"
       }
     }],
-    facets: [{ id: "workflow-status", label: "Workflow status", attribute: "status" }],
+    facets: [
+      { id: "skills", label: "Skills", attribute: "skill" },
+      { id: "tools", label: "Tools", attribute: "tool" },
+      { id: "flows", label: "Flows", attribute: "flow" },
+      { id: "projects", label: "Projects", attribute: "project" },
+      { id: "runtimes", label: "Runtimes", attribute: "runtime" },
+      { id: "cwd", label: "Working directories", attribute: "cwd" },
+      { id: "workflow-status", label: "Workflow status", attribute: "status" }
+    ],
     flows: [{ id: "builder.shape", label: "Builder shape", match: { attribute: "taskSlug", includes: "shape" }, titleAttribute: "title" }]
+  }), "utf8");
+  fs.writeFileSync(path.join(widgetRepo, "console.telemetry.json"), JSON.stringify({
+    recordSources: [{
+      id: "widget-workflows",
+      root: "product:widget:.workflows",
+      files: ["state.json"],
+      attributes: {
+        taskSlug: "slug",
+        status: "state",
+        title: "title",
+        project: "project",
+        observedAt: "updated"
+      }
+    }],
+    facets: [{ id: "widget-projects", label: "Widget projects", attribute: "project" }]
   }), "utf8");
   fs.writeFileSync(path.join(flowAgentsRoot, "shape-provider-settings", "state.json"), JSON.stringify({
     schema_version: "1.0",
     task_slug: "shape-provider-settings",
     status: "done",
     summary: "Shape provider settings",
+    skill_id: "builder-shape",
+    tool_id: "tool-planner",
+    flow_id: "deliver",
+    project: "kontour-console",
+    runtime: "codex",
+    cwd: "/workspace/kontour-console",
     secret_token: "super-secret-workflow-token",
     updated_at: "2026-06-08T12:02:00.000Z"
+  }), "utf8");
+  fs.writeFileSync(path.join(flowAgentsRoot, "deliver-console-telemetry", "acceptance.json"), JSON.stringify({
+    schema_version: "1.0",
+    task_slug: "deliver-console-telemetry",
+    status: "verified",
+    summary: "Deliver Console telemetry",
+    skill_id: "deliver",
+    tool_id: "tool-worker",
+    flow_id: "deliver",
+    project: "kontour-console",
+    runtime: "codex",
+    cwd: "/workspace/kontour-console",
+    updated_at: "2026-06-08T12:04:00.000Z"
+  }), "utf8");
+  fs.writeFileSync(path.join(widgetRoot, "release-forecast", "state.json"), JSON.stringify({
+    slug: "release-forecast",
+    state: "ready",
+    title: "Release forecast",
+    project: "widget-console",
+    updated: "2026-06-08T12:01:00.000Z"
   }), "utf8");
   const runtimeRecord: any = telemetryRecord("evt-descriptor-tool", "tool.invoke", "session-tool", "2026-06-08T12:03:00.000Z");
   runtimeRecord.context = { cwd: "/workspace/descriptor-project" };
   runtimeRecord.tool = { normalized_name: "bash" };
   fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), `${JSON.stringify(runtimeRecord)}\n`, "utf8");
 
-  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot, telemetryFlowAgentsRoot: flowAgentsRoot });
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    telemetryRoot,
+    telemetryProductRoots: {
+      "flow-agents": flowAgentsRepo,
+      widget: widgetRepo
+    }
+  });
   await listen(app);
   try {
     const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
-    const genericFilter = await requestJson("GET", `${serverUrl(app)}/api/telemetry?filter=tools%3Abash`);
+    const genericFilter = await requestJson("GET", `${serverUrl(app)}/api/telemetry?filter=tools%3Atool-worker`);
     const workflowRecord = telemetry.body.records.find((record: any) => record.eventId === "shape-provider-settings:state.json");
+    const facetCount = (facetId: string, name: string) => telemetry.body.analytics.facets
+      .find((facet: any) => facet.id === facetId)?.counts
+      .find((item: any) => item.name === name)?.count;
 
     assert.equal(telemetry.statusCode, 200);
-    assert.equal(telemetry.body.analytics.facets.some((facet: any) => facet.id === "workflow-status"), true);
-    assert.equal(telemetry.body.analytics.facets.some((facet: any) => facet.id === "tools"), true);
+    assert.equal(facetCount("skills", "builder-shape"), 1);
+    assert.equal(facetCount("tools", "tool-worker"), 1);
+    assert.equal(facetCount("flows", "deliver"), 2);
+    assert.equal(facetCount("projects", "kontour-console"), 2);
+    assert.equal(facetCount("runtimes", "codex"), 3);
+    assert.equal(facetCount("cwd", "/workspace/kontour-console"), 2);
+    assert.equal(facetCount("widget-projects", "widget-console"), 1);
     assert.equal(telemetry.body.analytics.flows[0].id, "builder.shape");
     assert.equal(telemetry.body.analytics.flows[0].total, 1);
     assert.equal(telemetry.body.analytics.flows[0].items[0].title, "Shape provider settings");
     assert.equal(workflowRecord.attributes.secretToken, "[redacted]");
+    assert.equal(workflowRecord.attributes.leakyTitle, "[redacted]");
     assert.equal(JSON.stringify(telemetry.body).includes("super-secret-workflow-token"), false);
     assert.equal(genericFilter.statusCode, 200);
-    assert.deepEqual(genericFilter.body.records.map((record: any) => record.eventId), ["evt-descriptor-tool"]);
+    assert.deepEqual(genericFilter.body.records.map((record: any) => record.eventId), ["deliver-console-telemetry:acceptance.json"]);
   } finally {
     await close(app);
   }
@@ -950,6 +1027,36 @@ test("local hub server rejects descriptor record source symlink escapes", async 
     assert.equal(telemetry.statusCode, 200);
     assert.equal(telemetry.body.records.some((record: any) => record.taskSlug === "escaped-task"), false);
     assert.equal(telemetry.body.warnings.some((warning: any) => warning.message === "descriptor record escaped source root"), true);
+  } finally {
+    await close(app);
+  }
+});
+
+test("local hub server ignores auto-discovered descriptor symlink escapes", async () => {
+  const rootDir = tempRoot();
+  const productRoot = path.join(rootDir, "product");
+  const outsideRoot = path.join(rootDir, "outside");
+  fs.mkdirSync(productRoot, { recursive: true });
+  fs.mkdirSync(outsideRoot, { recursive: true });
+  fs.writeFileSync(path.join(outsideRoot, "console.telemetry.json"), JSON.stringify({
+    facets: [{ id: "escaped", label: "Escaped descriptor", attribute: "status" }]
+  }), "utf8");
+  fs.symlinkSync(path.join(outsideRoot, "console.telemetry.json"), path.join(productRoot, "console.telemetry.json"));
+
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    telemetryRoot: path.join(rootDir, ".telemetry"),
+    telemetryProductRoots: {
+      product: productRoot
+    }
+  });
+  await listen(app);
+  try {
+    const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
+
+    assert.equal(telemetry.statusCode, 200);
+    assert.equal(telemetry.body.analytics.facets.some((facet: any) => facet.id === "escaped"), false);
   } finally {
     await close(app);
   }

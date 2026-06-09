@@ -358,6 +358,7 @@ export interface ConsoleHubServerOptions extends LocalConsoleHubOptions {
   telemetryDatabaseUrl?: string;
   telemetrySqlClient?: ConsoleSqlClient;
   telemetryDescriptorPaths?: string[];
+  telemetryProductRoots?: Record<string, string>;
   telemetryRoot?: string;
   telemetryFlowAgentsRoot?: string;
   telemetrySinkRoot?: string;

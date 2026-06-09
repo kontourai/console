@@ -70,6 +70,8 @@ interface TelemetryRecordSourceDescriptor {
   attributes?: Record<string, string>;
 }
 
+type TelemetryProductRoots = Record<string, string>;
+
 export interface TelemetryStore {
   accept(record: TelemetryRecord, context?: ConsoleRequestContext): Promise<TelemetryDeliveryResult>;
   summarize(context?: ConsoleRequestContext, query?: TelemetryQuery): Promise<TelemetrySummary>;
@@ -97,7 +99,7 @@ export interface TelemetryRepositoryConfig {
 export function createTelemetryStore(options: ConsoleHubServerOptions = {}): TelemetryStore {
   const rootDir = path.resolve(options.rootDir || process.cwd());
   const telemetryRoot = resolvePath(rootDir, options.telemetryRoot || path.join("..", ".telemetry"));
-  const flowAgentsRoot = resolvePath(rootDir, options.telemetryFlowAgentsRoot || path.join("..", "flow-agents", ".flow-agents"));
+  const productRoots = resolveTelemetryProductRoots(rootDir, options);
   const sinkRoot = resolvePath(rootDir, options.telemetrySinkRoot || path.join(options.kontourRoot || options.localRoot || LOCAL_KONTOUR_DIR, "telemetry"));
   const descriptorPaths = options.telemetryDescriptorPaths || parseCsv(process.env.CONSOLE_TELEMETRY_DESCRIPTOR_PATHS);
   const repository = createTelemetryRepository({
@@ -118,7 +120,7 @@ export function createTelemetryStore(options: ConsoleHubServerOptions = {}): Tel
     async summarize(context: ConsoleRequestContext = localRequestContext(), query?: TelemetryQuery): Promise<TelemetrySummary> {
       return summarizeTelemetry({
         rootDir,
-        flowAgentsRoot,
+        productRoots,
         descriptorPaths,
         includeProductRecordSources: context.runtimeMode !== "hosted",
         runtimeSources: await repository.runtimeSources(context, query),
@@ -520,7 +522,7 @@ function parseBoundedInteger(name: "limit" | "offset", value: string | null, min
 
 function summarizeTelemetry(input: {
   rootDir: string;
-  flowAgentsRoot: string;
+  productRoots: TelemetryProductRoots;
   descriptorPaths: string[];
   includeProductRecordSources: boolean;
   runtimeSources: Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>;
@@ -537,9 +539,9 @@ function summarizeTelemetry(input: {
     addRecords(records, seen, source.records);
   }
 
-  const descriptor = loadTelemetryDescriptor(input.rootDir, input.flowAgentsRoot, input.descriptorPaths);
+  const descriptor = loadTelemetryDescriptor(input.rootDir, input.productRoots, input.descriptorPaths);
   const productRecords = input.includeProductRecordSources
-    ? readDescriptorRecordSources(input.rootDir, input.flowAgentsRoot, descriptor)
+    ? readDescriptorRecordSources(input.rootDir, input.productRoots, descriptor)
     : { sources: [], records: [] };
   for (const productSource of productRecords.sources) {
     sources.push(productSource.source);
@@ -659,16 +661,16 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
   };
 }
 
-function readDescriptorRecordSources(rootDir: string, flowAgentsRoot: string, descriptor: TelemetryDescriptor): { sources: Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>; records: TelemetryRecordSummary[] } {
-  const sources = (descriptor.recordSources || []).map((source: TelemetryRecordSourceDescriptor) => readDescriptorRecordSource(rootDir, flowAgentsRoot, source));
+function readDescriptorRecordSources(rootDir: string, productRoots: TelemetryProductRoots, descriptor: TelemetryDescriptor): { sources: Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>; records: TelemetryRecordSummary[] } {
+  const sources = (descriptor.recordSources || []).map((source: TelemetryRecordSourceDescriptor) => readDescriptorRecordSource(rootDir, productRoots, source));
   return {
     sources,
     records: sources.flatMap((source) => source.records)
   };
 }
 
-function readDescriptorRecordSource(rootDir: string, flowAgentsRoot: string, source: TelemetryRecordSourceDescriptor): { source: TelemetrySourceSummary; records: TelemetryRecordSummary[] } {
-  const sourceRoot = resolveDescriptorRoot(rootDir, flowAgentsRoot, source.root || ".");
+function readDescriptorRecordSource(rootDir: string, productRoots: TelemetryProductRoots, source: TelemetryRecordSourceDescriptor): { source: TelemetrySourceSummary; records: TelemetryRecordSummary[] } {
+  const sourceRoot = resolveDescriptorRoot(rootDir, productRoots, source.root || ".");
   const displayRoot = safeDisplayPath(rootDir, sourceRoot);
   const warnings: ValidationIssue[] = [];
   const records: TelemetryRecordSummary[] = [];
@@ -733,15 +735,16 @@ function readDescriptorJsonFile(filePath: string): string {
   }
 }
 
-function resolveDescriptorRoot(rootDir: string, flowAgentsRoot: string, descriptorRoot: string): string {
-  const productRoot = path.resolve(flowAgentsRoot, "..");
+function resolveDescriptorRoot(rootDir: string, productRoots: TelemetryProductRoots, descriptorRoot: string): string {
   if (descriptorRoot.startsWith("console:")) {
     return resolveContainedPath(rootDir, descriptorRoot.slice("console:".length));
   }
-  const productRelative = descriptorRoot.startsWith("product:")
-    ? descriptorRoot.slice("product:".length)
-    : descriptorRoot;
-  return resolveContainedPath(productRoot, productRelative);
+  const productRef = parseProductRootRef(descriptorRoot);
+  const productRoot = productRef.productId
+    ? productRoots[productRef.productId]
+    : defaultTelemetryProductRoot(productRoots);
+  if (!productRoot) return missingProductRoot(rootDir, productRef.productId);
+  return resolveContainedPath(productRoot, productRef.relativePath);
 }
 
 function resolveContainedPath(root: string, maybeRelativePath: string): string {
@@ -801,7 +804,7 @@ function listDescriptorFiles(root: string, patterns: string[]): string[] {
 function descriptorAttributes(data: OpenRecord, mappings: Record<string, string>): Record<string, string> {
   const attributes: Record<string, string> = {};
   for (const [attribute, selector] of Object.entries(mappings)) {
-    if (isSensitiveTelemetryKey(attribute)) {
+    if (isSensitiveTelemetryKey(attribute) || isSensitiveTelemetrySelector(selector)) {
       attributes[attribute] = "[redacted]";
       continue;
     }
@@ -900,12 +903,63 @@ function defaultFacetDescriptors(): TelemetryFacetDescriptor[] {
   ];
 }
 
-function loadTelemetryDescriptor(rootDir: string, flowAgentsRoot: string, descriptorPaths: string[] = []): TelemetryDescriptor {
+function resolveTelemetryProductRoots(rootDir: string, options: ConsoleHubServerOptions): TelemetryProductRoots {
+  const configured = {
+    ...parseProductRoots(process.env.CONSOLE_TELEMETRY_PRODUCT_ROOTS),
+    ...(options.telemetryProductRoots || {})
+  };
+  const roots: TelemetryProductRoots = {};
+  for (const [productId, productRoot] of Object.entries(configured)) {
+    if (isSafeProductId(productId) && productRoot) roots[productId] = resolvePath(rootDir, productRoot);
+  }
+  if (options.telemetryFlowAgentsRoot && !roots["flow-agents"]) {
+    roots["flow-agents"] = path.resolve(resolvePath(rootDir, options.telemetryFlowAgentsRoot), "..");
+  }
+  return roots;
+}
+
+function parseProductRoots(value: string | undefined): TelemetryProductRoots {
+  const roots: TelemetryProductRoots = {};
+  if (!value) return roots;
+  for (const item of value.split(",")) {
+    const trimmed = item.trim();
+    if (!trimmed) continue;
+    const separator = trimmed.indexOf(":");
+    if (separator <= 0) continue;
+    const productId = trimmed.slice(0, separator).trim();
+    const productRoot = trimmed.slice(separator + 1).trim();
+    if (isSafeProductId(productId) && productRoot) roots[productId] = productRoot;
+  }
+  return roots;
+}
+
+function isSafeProductId(productId: string): boolean {
+  return /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(productId);
+}
+
+function defaultTelemetryProductRoot(productRoots: TelemetryProductRoots): string | undefined {
+  return productRoots["flow-agents"] || Object.values(productRoots)[0];
+}
+
+function parseProductRootRef(descriptorRoot: string): { productId?: string; relativePath: string } {
+  if (!descriptorRoot.startsWith("product:")) return { relativePath: descriptorRoot };
+  const withoutScheme = descriptorRoot.slice("product:".length);
+  const separator = withoutScheme.indexOf(":");
+  if (separator > 0) {
+    const productId = withoutScheme.slice(0, separator);
+    if (isSafeProductId(productId)) return { productId, relativePath: withoutScheme.slice(separator + 1) || "." };
+  }
+  return { relativePath: withoutScheme || "." };
+}
+
+function loadTelemetryDescriptor(rootDir: string, productRoots: TelemetryProductRoots, descriptorPaths: string[] = []): TelemetryDescriptor {
   const candidates = [
-    ...descriptorPaths.map((descriptorPath) => resolvePath(rootDir, descriptorPath)),
+    ...descriptorPaths.map((descriptorPath) => resolveDescriptorPath(rootDir, productRoots, descriptorPath)),
     path.join(rootDir, "console.telemetry.json"),
-    path.resolve(flowAgentsRoot, "..", "console.telemetry.json"),
-    path.resolve(flowAgentsRoot, "..", ".kontour", "console.telemetry.json")
+    ...Object.values(productRoots).flatMap((productRoot) => [
+      resolveContainedPath(productRoot, "console.telemetry.json"),
+      resolveContainedPath(productRoot, path.join(".kontour", "console.telemetry.json"))
+    ])
   ];
   const descriptors = candidates
     .filter((candidate: string) => fs.existsSync(candidate))
@@ -913,9 +967,25 @@ function loadTelemetryDescriptor(rootDir: string, flowAgentsRoot: string, descri
   return mergeTelemetryDescriptors(descriptors);
 }
 
+function resolveDescriptorPath(rootDir: string, productRoots: TelemetryProductRoots, descriptorPath: string): string {
+  if (descriptorPath.startsWith("console:")) return resolveContainedPath(rootDir, descriptorPath.slice("console:".length));
+  if (!descriptorPath.startsWith("product:")) return resolvePath(rootDir, descriptorPath);
+  const productRef = parseProductRootRef(descriptorPath);
+  const productRoot = productRef.productId
+    ? productRoots[productRef.productId]
+    : defaultTelemetryProductRoot(productRoots);
+  return productRoot ? resolveContainedPath(productRoot, productRef.relativePath) : missingProductRoot(rootDir, productRef.productId);
+}
+
+function missingProductRoot(rootDir: string, productId: string | undefined): string {
+  const safeId = productId && isSafeProductId(productId) ? productId : "default";
+  return path.join(rootDir, ".missing-telemetry-product-root", safeId);
+}
+
 function readTelemetryDescriptor(filePath: string): TelemetryDescriptor {
   try {
-    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (!isContainedRealPath(path.dirname(filePath), filePath)) return {};
+    const parsed = JSON.parse(readDescriptorJsonFile(filePath));
     if (!isOpenRecord(parsed)) return {};
     return {
       facets: Array.isArray(parsed.facets) ? parsed.facets.filter(isFacetDescriptor) : [],
@@ -1094,6 +1164,10 @@ function compactStringRecord(values: Record<string, string | undefined>): Record
 
 function isSensitiveTelemetryKey(key: string): boolean {
   return /authorization|api[-_]?key|password|secret|token/i.test(key);
+}
+
+function isSensitiveTelemetrySelector(selector: string): boolean {
+  return selector.split(".").some((segment) => isSensitiveTelemetryKey(segment));
 }
 
 function addRecords(records: TelemetryRecordSummary[], seen: Set<string>, additions: TelemetryRecordSummary[]): void {

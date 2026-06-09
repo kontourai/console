@@ -14,14 +14,30 @@ regardless of the selected storage adapter.
 Console currently looks for descriptors at:
 
 - `console.telemetry.json` in the Console repo root
-- `../flow-agents/console.telemetry.json`
-- `../flow-agents/.kontour/console.telemetry.json`
+- each configured product root's `console.telemetry.json`
+- each configured product root's `.kontour/console.telemetry.json`
+- every explicit path in `CONSOLE_TELEMETRY_DESCRIPTOR_PATHS`
 
-Hosted deployments may mount the descriptor and pass its location through
-deployment config. The descriptor remains product-owned display metadata; it
-must not redefine Flow-owned gate semantics, typed `expects`, route-back rules,
-or workflow-learning source record authority. See
-[Flow Agents Console Integration](../integrations/flow-agents-console.md).
+Configure product roots with the typed server option `telemetryProductRoots` or
+the environment variable `CONSOLE_TELEMETRY_PRODUCT_ROOTS`. The environment
+value is a comma-separated list of `product-id:/path/to/product` entries. For
+example:
+
+```sh
+CONSOLE_TELEMETRY_PRODUCT_ROOTS=flow-agents:/opt/flow-agents,acme:/srv/acme
+CONSOLE_TELEMETRY_DESCRIPTOR_PATHS=product:flow-agents:console.telemetry.json,console:config/local.telemetry.json
+```
+
+`telemetryFlowAgentsRoot` remains a compatibility alias that seeds a
+`flow-agents` product root from the parent of the configured `.flow-agents`
+directory. New integrations should use `telemetryProductRoots` or
+`CONSOLE_TELEMETRY_PRODUCT_ROOTS`.
+
+Hosted deployments may mount descriptors and product roots through deployment
+config. The descriptor remains product-owned display metadata; it must not
+redefine Flow-owned gate semantics, typed `expects`, route-back rules, or
+workflow-learning source record authority. See [Flow Agents Console
+Integration](../integrations/flow-agents-console.md).
 
 ## Shape
 
@@ -44,7 +60,7 @@ or workflow-learning source record authority. See
   "recordSources": [
     {
       "id": "product-work-items",
-      "root": "product:.product-telemetry",
+      "root": "product:acme:.product-telemetry",
       "files": ["work-items.json", "checks.json"],
       "attributes": {
         "component": "component",
@@ -72,6 +88,16 @@ or workflow-learning source record authority. See
 not know product file names or field meanings unless a descriptor maps them into
 generic attributes. Flow Agents may publish such a descriptor as one producer,
 but Console must treat it the same as any other product-owned descriptor.
+
+Record source roots are contained to known roots:
+
+- `product:<id>:<path>` resolves below the configured product root for `<id>`.
+- `product:<path>` is a compatibility form that resolves below the default
+  configured product root.
+- `console:<path>` resolves below the Console root.
+
+Console preserves symlink and path-escape protections for all descriptor record
+sources. Escaped records are skipped and reported as warnings rather than read.
 
 ## Attributes
 
