@@ -97,9 +97,14 @@ const telemetryState = {
   ],
   analytics: {
     facets: [
+      { id: "projects", label: "Projects", counts: [{ name: "kontour-console", count: 24 }] },
       { id: "tools", label: "Tools", counts: [{ name: "execute_bash", count: 18 }] },
+      { id: "runtimes", label: "Runtimes", counts: [{ name: "codex", count: 30 }] },
+      { id: "agents", label: "Agents", counts: [{ name: "dev", count: 28 }] },
+      { id: "models", label: "Models", counts: [{ name: "gpt-5.5", count: 30 }] },
       { id: "skills", label: "Skills", counts: [{ name: "deliver", count: 6 }] },
       { id: "events", label: "Events", counts: [{ name: "tool.invoke", count: 18 }] },
+      { id: "hooks", label: "Hook events", counts: [{ name: "PreToolUse", count: 12 }] },
     ],
     flows: [
       {
@@ -122,7 +127,20 @@ const telemetryState = {
       sessionId: "session-1",
       agentName: "dev",
       runtime: "codex",
+      runtimeVersion: "codex-cli 0.138.0",
+      model: "gpt-5.5",
+      hookEventName: "PreToolUse",
+      runtimeSessionId: "runtime-session-1",
+      turnId: "turn-1",
+      project: "kontour-console",
+      cwd: "/Users/brian/dev/github/kontourai/kontour-console",
       toolName: "execute_bash",
+      attributes: {
+        project: "kontour-console",
+        cwd: "/Users/brian/dev/github/kontourai/kontour-console",
+        runtimeVersion: "codex-cli 0.138.0",
+        model: "gpt-5.5",
+      },
     },
     {
       eventId: "telemetry-task:state.json",
@@ -179,9 +197,15 @@ test("renders telemetry usage from the console API", async ({ page }) => {
   await expect(page.getByRole("main")).toContainText("Runtime and workflow usage");
   await expect(page.getByLabel("Telemetry totals")).toContainText("42");
   await expect(page.getByRole("main")).toContainText("flow-agents-full");
+  await expect(page.getByRole("main")).toContainText("Projects");
+  await expect(page.getByRole("main")).toContainText("kontour-console");
+  await expect(page.getByRole("main")).toContainText("gpt-5.5");
   await expect(page.getByRole("main")).toContainText("Builder shape");
   await expect(page.getByRole("main")).toContainText("deliver");
   await expect(page.getByRole("main")).toContainText("execute_bash");
+  await page.locator("details.telemetry-details").first().locator("summary").click();
+  await expect(page.getByRole("main")).toContainText("/Users/brian/dev/github/kontourai/kontour-console");
+  await expect(page.getByRole("main")).toContainText("codex-cli 0.138.0");
   expect(consoleErrors).toEqual([]);
 });
 

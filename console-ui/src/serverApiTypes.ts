@@ -23,11 +23,22 @@ export interface ConsoleTelemetryRecentEvent {
   sessionId?: string;
   agentName?: string;
   runtime?: string;
+  runtimeVersion?: string;
+  model?: string;
+  hookEventName?: string;
+  runtimeSessionId?: string;
+  turnId?: string;
+  project?: string;
+  cwd?: string;
+  delegationTarget?: string;
   toolName?: string;
   title?: string;
   taskSlug?: string;
   attributes?: Record<string, string>;
   status?: string;
+  outcome?: string;
+  durationMs?: number;
+  path?: string;
 }
 
 export interface ConsoleTelemetryCountSummary {

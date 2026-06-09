@@ -432,6 +432,14 @@ export interface TelemetryRecordSummary {
   durationMs?: number;
   agentName?: string;
   runtime?: string;
+  runtimeVersion?: string;
+  model?: string;
+  hookEventName?: string;
+  runtimeSessionId?: string;
+  turnId?: string;
+  project?: string;
+  cwd?: string;
+  delegationTarget?: string;
   toolName?: string;
   taskSlug?: string;
   title?: string;

@@ -559,6 +559,59 @@ dd {
   font-weight: 900;
 }
 
+.dimension-stack {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dimension-row {
+  display: grid;
+  gap: 3px;
+  padding-block-end: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dimension-row strong {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+}
+
+.dimension-row span {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.telemetry-details {
+  margin-top: 8px;
+}
+
+.telemetry-details summary {
+  width: fit-content;
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.telemetry-details dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 8px 0 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.telemetry-details dl div {
+  min-width: 0;
+  padding: 8px;
+  background: var(--panel-2);
+}
+
 .bar-list {
   display: grid;
   gap: 10px;
