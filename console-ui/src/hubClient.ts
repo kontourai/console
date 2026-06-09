@@ -8,7 +8,8 @@ import type {
   ConsoleSsePayloadMap,
   ConsoleStateResponse,
   ConsoleTelemetryUpdatedSsePayload,
-  ConsoleTelemetryResponse
+  ConsoleTelemetryResponse,
+  TelemetryQueryInput
 } from "./serverApiTypes";
 
 const viteEnv = (import.meta as ImportMeta & { env?: Partial<ImportMetaEnv> }).env;
@@ -35,8 +36,8 @@ export async function getEvents(hubUrl: string, auth: HubAuthOptions = {}): Prom
   return getJson<ConsoleEventsResponse>(hubUrl, "/events", auth);
 }
 
-export async function getTelemetry(hubUrl: string, auth: HubAuthOptions = {}): Promise<ConsoleTelemetryResponse> {
-  return getJson<ConsoleTelemetryResponse>(hubUrl, "/api/telemetry", auth);
+export async function getTelemetry(hubUrl: string, auth: HubAuthOptions = {}, query?: TelemetryQueryInput): Promise<ConsoleTelemetryResponse> {
+  return getJson<ConsoleTelemetryResponse>(hubUrl, telemetryPath(query), auth);
 }
 
 export async function postRecord(hubUrl: string, record: ConsoleRecordsRequest, auth: HubAuthOptions = {}): Promise<ConsoleRecordsResponse> {
@@ -125,6 +126,22 @@ function connectFetchStream(streamUrl: string, handlers: HubEventHandlers, auth:
 
 function hubApiUrl(hubUrl: string, path: string): string {
   return new URL(path, normalizeHubUrl(hubUrl)).toString();
+}
+
+function telemetryPath(query?: TelemetryQueryInput): string {
+  const params = new URLSearchParams();
+  if (query?.preset) params.set("preset", query.preset);
+  if (query?.from) params.set("from", query.from);
+  if (query?.to) params.set("to", query.to);
+  if (query?.q) params.set("q", query.q);
+  for (const filter of query?.filters || []) {
+    if (filter.facetId && filter.value) params.append("filter", `${filter.facetId}:${filter.value}`);
+  }
+  if (typeof query?.limit === "number") params.set("limit", String(query.limit));
+  if (typeof query?.offset === "number") params.set("offset", String(query.offset));
+  if (query?.sort) params.set("sort", query.sort);
+  const encoded = params.toString();
+  return encoded ? `/api/telemetry?${encoded}` : "/api/telemetry";
 }
 
 function normalizeHubUrl(hubUrl: string): string {

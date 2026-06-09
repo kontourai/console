@@ -138,6 +138,16 @@ const telemetryState = {
       },
     ],
   },
+  query: { preset: "live", limit: 24, sort: "desc", filters: [] },
+  pagination: {
+    returnedCount: 4,
+    matchedCount: 4,
+    totalMatchedCount: 4,
+    limit: 24,
+    offset: 0,
+    nextOffset: null,
+    hasMore: false,
+  },
   records: [
     {
       eventId: "evt-telemetry-1",
@@ -162,6 +172,7 @@ const telemetryState = {
         cwd: "/Users/brian/dev/github/kontourai/kontour-console",
         runtimeVersion: "codex-cli 0.138.0",
         model: "gpt-5.5",
+        feature: "query-controls",
       },
     },
     {
@@ -193,6 +204,7 @@ const telemetryState = {
       attributes: {
         project: "surface",
         cwd: "/Users/brian/dev/github/kontourai/surface",
+        feature: "surface-review",
       },
     },
     {
@@ -267,22 +279,39 @@ test("renders telemetry usage from the console API", async ({ page }) => {
   await expect(page.getByRole("main")).toContainText("deliver");
   await expect(page.getByRole("main")).toContainText("execute_bash");
   await expect(page.getByRole("main")).toContainText("read_file");
+  await expect(page.getByLabel("Telemetry query controls")).toContainText("Last 15m");
+  await page.getByRole("button", { name: "Last 15m" }).click();
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.preset)).toBe("15m");
+  await page.getByLabel("From", { exact: true }).fill("2026-06-08T14:00");
+  await page.getByLabel("To", { exact: true }).fill("2026-06-08T15:00");
+  await page.getByRole("button", { name: "Custom" }).click();
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.preset)).toBe("custom");
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.from)).toBe(localDateTimeToIso("2026-06-08T14:00"));
+  await page.getByLabel("Search").fill("read_file");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.q)).toBe("read_file");
+  await expect(page.locator(".telemetry-recent")).toContainText("read_file");
+  await expect(page.locator(".telemetry-recent")).not.toContainText("execute_bash");
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.preset)).toBe("live");
   await page.getByRole("button", { name: /tool.invoke/ }).click();
   await expect(page.getByLabel("Telemetry filters")).toContainText("Events: tool.invoke");
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["events:tool.invoke"]);
   await expect(page.getByRole("main")).toContainText("3 visible / 3 matched");
   await page.locator(".dimension-row", { hasText: "Outcomes" }).getByRole("button", { name: /^accepted/ }).click();
   await expect(page.getByLabel("Telemetry filters")).toContainText("Outcomes: accepted");
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["events:tool.invoke", "outcomes:accepted"]);
   await expect(page.getByRole("main")).toContainText("3 visible / 3 matched");
-  await page.getByRole("button", { name: "Clear" }).click();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
   await page.getByRole("button", { name: /kontourai\/surface/ }).click();
   await expect(page.getByLabel("Telemetry filters")).toContainText("Project directories: /Users/brian/dev/github/kontourai/surface");
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["cwd:/Users/brian/dev/github/kontourai/surface"]);
   await expect(page.locator(".telemetry-recent")).toContainText("read_file");
   await expect(page.locator(".telemetry-recent")).not.toContainText("execute_bash");
-  await page.getByRole("button", { name: "Clear" }).click();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
   await page.getByRole("button", { name: /execute_bash/ }).click();
   await expect(page.getByLabel("Telemetry filters")).toContainText("Tools: execute_bash");
   await expect(page.locator(".telemetry-recent")).not.toContainText("read_file");
-  await expect(page.getByRole("main")).toContainText("1/2");
   await expect(page.getByRole("main")).toContainText("1 visible / 1 matched");
   await page.getByRole("button", { name: /read_file/ }).click();
   await expect(page.locator(".telemetry-recent")).toContainText("read_file");
@@ -292,12 +321,20 @@ test("renders telemetry usage from the console API", async ({ page }) => {
   await expect(page.getByLabel("Telemetry filters")).toContainText("Projects: kontour-console");
   await expect(page.getByRole("main")).toContainText("1 visible / 1 matched");
   await expect(page.locator(".telemetry-recent")).not.toContainText("read_file");
-  await page.getByRole("button", { name: "Clear" }).click();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
   await expect(page.locator(".telemetry-recent")).toContainText("read_file");
+  await page.getByLabel("Search").fill("execute");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.offset)).toBe("24");
+  await expect(page.locator(".telemetry-recent")).toContainText("execute_bash_page_2");
+  await page.getByRole("button", { name: "Previous page" }).click();
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.offset ?? "0")).toBe("0");
   await openFirstTelemetryDetails(page);
   await expect(page.getByRole("main")).toContainText("/Users/brian/dev/github/kontourai/kontour-console");
   await expect(page.getByRole("main")).toContainText("codex-cli 0.138.0");
   await expect(page.getByRole("main")).toContainText('"eventId": "evt-telemetry-1"');
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
   await page.getByRole("button", { name: /window.__kontourConsoleXss=true/ }).click();
   await openFirstTelemetryDetails(page);
   await expect(page.getByRole("main")).toContainText('"secretToken": "[redacted]"');
@@ -374,6 +411,7 @@ async function installHubMock(page: Page): Promise<void> {
   await page.addInitScript((state) => {
     window.__kontourConsoleEventSourceUrls = [];
     window.__kontourConsoleXss = false;
+    window.__kontourTelemetryRequests = [];
 
     class MockEventSource extends EventTarget {
       static CONNECTING = 0;
@@ -404,15 +442,113 @@ async function installHubMock(page: Page): Promise<void> {
     const nativeFetch = window.fetch.bind(window);
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/api/telemetry")) {
-        return Promise.resolve(new Response(JSON.stringify(telemetryResponse), {
+      const parsedUrl = new URL(url, window.location.href);
+      if (parsedUrl.pathname.endsWith("/api/telemetry")) {
+        const filters = parsedUrl.searchParams.getAll("filter");
+        window.__kontourTelemetryRequests?.push({
+          preset: parsedUrl.searchParams.get("preset") ?? undefined,
+          q: parsedUrl.searchParams.get("q") ?? undefined,
+          filters,
+          from: parsedUrl.searchParams.get("from") ?? undefined,
+          to: parsedUrl.searchParams.get("to") ?? undefined,
+          offset: parsedUrl.searchParams.get("offset") ?? undefined,
+        });
+        return Promise.resolve(new Response(JSON.stringify(queryTelemetry(telemetryResponse, parsedUrl.searchParams)), {
           status: 200,
           headers: { "content-type": "application/json" },
         }));
       }
       return nativeFetch(input, init);
     };
+
+    function queryTelemetry(base: typeof telemetryResponse, params: URLSearchParams): typeof telemetryResponse {
+      const filters = params.getAll("filter").map((filter) => {
+        const separator = filter.indexOf(":");
+        return { facetId: filter.slice(0, separator), value: filter.slice(separator + 1) };
+      });
+      const q = (params.get("q") || "").toLowerCase();
+      const limit = Number(params.get("limit") || 24);
+      const offset = Number(params.get("offset") || 0);
+      let records = [...base.records];
+      if (q) {
+        records = records.filter((record) => JSON.stringify(record).toLowerCase().includes(q));
+        if (q === "execute") {
+          records = [
+            ...records,
+            ...Array.from({ length: 23 }, (_, index) => ({
+              ...base.records[0],
+              eventId: `evt-telemetry-extra-${index}`,
+              observedAt: "2026-06-08T14:57:00.000Z",
+              toolName: "execute_bash",
+            })),
+            {
+              ...base.records[0],
+              eventId: "evt-telemetry-page-2",
+              observedAt: "2026-06-08T14:57:00.000Z",
+              toolName: "execute_bash_page_2",
+              attributes: { ...base.records[0].attributes, feature: "pagination" },
+            },
+          ];
+        }
+      }
+      const groupedFilters = filters.reduce((groups: Record<string, string[]>, filter) => {
+        groups[filter.facetId] = [...(groups[filter.facetId] || []), filter.value];
+        return groups;
+      }, {});
+      for (const [facetId, values] of Object.entries(groupedFilters)) {
+        records = records.filter((record) => values.some((value) => recordFacetValues(record, facetId).includes(value)));
+      }
+      const page = records.slice(offset, offset + limit);
+      return {
+        ...base,
+        query: {
+          preset: (params.get("preset") || "live") as typeof base.query.preset,
+          q: params.get("q") || undefined,
+          filters,
+          limit,
+          offset,
+          sort: "desc",
+        },
+        pagination: {
+          returnedCount: page.length,
+          matchedCount: records.length,
+          totalMatchedCount: records.length,
+          limit,
+          offset,
+          nextOffset: offset + limit < records.length ? offset + limit : null,
+          hasMore: offset + limit < records.length,
+        },
+        records: page,
+      };
+    }
+
+    function recordFacetValues(record: typeof telemetryResponse.records[number], facetId: string): string[] {
+      const attributes = record.attributes || {};
+      const valuesByFacet: Record<string, Array<string | undefined>> = {
+        projects: [record.project],
+        cwd: [record.cwd],
+        tools: [record.toolName],
+        runtimes: [record.runtime],
+        agents: [record.agentName],
+        models: [record.model],
+        events: [record.eventType],
+        outcomes: [record.outcome || record.status || "unknown"],
+        hooks: [record.hookEventName],
+        sessions: [record.sessionId, record.runtimeSessionId],
+      };
+      const singular = facetId.endsWith("s") ? facetId.slice(0, -1) : facetId;
+      return [...(valuesByFacet[facetId] || []), attributes[facetId], attributes[singular]].filter((value): value is string => typeof value === "string");
+    }
   }, { hubState, telemetry: telemetryState });
+}
+
+async function lastTelemetryRequest(page: Page): Promise<Window["__kontourTelemetryRequests"][number] | undefined> {
+  const requests = await page.evaluate(() => window.__kontourTelemetryRequests ?? []);
+  return requests.at(-1);
+}
+
+function localDateTimeToIso(value: string): string {
+  return new Date(value).toISOString();
 }
 
 async function assertTokenStylesResolved(page: Page): Promise<void> {
@@ -434,5 +570,13 @@ declare global {
   interface Window {
     __kontourConsoleEventSourceUrls?: string[];
     __kontourConsoleXss?: boolean;
+    __kontourTelemetryRequests?: Array<{
+      preset?: string;
+      q?: string;
+      filters: string[];
+      from?: string;
+      to?: string;
+      offset?: string;
+    }>;
   }
 }

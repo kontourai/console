@@ -308,6 +308,88 @@ test("local hub server summarizes telemetry logs without product-specific descri
   }
 });
 
+test("local hub server filters telemetry query by time, search, repeated facets, and pagination", async () => {
+  const rootDir = tempRoot();
+  const telemetryRoot = path.join(rootDir, ".telemetry");
+  fs.mkdirSync(telemetryRoot, { recursive: true });
+  const bashA: any = telemetryRecord("evt-query-bash-a", "tool.invoke", "session-query-a", "2026-06-08T12:00:00.000Z");
+  bashA.context = { cwd: "/workspace/project-alpha" };
+  bashA.tool = { name: "Bash", normalized_name: "bash", status: "ok" };
+  const bashB: any = telemetryRecord("evt-query-bash-b", "tool.invoke", "session-query-b", "2026-06-08T12:05:00.000Z");
+  bashB.context = { cwd: "/workspace/project-beta" };
+  bashB.tool = { name: "Bash", normalized_name: "bash", status: "ok" };
+  const edit: any = telemetryRecord("evt-query-edit", "tool.invoke", "session-query-c", "2026-06-08T12:10:00.000Z");
+  edit.context = { cwd: "/workspace/project-alpha" };
+  edit.tool = { name: "Edit", normalized_name: "edit", status: "ok" };
+  const old: any = telemetryRecord("evt-query-old", "tool.invoke", "session-query-old", "2026-06-07T12:00:00.000Z");
+  old.context = { cwd: "/workspace/project-alpha" };
+  old.tool = { name: "Bash", normalized_name: "bash", status: "ok" };
+  fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), [bashA, bashB, edit, old].map((record) => JSON.stringify(record)).join("\n"), "utf8");
+
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot, telemetryFlowAgentsRoot: path.join(rootDir, "missing", ".flow-agents") });
+  await listen(app);
+  try {
+    const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry?preset=custom&from=2026-06-08T00%3A00%3A00.000Z&to=2026-06-09T00%3A00%3A00.000Z&q=bash&filter=tools%3Abash&filter=projects%3Aproject-alpha&filter=projects%3Aproject-beta&limit=1&offset=1&sort=asc`);
+
+    assert.equal(telemetry.statusCode, 200);
+    assert.deepEqual(telemetry.body.records.map((record: any) => record.eventId), ["evt-query-bash-b"]);
+    assert.equal(telemetry.body.totals.recordCount, 2);
+    assert.equal(telemetry.body.pagination.limit, 1);
+    assert.equal(telemetry.body.pagination.offset, 1);
+    assert.equal(telemetry.body.pagination.returnedCount, 1);
+    assert.equal(telemetry.body.pagination.totalMatchedCount, 2);
+    assert.equal(telemetry.body.pagination.nextOffset, undefined);
+    assert.equal(telemetry.body.query.from, "2026-06-08T00:00:00.000Z");
+    assert.equal(telemetry.body.query.to, "2026-06-09T00:00:00.000Z");
+    assert.equal(telemetry.body.query.q, "bash");
+    assert.equal(telemetry.body.analytics.facets.some((facet: any) => facet.id === "tools" && facet.counts.some((item: any) => item.name === "bash" && item.count === 2)), true);
+  } finally {
+    await close(app);
+  }
+});
+
+test("local hub server keeps empty telemetry query compatible while adding optional metadata only for queries", async () => {
+  const rootDir = tempRoot();
+  const telemetryRoot = path.join(rootDir, ".telemetry");
+  fs.mkdirSync(telemetryRoot, { recursive: true });
+  fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), `${JSON.stringify(telemetryRecord("evt-empty-query", "turn.user", "session-empty", "2026-06-08T12:00:00.000Z"))}\n`, "utf8");
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot, telemetryFlowAgentsRoot: path.join(rootDir, "missing", ".flow-agents") });
+  await listen(app);
+  try {
+    const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
+
+    assert.equal(telemetry.statusCode, 200);
+    assert.equal(telemetry.body.records.some((record: any) => record.eventId === "evt-empty-query"), true);
+    assert.equal("query" in telemetry.body, false);
+    assert.equal("pagination" in telemetry.body, false);
+  } finally {
+    await close(app);
+  }
+});
+
+test("local hub server rejects malformed telemetry queries safely", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const invalid = await requestJson("GET", `${baseUrl}/api/telemetry?preset=soon&from=not-a-date&limit=1000&filter=bad-filter`);
+    const tooWide = await requestJson("GET", `${baseUrl}/api/telemetry?preset=custom&from=2026-01-01T00%3A00%3A00.000Z&to=2026-03-01T00%3A00%3A00.000Z`);
+
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(invalid.body.error, "BAD_REQUEST");
+    assert.equal(invalid.body.safeMessage, "invalid telemetry query");
+    assert.equal(invalid.body.validation.some((item: any) => item.path === "query.preset"), true);
+    assert.equal(invalid.body.validation.some((item: any) => item.path === "query.from"), true);
+    assert.equal(invalid.body.validation.some((item: any) => item.path === "query.limit"), true);
+    assert.equal(invalid.body.validation.some((item: any) => item.path === "query.filter[0]"), true);
+    assert.equal(tooWide.statusCode, 400);
+    assert.equal(tooWide.body.validation.some((item: any) => item.path === "query.to" && String(item.message).includes("31 days")), true);
+  } finally {
+    await close(app);
+  }
+});
+
 test("local hub server keeps newest telemetry log records when logs are over the read limit", async () => {
   const rootDir = tempRoot();
   const telemetryRoot = path.join(rootDir, ".telemetry");
@@ -557,6 +639,9 @@ test("hosted hub server persists postgres telemetry through injected SQL client 
     const tenantB = await requestJson("GET", `${baseUrl}/api/telemetry`, undefined, {
       authorization: "Bearer token-b"
     });
+    const tenantAQuery = await requestJson("GET", `${baseUrl}/api/telemetry?preset=custom&from=2026-06-08T12%3A02%3A00.000Z&limit=1&sort=asc`, undefined, {
+      authorization: "Bearer token-a"
+    });
     const wrongTenant = await requestJson("GET", `${baseUrl}/api/telemetry`, undefined, {
       authorization: "Bearer token-a",
       "x-console-tenant-id": "tenant-b"
@@ -571,7 +656,48 @@ test("hosted hub server persists postgres telemetry through injected SQL client 
     assert.equal(tenantA.body.records.some((item: any) => item.eventId === "evt-tenant-b"), false);
     assert.equal(tenantB.body.records.some((item: any) => item.eventId === "evt-tenant-b"), true);
     assert.equal(tenantB.body.records.some((item: any) => item.eventId === "evt-tenant-a"), false);
+    assert.equal(tenantAQuery.statusCode, 200);
+    assert.deepEqual(tenantAQuery.body.records.map((item: any) => item.eventId), ["evt-tenant-a"]);
+    assert.equal(tenantAQuery.body.pagination.totalMatchedCount, 1);
+    assert.equal(sqlClient.selects.some((select: any) => select.values.includes("tenant-a") && select.values.includes("2026-06-08T12:02:00.000Z") && select.values.includes(1)), true);
     assert.equal(wrongTenant.statusCode, 403);
+  } finally {
+    await close(app);
+  }
+});
+
+test("hosted hub server reads a full bounded SQL window before app-side search and facet filters", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    for (let index = 0; index < 3; index += 1) {
+      const record: any = telemetryRecord(`evt-sql-common-${index}`, "tool.invoke", `session-common-${index}`, `2026-06-08T12:0${index}:00.000Z`);
+      record.context = { cwd: "/workspace/common-project" };
+      record.tool = { normalized_name: "common" };
+      await requestJson("POST", `${baseUrl}/api/telemetry/records`, record, { authorization: "Bearer token-a" });
+    }
+    const rare: any = telemetryRecord("evt-sql-rare", "tool.invoke", "session-rare", "2026-06-08T11:59:00.000Z");
+    rare.context = { cwd: "/workspace/rare-project" };
+    rare.tool = { normalized_name: "rare_tool" };
+    await requestJson("POST", `${baseUrl}/api/telemetry/records`, rare, { authorization: "Bearer token-a" });
+
+    const telemetry = await requestJson("GET", `${baseUrl}/api/telemetry?q=rare_tool&filter=tools%3Arare_tool&limit=1`, undefined, { authorization: "Bearer token-a" });
+
+    assert.equal(telemetry.statusCode, 200);
+    assert.deepEqual(telemetry.body.records.map((record: any) => record.eventId), ["evt-sql-rare"]);
+    assert.equal(telemetry.body.pagination.totalMatchedCount, 1);
+    assert.equal(sqlClient.selects.at(-1)?.values.at(-1), 5000);
   } finally {
     await close(app);
   }
@@ -737,6 +863,8 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
   const rootDir = tempRoot();
   const flowAgentsRepo = path.join(rootDir, "flow-agents");
   const flowAgentsRoot = path.join(flowAgentsRepo, ".flow-agents");
+  const telemetryRoot = path.join(rootDir, ".telemetry");
+  fs.mkdirSync(telemetryRoot, { recursive: true });
   fs.mkdirSync(path.join(flowAgentsRoot, "shape-provider-settings"), { recursive: true });
   fs.writeFileSync(path.join(flowAgentsRepo, "console.telemetry.json"), JSON.stringify({
     recordSources: [{
@@ -747,6 +875,7 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
         taskSlug: "task_slug",
         status: "status",
         title: "summary",
+        secretToken: "secret_token",
         observedAt: "updated_at"
       }
     }],
@@ -758,19 +887,31 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
     task_slug: "shape-provider-settings",
     status: "done",
     summary: "Shape provider settings",
+    secret_token: "super-secret-workflow-token",
     updated_at: "2026-06-08T12:02:00.000Z"
   }), "utf8");
+  const runtimeRecord: any = telemetryRecord("evt-descriptor-tool", "tool.invoke", "session-tool", "2026-06-08T12:03:00.000Z");
+  runtimeRecord.context = { cwd: "/workspace/descriptor-project" };
+  runtimeRecord.tool = { normalized_name: "bash" };
+  fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), `${JSON.stringify(runtimeRecord)}\n`, "utf8");
 
-  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot: path.join(rootDir, ".telemetry"), telemetryFlowAgentsRoot: flowAgentsRoot });
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot, telemetryFlowAgentsRoot: flowAgentsRoot });
   await listen(app);
   try {
     const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
+    const genericFilter = await requestJson("GET", `${serverUrl(app)}/api/telemetry?filter=tools%3Abash`);
+    const workflowRecord = telemetry.body.records.find((record: any) => record.eventId === "shape-provider-settings:state.json");
 
     assert.equal(telemetry.statusCode, 200);
-    assert.equal(telemetry.body.analytics.facets[0].id, "workflow-status");
+    assert.equal(telemetry.body.analytics.facets.some((facet: any) => facet.id === "workflow-status"), true);
+    assert.equal(telemetry.body.analytics.facets.some((facet: any) => facet.id === "tools"), true);
     assert.equal(telemetry.body.analytics.flows[0].id, "builder.shape");
     assert.equal(telemetry.body.analytics.flows[0].total, 1);
     assert.equal(telemetry.body.analytics.flows[0].items[0].title, "Shape provider settings");
+    assert.equal(workflowRecord.attributes.secretToken, "[redacted]");
+    assert.equal(JSON.stringify(telemetry.body).includes("super-secret-workflow-token"), false);
+    assert.equal(genericFilter.statusCode, 200);
+    assert.deepEqual(genericFilter.body.records.map((record: any) => record.eventId), ["evt-descriptor-tool"]);
   } finally {
     await close(app);
   }
@@ -1100,6 +1241,7 @@ function tempRoot() {
 class FakeTelemetrySqlClient {
   rows: any[] = [];
   migrations = new Set<string>();
+  selects: Array<{ text: string; values: any[] }> = [];
 
   async query(text: string, values: any[] = []) {
     const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
@@ -1136,8 +1278,23 @@ class FakeTelemetrySqlClient {
     }
     if (normalized.startsWith("select event_id, event_type, session_id, observed_at, received_at, payload from console_telemetry_events")) {
       const tenantId = values[0];
+      const hasFrom = normalized.includes("coalesce(observed_at, received_at) >= ");
+      const hasTo = normalized.includes("coalesce(observed_at, received_at) <= ");
+      const from = hasFrom ? String(values[1]) : undefined;
+      const to = hasTo ? String(values[hasFrom ? 2 : 1]) : undefined;
+      const limit = Number(values[values.length - 1]);
+      const direction = normalized.includes(" order by coalesce(observed_at, received_at) asc ") ? "asc" : "desc";
+      this.selects.push({ text, values });
+      const sorted = this.rows
+        .filter((row) => row.tenant_id === tenantId)
+        .filter((row) => !from || String(row.observed_at || row.received_at) >= from)
+        .filter((row) => !to || String(row.observed_at || row.received_at) <= to)
+        .sort((left, right) => direction === "asc"
+          ? String(left.observed_at || left.received_at).localeCompare(String(right.observed_at || right.received_at))
+          : String(right.observed_at || right.received_at).localeCompare(String(left.observed_at || left.received_at)))
+        .slice(0, limit);
       return {
-        rows: this.rows.filter((row) => row.tenant_id === tenantId).map((row) => ({
+        rows: sorted.map((row) => ({
           event_id: row.event_id,
           event_type: row.event_type,
           session_id: row.session_id,
@@ -1145,7 +1302,7 @@ class FakeTelemetrySqlClient {
           received_at: row.received_at,
           payload: row.payload
         })),
-        rowCount: this.rows.length
+        rowCount: sorted.length
       };
     }
     return { rows: [], rowCount: 0 };

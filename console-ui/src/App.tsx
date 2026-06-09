@@ -2,7 +2,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { DEFAULT_HUB_URL, getTelemetry } from "./hubClient";
 import { useHubConnection } from "./hooks/useHubConnection";
-import type { ConsoleTelemetryResponse } from "./serverApiTypes";
+import type { ConsoleTelemetryResponse, TelemetryQueryInput } from "./serverApiTypes";
 import { ConnectionBar } from "./sections/ConnectionBar";
 import { StageBand } from "./sections/StageBand";
 import { TelemetrySection } from "./sections/TelemetrySection";
@@ -19,6 +19,7 @@ export default function App() {
   const [tenantId, setTenantId] = useState("");
   const [draftTenantId, setDraftTenantId] = useState("");
   const [view, setView] = useState<AppView>(() => viewFromPath(window.location.pathname));
+  const [telemetryQuery, setTelemetryQuery] = useState<TelemetryQueryInput>({ preset: "live", limit: 24, sort: "desc" });
   const [telemetry, setTelemetry] = useState<ConsoleTelemetryResponse | null>(null);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
   const auth = { token: authToken || undefined, tenantId: tenantId || undefined };
@@ -37,7 +38,7 @@ export default function App() {
 
     async function refreshTelemetry() {
       try {
-        const nextTelemetry = await getTelemetry(hubUrl, auth);
+        const nextTelemetry = await getTelemetry(hubUrl, auth, telemetryQuery);
         if (cancelled) return;
         setTelemetry(nextTelemetry);
         setTelemetryError(null);
@@ -53,7 +54,7 @@ export default function App() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [hubUrl, authToken, tenantId, lastAccepted?.delivery?.recordId, lastTelemetryUpdated?.telemetry?.generatedAt]);
+  }, [hubUrl, authToken, tenantId, telemetryQuery, lastAccepted?.delivery?.recordId, lastTelemetryUpdated?.telemetry?.generatedAt]);
 
   function submitHubUrl(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,6 +98,8 @@ export default function App() {
         <TelemetrySection
           telemetry={telemetry}
           error={telemetryError}
+          query={telemetryQuery}
+          onQueryChange={setTelemetryQuery}
           liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
           lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
         />
