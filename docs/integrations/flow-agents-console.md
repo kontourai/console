@@ -42,16 +42,28 @@ correlation, and support; they do not grant product authority by themselves.
 ## Descriptor Location
 
 Console descriptor metadata should live in a product-owned
-`console.telemetry.json` file. Current Console descriptor search paths are:
+`console.telemetry.json` file in the Flow Agents repo or package bundle.
+Configure Console with a generic product root rather than a Flow Agents-specific
+path:
 
-- `console.telemetry.json` in the Console repo root
-- `../flow-agents/console.telemetry.json`
-- `../flow-agents/.kontour/console.telemetry.json`
+```sh
+CONSOLE_TELEMETRY_PRODUCT_ROOTS=flow-agents:/path/to/flow-agents
+```
 
-A hosted deployment may mount descriptors and point Console at them with
-`CONSOLE_TELEMETRY_DESCRIPTOR_PATHS`. The descriptor maps product-owned fields
-into generic Console display attributes. It must not redefine Flow Definition
-gates, typed `expects`, route-control semantics, or learning authority.
+Console then discovers `console.telemetry.json` and
+`.kontour/console.telemetry.json` below that product root. A hosted deployment
+may mount descriptors and point Console at them with
+`CONSOLE_TELEMETRY_DESCRIPTOR_PATHS`, including product-qualified entries such
+as `product:flow-agents:console.telemetry.json`. The descriptor maps
+product-owned fields into generic Console display attributes. It must not
+redefine Flow Definition gates, typed `expects`, route-control semantics, or
+learning authority.
+
+The older Console server option `telemetryFlowAgentsRoot` is a compatibility
+alias for local callers that only know the `.flow-agents` artifact directory.
+New local, hosted, and user-hosted configurations should use
+`telemetryProductRoots` or `CONSOLE_TELEMETRY_PRODUCT_ROOTS` so multiple
+products can publish descriptors side by side.
 
 ## Control Plane Versus Telemetry Plane
 
