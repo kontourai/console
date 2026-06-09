@@ -11,7 +11,8 @@ import type {
   ConsoleTelemetryResponse
 } from "./serverApiTypes";
 
-export const DEFAULT_HUB_URL = "http://127.0.0.1:3737";
+const viteEnv = (import.meta as ImportMeta & { env?: Partial<ImportMetaEnv> }).env;
+export const DEFAULT_HUB_URL = viteEnv?.VITE_CONSOLE_HUB_URL || "http://127.0.0.1:3737";
 
 export interface HubConnection {
   close(): void;
