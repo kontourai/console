@@ -98,7 +98,15 @@ const telemetryState = {
   analytics: {
     facets: [
       { id: "projects", label: "Projects", counts: [{ name: "kontour-console", count: 24 }] },
-      { id: "tools", label: "Tools", counts: [{ name: "execute_bash", count: 18 }] },
+      {
+        id: "tools",
+        label: "Tools",
+        counts: [
+          { name: "execute_bash", count: 18 },
+          { name: "read_file", count: 3 },
+          { name: "<img src=x onerror=\"window.__kontourConsoleXss=true\">", count: 1 },
+        ],
+      },
       { id: "runtimes", label: "Runtimes", counts: [{ name: "codex", count: 30 }] },
       { id: "agents", label: "Agents", counts: [{ name: "dev", count: 28 }] },
       { id: "models", label: "Models", counts: [{ name: "gpt-5.5", count: 30 }] },
@@ -112,7 +120,20 @@ const telemetryState = {
         label: "Builder shape",
         total: 2,
         items: [
-          { slug: "shape-provider-settings", title: "Shape provider settings", status: "done", updatedAt: "2026-06-08T15:00:00.000Z" },
+          {
+            slug: "shape-provider-settings",
+            title: "Shape provider settings",
+            status: "done",
+            updatedAt: "2026-06-08T15:00:00.000Z",
+            attributes: { toolName: "execute_bash", project: "kontour-console" },
+          },
+          {
+            slug: "shape-surface-telemetry",
+            title: "Shape Surface telemetry",
+            status: "done",
+            updatedAt: "2026-06-08T14:59:00.000Z",
+            attributes: { toolName: "read_file", project: "surface" },
+          },
         ],
       },
     ],
@@ -135,6 +156,7 @@ const telemetryState = {
       project: "kontour-console",
       cwd: "/Users/brian/dev/github/kontourai/kontour-console",
       toolName: "execute_bash",
+      outcome: "accepted",
       attributes: {
         project: "kontour-console",
         cwd: "/Users/brian/dev/github/kontourai/kontour-console",
@@ -150,6 +172,47 @@ const telemetryState = {
       observedAt: "2026-06-08T15:00:00.000Z",
       sessionId: "telemetry-task",
       status: "execution",
+    },
+    {
+      eventId: "evt-telemetry-2",
+      sourceId: "flow-agents-full",
+      sourceKind: "runtime",
+      eventType: "tool.invoke",
+      observedAt: "2026-06-08T14:59:00.000Z",
+      sessionId: "session-2",
+      agentName: "dev",
+      runtime: "codex",
+      model: "gpt-5.5",
+      hookEventName: "PreToolUse",
+      runtimeSessionId: "runtime-session-2",
+      turnId: "turn-2",
+      project: "surface",
+      cwd: "/Users/brian/dev/github/kontourai/surface",
+      toolName: "read_file",
+      outcome: "accepted",
+      attributes: {
+        project: "surface",
+        cwd: "/Users/brian/dev/github/kontourai/surface",
+      },
+    },
+    {
+      eventId: "evt-telemetry-3",
+      sourceId: "flow-agents-full",
+      sourceKind: "runtime",
+      eventType: "tool.invoke",
+      observedAt: "2026-06-08T14:58:00.000Z",
+      sessionId: "session-3",
+      agentName: "dev",
+      runtime: "codex",
+      model: "gpt-5.5",
+      project: "kontour-console",
+      cwd: "/Users/brian/dev/github/kontourai/kontour-console",
+      toolName: "<img src=x onerror=\"window.__kontourConsoleXss=true\">",
+      outcome: "accepted",
+      attributes: {
+        secretToken: "super-secret-token",
+        note: "</pre><script>window.__kontourConsoleXss=true</script>",
+      },
     },
   ],
   warnings: [],
@@ -203,9 +266,43 @@ test("renders telemetry usage from the console API", async ({ page }) => {
   await expect(page.getByRole("main")).toContainText("Builder shape");
   await expect(page.getByRole("main")).toContainText("deliver");
   await expect(page.getByRole("main")).toContainText("execute_bash");
-  await page.locator("details.telemetry-details").first().locator("summary").click();
+  await expect(page.getByRole("main")).toContainText("read_file");
+  await page.getByRole("button", { name: /tool.invoke/ }).click();
+  await expect(page.getByLabel("Telemetry filters")).toContainText("Events: tool.invoke");
+  await expect(page.getByRole("main")).toContainText("3 visible / 3 matched");
+  await page.locator(".dimension-row", { hasText: "Outcomes" }).getByRole("button", { name: /^accepted/ }).click();
+  await expect(page.getByLabel("Telemetry filters")).toContainText("Outcomes: accepted");
+  await expect(page.getByRole("main")).toContainText("3 visible / 3 matched");
+  await page.getByRole("button", { name: "Clear" }).click();
+  await page.getByRole("button", { name: /kontourai\/surface/ }).click();
+  await expect(page.getByLabel("Telemetry filters")).toContainText("Project directories: /Users/brian/dev/github/kontourai/surface");
+  await expect(page.locator(".telemetry-recent")).toContainText("read_file");
+  await expect(page.locator(".telemetry-recent")).not.toContainText("execute_bash");
+  await page.getByRole("button", { name: "Clear" }).click();
+  await page.getByRole("button", { name: /execute_bash/ }).click();
+  await expect(page.getByLabel("Telemetry filters")).toContainText("Tools: execute_bash");
+  await expect(page.locator(".telemetry-recent")).not.toContainText("read_file");
+  await expect(page.getByRole("main")).toContainText("1/2");
+  await expect(page.getByRole("main")).toContainText("1 visible / 1 matched");
+  await page.getByRole("button", { name: /read_file/ }).click();
+  await expect(page.locator(".telemetry-recent")).toContainText("read_file");
+  await expect(page.getByRole("main")).toContainText("2 visible / 2 matched");
+  await expect(page.locator(".bar-row", { hasText: "execute_bash" }).first()).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /^kontour-console/ }).click();
+  await expect(page.getByLabel("Telemetry filters")).toContainText("Projects: kontour-console");
+  await expect(page.getByRole("main")).toContainText("1 visible / 1 matched");
+  await expect(page.locator(".telemetry-recent")).not.toContainText("read_file");
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(page.locator(".telemetry-recent")).toContainText("read_file");
+  await openFirstTelemetryDetails(page);
   await expect(page.getByRole("main")).toContainText("/Users/brian/dev/github/kontourai/kontour-console");
   await expect(page.getByRole("main")).toContainText("codex-cli 0.138.0");
+  await expect(page.getByRole("main")).toContainText('"eventId": "evt-telemetry-1"');
+  await page.getByRole("button", { name: /window.__kontourConsoleXss=true/ }).click();
+  await openFirstTelemetryDetails(page);
+  await expect(page.getByRole("main")).toContainText('"secretToken": "[redacted]"');
+  await expect(page.getByRole("main")).not.toContainText("super-secret-token");
+  await expect.poll(() => page.evaluate(() => window.__kontourConsoleXss)).toBe(false);
   expect(consoleErrors).toEqual([]);
 });
 
@@ -215,7 +312,7 @@ test("opens telemetry directly from the browser route", async ({ page }) => {
 
   await page.goto("/telemetry");
 
-  await expect(page.getByRole("button", { name: "Telemetry" })).toHaveClass(/active/);
+  await expect(page.getByRole("button", { name: "Telemetry", exact: true })).toHaveClass(/active/);
   await expect(page.getByRole("main")).toContainText("Runtime and workflow usage");
   expect(consoleErrors).toEqual([]);
 });
@@ -238,8 +335,23 @@ test("keeps the primary console sections within the mobile viewport", async ({ p
     expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width + 1);
   }
 
+  await page.getByRole("button", { name: "Telemetry", exact: true }).click();
+  await page.getByRole("button", { name: /window.__kontourConsoleXss=true/ }).click();
+  await openFirstTelemetryDetails(page);
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(viewport).not.toBeNull();
+  if (viewport) {
+    expect(scrollWidth).toBeLessThanOrEqual(viewport.width + 1);
+  }
+
   expect(consoleErrors).toEqual([]);
 });
+
+async function openFirstTelemetryDetails(page: Page): Promise<void> {
+  await page.locator("details.telemetry-details").first().evaluate((details) => {
+    details.setAttribute("open", "");
+  });
+}
 
 async function loadConsole(page: Page): Promise<string[]> {
   const consoleErrors: string[] = [];
@@ -261,6 +373,7 @@ async function loadConsole(page: Page): Promise<string[]> {
 async function installHubMock(page: Page): Promise<void> {
   await page.addInitScript((state) => {
     window.__kontourConsoleEventSourceUrls = [];
+    window.__kontourConsoleXss = false;
 
     class MockEventSource extends EventTarget {
       static CONNECTING = 0;
@@ -320,5 +433,6 @@ async function assertTokenStylesResolved(page: Page): Promise<void> {
 declare global {
   interface Window {
     __kontourConsoleEventSourceUrls?: string[];
+    __kontourConsoleXss?: boolean;
   }
 }
