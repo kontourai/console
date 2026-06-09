@@ -4,7 +4,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 import { assertConsoleRuntimeConfig, resolveConsoleRuntimeConfig, type ConsoleRuntimeConfig } from "./config";
 import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./sse-stream";
-import { createTelemetryStore, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
+import { createTelemetryStore, parseTelemetryQuery, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
 import type {
   ConsoleRecord,
   ConsoleHubServer,
@@ -133,7 +133,8 @@ async function routeRequest(input: {
     }
 
     if (request.method === "GET" && url.pathname === "/api/telemetry") {
-      writeJson(response, 200, await telemetry.summarize(context));
+      const telemetryQuery = parseTelemetryQuery(url.searchParams);
+      writeJson(response, 200, await telemetry.summarize(context, telemetryQuery));
       return;
     }
 

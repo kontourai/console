@@ -447,6 +447,43 @@ export interface TelemetryRecordSummary {
   path?: string;
 }
 
+export type TelemetryQueryPreset = "live" | "15m" | "24h" | "7d" | "custom";
+export type TelemetrySortDirection = "desc" | "asc";
+
+export interface TelemetryQueryFilter {
+  facetId: string;
+  label: string;
+  value: string;
+}
+
+export interface TelemetryQuery {
+  preset?: TelemetryQueryPreset;
+  from?: string;
+  to?: string;
+  q?: string;
+  filters: TelemetryQueryFilter[];
+  limit: number;
+  offset: number;
+  sort: TelemetrySortDirection;
+}
+
+export interface TelemetryQuerySummary {
+  preset?: TelemetryQueryPreset;
+  from?: string;
+  to?: string;
+  q?: string;
+  filters: TelemetryQueryFilter[];
+  sort: TelemetrySortDirection;
+}
+
+export interface TelemetryPaginationSummary {
+  limit: number;
+  offset: number;
+  returnedCount: number;
+  totalMatchedCount: number;
+  nextOffset?: number;
+}
+
 export interface TelemetryCountSummary {
   name: string;
   count: number;
@@ -498,6 +535,8 @@ export interface TelemetrySummary {
   };
   analytics: TelemetryAnalyticsSummary;
   records: TelemetryRecordSummary[];
+  query?: TelemetryQuerySummary;
+  pagination?: TelemetryPaginationSummary;
   warnings: ValidationIssue[];
 }
 

@@ -67,6 +67,48 @@ export interface ConsoleTelemetryFlowSummary {
   items: ConsoleTelemetryFlowItem[];
 }
 
+export type TelemetryQueryPreset = "live" | "15m" | "24h" | "7d" | "custom";
+export type TelemetrySortDirection = "asc" | "desc";
+
+export interface TelemetryQueryFilter {
+  facetId: string;
+  value: string;
+}
+
+export interface TelemetryQueryInput {
+  preset?: TelemetryQueryPreset;
+  from?: string;
+  to?: string;
+  q?: string;
+  filters?: TelemetryQueryFilter[];
+  limit?: number;
+  offset?: number;
+  sort?: TelemetrySortDirection;
+}
+
+export interface ConsoleTelemetryQuerySummary {
+  preset?: TelemetryQueryPreset;
+  from?: string;
+  to?: string;
+  q?: string;
+  filters?: TelemetryQueryFilter[];
+  limit?: number;
+  offset?: number;
+  sort?: TelemetrySortDirection;
+}
+
+export interface ConsoleTelemetryPaginationSummary {
+  returnedCount?: number;
+  matchedCount?: number;
+  totalMatchedCount?: number;
+  totalCount?: number;
+  limit?: number;
+  pageSize?: number;
+  offset?: number;
+  nextOffset?: number | null;
+  hasMore?: boolean;
+}
+
 export interface ConsoleTelemetryAnalyticsSummary {
   facets: ConsoleTelemetryFacetSummary[];
   flows: ConsoleTelemetryFlowSummary[];
@@ -82,6 +124,8 @@ export interface ConsoleTelemetryResponse {
     productRecordCount: number;
   };
   analytics: ConsoleTelemetryAnalyticsSummary;
+  query?: ConsoleTelemetryQuerySummary;
+  pagination?: ConsoleTelemetryPaginationSummary;
   records: ConsoleTelemetryRecentEvent[];
   warnings: Array<{ severity?: string; path?: string; message?: string }>;
 }

@@ -80,6 +80,50 @@ test("hub client fetches state and events from typed endpoints", async () => {
   assert.equal(fetchCalls[2].url, "http://127.0.0.1:3737/api/telemetry");
 });
 
+test("hub client encodes telemetry query params and repeated filters", async () => {
+  const fetchCalls = installFetch([
+    jsonResponse({
+      generatedAt: "2026-06-08T15:00:00.000Z",
+      totals: { recordCount: 0, sessionCount: 0, eventTypeCounts: {}, productRecordCount: 0 },
+      analytics: { facets: [], flows: [] },
+      sources: [],
+      records: [],
+      warnings: []
+    })
+  ]);
+
+  await getTelemetry("http://127.0.0.1:3737", { token: "secret-token", tenantId: "tenant-a" }, {
+    preset: "custom",
+    from: "2026-06-08T14:00:00.000Z",
+    to: "2026-06-08T15:00:00.000Z",
+    q: "execute bash/session",
+    filters: [
+      { facetId: "tools", value: "execute_bash" },
+      { facetId: "tools", value: "read file" },
+      { facetId: "projects", value: "kontour-console" }
+    ],
+    limit: 24,
+    offset: 48,
+    sort: "desc"
+  });
+
+  const url = new URL(fetchCalls[0].url);
+  assert.equal(`${url.origin}${url.pathname}`, "http://127.0.0.1:3737/api/telemetry");
+  assert.equal(url.searchParams.get("preset"), "custom");
+  assert.equal(url.searchParams.get("from"), "2026-06-08T14:00:00.000Z");
+  assert.equal(url.searchParams.get("to"), "2026-06-08T15:00:00.000Z");
+  assert.equal(url.searchParams.get("q"), "execute bash/session");
+  assert.deepEqual(url.searchParams.getAll("filter"), ["tools:execute_bash", "tools:read file", "projects:kontour-console"]);
+  assert.equal(url.searchParams.get("limit"), "24");
+  assert.equal(url.searchParams.get("offset"), "48");
+  assert.equal(url.searchParams.get("sort"), "desc");
+  assert.deepEqual(fetchCalls[0].init?.headers, {
+    authorization: "Bearer secret-token",
+    "x-console-tenant-id": "tenant-a",
+    accept: "application/json"
+  });
+});
+
 test("hub client posts records to the records endpoint", async () => {
   const fetchCalls = installFetch([
     jsonResponse({ outcome: "accepted", recordId: "evt-1" })

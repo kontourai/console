@@ -10,6 +10,8 @@ import type {
   TelemetryStorageAdapterName,
   TelemetryFlowItem,
   TelemetryFlowSummary,
+  TelemetryQuery,
+  TelemetryQueryFilter,
   TelemetryRecord,
   TelemetryRecordSummary,
   TelemetrySourceSummary,
@@ -21,6 +23,14 @@ import { resolveTelemetryStorageAdapter } from "./config";
 const MAX_JSONL_LINES_PER_FILE = 5000;
 const MAX_TELEMETRY_READ_BYTES = 1024 * 1024;
 const MAX_TELEMETRY_SINK_BYTES = 5 * 1024 * 1024;
+const DEFAULT_TELEMETRY_QUERY_LIMIT = 100;
+const MAX_TELEMETRY_QUERY_LIMIT = 100;
+const MAX_TELEMETRY_QUERY_OFFSET = 100000;
+const MAX_TELEMETRY_QUERY_TEXT_LENGTH = 200;
+const MAX_TELEMETRY_QUERY_FILTERS = 25;
+const MAX_TELEMETRY_QUERY_FILTER_PART_LENGTH = 120;
+const MAX_TELEMETRY_QUERY_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
+const LIVE_WINDOW_MS = 60 * 1000;
 const TELEMETRY_LOG_FILES = ["full.jsonl", "analytics.jsonl"];
 const LOCAL_KONTOUR_DIR = ".kontour";
 const SQLITE_TELEMETRY_MIGRATION = path.resolve(__dirname, "..", "..", "migrations", "sqlite", "0001_telemetry_events.sql");
@@ -62,7 +72,7 @@ interface TelemetryRecordSourceDescriptor {
 
 export interface TelemetryStore {
   accept(record: TelemetryRecord, context?: ConsoleRequestContext): Promise<TelemetryDeliveryResult>;
-  summarize(context?: ConsoleRequestContext): Promise<TelemetrySummary>;
+  summarize(context?: ConsoleRequestContext, query?: TelemetryQuery): Promise<TelemetrySummary>;
   ready(): Promise<{ ok: boolean; safeMessage?: string }>;
   close(): void;
 }
@@ -70,7 +80,7 @@ export interface TelemetryStore {
 export interface TelemetryRepository {
   readonly adapterName: TelemetryStorageAdapterName;
   accept(record: TelemetryRecord, observedAt: string, context: ConsoleRequestContext): Promise<TelemetryDeliveryResult>;
-  runtimeSources(context: ConsoleRequestContext): Promise<Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>>;
+  runtimeSources(context: ConsoleRequestContext, query?: TelemetryQuery): Promise<Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>>;
   ready(): Promise<{ ok: boolean; safeMessage?: string }>;
   close?(): void;
 }
@@ -105,13 +115,14 @@ export function createTelemetryStore(options: ConsoleHubServerOptions = {}): Tel
       return repository.accept(record, observedAt, context);
     },
 
-    async summarize(context: ConsoleRequestContext = localRequestContext()): Promise<TelemetrySummary> {
+    async summarize(context: ConsoleRequestContext = localRequestContext(), query?: TelemetryQuery): Promise<TelemetrySummary> {
       return summarizeTelemetry({
         rootDir,
         flowAgentsRoot,
         descriptorPaths,
         includeProductRecordSources: context.runtimeMode !== "hosted",
-        runtimeSources: await repository.runtimeSources(context)
+        runtimeSources: await repository.runtimeSources(context, query),
+        query
       });
     },
 
@@ -220,12 +231,13 @@ class PostgresTelemetryRepository implements TelemetryRepository {
     }
   }
 
-  async runtimeSources(context: ConsoleRequestContext): Promise<Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>> {
+  async runtimeSources(context: ConsoleRequestContext, query?: TelemetryQuery): Promise<Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>> {
     if (!this.sqlClient) {
       const warnings = [issue("warning", `telemetry-storage:${this.adapterName}`, "telemetry SQL storage is selected but no SQL telemetry client is wired")];
       return [sourceSummary(`${this.adapterName}-telemetry-storage`, "runtime", this.adapterName, [], warnings)];
     }
     try {
+      const select = sqlTelemetrySelect(query, "postgres");
       const result = await this.sqlClient.query<{
         event_id: string;
         event_type: string;
@@ -234,12 +246,8 @@ class PostgresTelemetryRepository implements TelemetryRepository {
         received_at?: string | Date | null;
         payload: TelemetryRecord;
       }>(
-        `select event_id, event_type, session_id, observed_at, received_at, payload
-         from console_telemetry_events
-         where tenant_id = $1
-         order by coalesce(observed_at, received_at) desc
-         limit $2`,
-        [context.tenantId, MAX_JSONL_LINES_PER_FILE]
+        select.text,
+        [context.tenantId, ...select.values]
       );
       const records = result.rows
         .filter((row) => isTelemetryRecord(row.payload))
@@ -329,20 +337,15 @@ class SqliteTelemetryRepository implements TelemetryRepository {
     }
   }
 
-  async runtimeSources(context: ConsoleRequestContext): Promise<Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>> {
+  async runtimeSources(context: ConsoleRequestContext, query?: TelemetryQuery): Promise<Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>> {
     const database = this.openDatabase();
     if (!database) {
       const warnings = [issue("warning", "telemetry-storage:sqlite", this.unavailableMessage || "sqlite telemetry storage is not available")];
       return [sourceSummary("sqlite-telemetry-storage", "runtime", "sqlite", [], warnings)];
     }
     try {
-      const rows = database.prepare(
-        `select event_id, event_type, session_id, observed_at, received_at, payload
-         from console_telemetry_events
-         where tenant_id = ?
-         order by coalesce(observed_at, received_at) desc
-         limit ?`
-      ).all(context.tenantId, MAX_JSONL_LINES_PER_FILE);
+      const select = sqlTelemetrySelect(query, "sqlite");
+      const rows = database.prepare(select.text).all(context.tenantId, ...select.values);
       const records = rows
         .map((row: any) => sqlitePayloadRecord(row))
         .filter(isTelemetryRecord)
@@ -412,12 +415,116 @@ export function validateTelemetryRecordBody(body: unknown): TelemetryRecord {
   return body as TelemetryRecord;
 }
 
+export function parseTelemetryQuery(searchParams: URLSearchParams): TelemetryQuery | undefined {
+  if ([...searchParams.keys()].length === 0) return undefined;
+  const validation: ValidationIssue[] = [];
+  const preset = parsePreset(searchParams.get("preset"), validation);
+  const from = parseIsoTimestampParam("from", searchParams.get("from"), validation);
+  const to = parseIsoTimestampParam("to", searchParams.get("to"), validation);
+  const q = parseQueryText(searchParams.get("q"), validation);
+  const filters = parseTelemetryFilters(searchParams.getAll("filter"), validation);
+  const limit = parseBoundedInteger("limit", searchParams.get("limit"), 1, MAX_TELEMETRY_QUERY_LIMIT, DEFAULT_TELEMETRY_QUERY_LIMIT, validation);
+  const offset = parseBoundedInteger("offset", searchParams.get("offset"), 0, MAX_TELEMETRY_QUERY_OFFSET, 0, validation);
+  const sort = parseSort(searchParams.get("sort"), validation);
+
+  if (preset !== "custom" && (from || to) && searchParams.has("preset")) {
+    validation.push(issue("error", "query.preset", "from/to require preset=custom when preset is provided"));
+  }
+  if (from && to && Date.parse(from) > Date.parse(to)) {
+    validation.push(issue("error", "query.from", "from must be before to"));
+  }
+  if (from && to && Date.parse(to) - Date.parse(from) > MAX_TELEMETRY_QUERY_RANGE_MS) {
+    validation.push(issue("error", "query.to", "from/to range may not exceed 31 days"));
+  }
+  if (validation.length) {
+    const error = requestError("BAD_REQUEST", 400, "invalid telemetry query");
+    error.validation = validation;
+    throw error;
+  }
+  return {
+    preset,
+    from,
+    to,
+    q,
+    filters,
+    limit,
+    offset,
+    sort
+  };
+}
+
+function parsePreset(value: string | null, validation: ValidationIssue[]): TelemetryQuery["preset"] {
+  if (value === null || value === "") return undefined;
+  if (value === "live" || value === "15m" || value === "24h" || value === "7d" || value === "custom") return value;
+  validation.push(issue("error", "query.preset", "preset must be live, 15m, 24h, 7d, or custom"));
+  return undefined;
+}
+
+function parseSort(value: string | null, validation: ValidationIssue[]): TelemetryQuery["sort"] {
+  if (value === null || value === "") return "desc";
+  if (value === "desc" || value === "asc") return value;
+  validation.push(issue("error", "query.sort", "sort must be desc or asc"));
+  return "desc";
+}
+
+function parseIsoTimestampParam(name: "from" | "to", value: string | null, validation: ValidationIssue[]): string | undefined {
+  if (value === null || value === "") return undefined;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    validation.push(issue("error", `query.${name}`, `${name} must be an ISO timestamp`));
+    return undefined;
+  }
+  return new Date(parsed).toISOString();
+}
+
+function parseQueryText(value: string | null, validation: ValidationIssue[]): string | undefined {
+  if (value === null) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.length > MAX_TELEMETRY_QUERY_TEXT_LENGTH) {
+    validation.push(issue("error", "query.q", `q must be ${MAX_TELEMETRY_QUERY_TEXT_LENGTH} characters or fewer`));
+    return undefined;
+  }
+  return trimmed;
+}
+
+function parseTelemetryFilters(values: string[], validation: ValidationIssue[]): TelemetryQueryFilter[] {
+  if (values.length > MAX_TELEMETRY_QUERY_FILTERS) {
+    validation.push(issue("error", "query.filter", `filter may be repeated at most ${MAX_TELEMETRY_QUERY_FILTERS} times`));
+  }
+  return values.slice(0, MAX_TELEMETRY_QUERY_FILTERS).flatMap((value, index) => {
+    const separator = value.indexOf(":");
+    const facetId = separator >= 0 ? value.slice(0, separator).trim() : "";
+    const filterValue = separator >= 0 ? value.slice(separator + 1).trim() : "";
+    if (!facetId || !filterValue || facetId.length > MAX_TELEMETRY_QUERY_FILTER_PART_LENGTH || filterValue.length > MAX_TELEMETRY_QUERY_FILTER_PART_LENGTH) {
+      validation.push(issue("error", `query.filter[${index}]`, "filter must be formatted as facetId:value with bounded non-empty parts"));
+      return [];
+    }
+    return [{ facetId, label: facetId, value: filterValue }];
+  });
+}
+
+function parseBoundedInteger(name: "limit" | "offset", value: string | null, min: number, max: number, fallback: number, validation: ValidationIssue[]): number {
+  if (value === null || value === "") return fallback;
+  if (!/^\d+$/.test(value)) {
+    validation.push(issue("error", `query.${name}`, `${name} must be an integer`));
+    return fallback;
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max) {
+    validation.push(issue("error", `query.${name}`, `${name} must be between ${min} and ${max}`));
+    return fallback;
+  }
+  return parsed;
+}
+
 function summarizeTelemetry(input: {
   rootDir: string;
   flowAgentsRoot: string;
   descriptorPaths: string[];
   includeProductRecordSources: boolean;
   runtimeSources: Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>;
+  query?: TelemetryQuery;
 }): TelemetrySummary {
   const sources: TelemetrySourceSummary[] = [];
   const warnings: ValidationIssue[] = [];
@@ -440,17 +547,25 @@ function summarizeTelemetry(input: {
     addRecords(records, seen, productSource.records);
   }
 
+  const effectiveRange = effectiveQueryRange(input.query);
+  const matchedRecords = applyTelemetryQuery(records, input.query, effectiveRange, activeFacetDescriptors(descriptor)).sort(input.query?.sort === "asc" ? compareRecordTimeAsc : compareRecordTimeDesc);
+  const paginatedRecords = input.query
+    ? matchedRecords.slice(input.query.offset, input.query.offset + input.query.limit)
+    : matchedRecords;
+
   return {
     generatedAt: new Date().toISOString(),
     sources,
     totals: {
-      recordCount: records.length,
-      sessionCount: new Set(records.map((record: TelemetryRecordSummary) => record.sessionId).filter(Boolean)).size,
-      eventTypeCounts: countBy(records, "eventType"),
+      recordCount: matchedRecords.length,
+      sessionCount: new Set(matchedRecords.map((record: TelemetryRecordSummary) => record.sessionId).filter(Boolean)).size,
+      eventTypeCounts: countBy(matchedRecords, "eventType"),
       productRecordCount: productRecords.records.length
     },
-    analytics: buildAnalytics(records, descriptor),
-    records: records.sort(compareRecordTimeDesc),
+    analytics: buildAnalytics(matchedRecords, descriptor),
+    records: paginatedRecords,
+    query: input.query ? querySummary(input.query, effectiveRange) : undefined,
+    pagination: input.query ? paginationSummary(input.query, paginatedRecords.length, matchedRecords.length) : undefined,
     warnings
   };
 }
@@ -686,6 +801,10 @@ function listDescriptorFiles(root: string, patterns: string[]): string[] {
 function descriptorAttributes(data: OpenRecord, mappings: Record<string, string>): Record<string, string> {
   const attributes: Record<string, string> = {};
   for (const [attribute, selector] of Object.entries(mappings)) {
+    if (isSensitiveTelemetryKey(attribute)) {
+      attributes[attribute] = "[redacted]";
+      continue;
+    }
     const value = selectorValue(data, selector);
     if (typeof value === "string" && value) attributes[attribute] = value;
   }
@@ -700,7 +819,7 @@ function selectorValue(data: OpenRecord, selector: string): unknown {
 }
 
 function buildAnalytics(records: TelemetryRecordSummary[], descriptor: TelemetryDescriptor): TelemetryAnalyticsSummary {
-  const facets = descriptor.facets && descriptor.facets.length ? descriptor.facets : defaultFacetDescriptors();
+  const facets = activeFacetDescriptors(descriptor);
   return {
     facets: facets.map((facet: TelemetryFacetDescriptor) => ({
       id: facet.id,
@@ -709,6 +828,12 @@ function buildAnalytics(records: TelemetryRecordSummary[], descriptor: Telemetry
     })),
     flows: (descriptor.flows || []).map((flow: TelemetryFlowDescriptor) => summarizeDescriptorFlow(records, flow))
   };
+}
+
+function activeFacetDescriptors(descriptor: TelemetryDescriptor): TelemetryFacetDescriptor[] {
+  const byId = new Map(defaultFacetDescriptors().map((facet) => [facet.id, facet]));
+  for (const facet of descriptor.facets || []) byId.set(facet.id, facet);
+  return Array.from(byId.values());
 }
 
 function topAttributeCounts(records: TelemetryRecordSummary[], attribute: string, limit: number) {
@@ -837,8 +962,138 @@ function recordAttribute(record: TelemetryRecordSummary, attribute: string): str
   return record.attributes?.[attribute];
 }
 
+function applyTelemetryQuery(records: TelemetryRecordSummary[], query: TelemetryQuery | undefined, range: { from?: string; to?: string }, facets: TelemetryFacetDescriptor[]): TelemetryRecordSummary[] {
+  if (!query) return records;
+  const search = query.q?.toLowerCase();
+  const facetAttributes = new Map(facets.map((facet) => [facet.id, facet.attribute]));
+  return records.filter((record) => {
+    if (!matchesTimeRange(record, range)) return false;
+    if (search && !searchableRecordText(record).some((value) => value.toLowerCase().includes(search))) return false;
+    return matchesQueryFilters(record, query.filters, facetAttributes);
+  });
+}
+
+function matchesTimeRange(record: TelemetryRecordSummary, range: { from?: string; to?: string }): boolean {
+  if (!range.from && !range.to) return true;
+  const observed = Date.parse(record.observedAt || "");
+  if (!Number.isFinite(observed)) return false;
+  if (range.from && observed < Date.parse(range.from)) return false;
+  if (range.to && observed > Date.parse(range.to)) return false;
+  return true;
+}
+
+function searchableRecordText(record: TelemetryRecordSummary): string[] {
+  return [
+    record.eventId,
+    record.eventType,
+    record.sessionId,
+    record.sourceId,
+    record.sourceKind,
+    record.status,
+    record.outcome,
+    record.agentName,
+    record.runtime,
+    record.runtimeVersion,
+    record.model,
+    record.hookEventName,
+    record.runtimeSessionId,
+    record.turnId,
+    record.project,
+    record.cwd,
+    record.delegationTarget,
+    record.toolName,
+    record.taskSlug,
+    record.title,
+    ...Object.values(record.attributes || {})
+  ].filter((value): value is string => typeof value === "string" && value.length > 0);
+}
+
+function matchesQueryFilters(record: TelemetryRecordSummary, filters: TelemetryQueryFilter[], facetAttributes: Map<string, string>): boolean {
+  const byFacet = filters.reduce((groups: Record<string, Set<string>>, filter) => {
+    groups[filter.facetId] ||= new Set<string>();
+    groups[filter.facetId].add(filter.value);
+    return groups;
+  }, {});
+  return Object.entries(byFacet).every(([facetId, values]) => {
+    const attribute = facetAttributes.get(facetId) || facetId;
+    return values.has(recordAttribute(record, attribute) || record.attributes?.[facetId] || "");
+  });
+}
+
+function effectiveQueryRange(query: TelemetryQuery | undefined): { from?: string; to?: string } {
+  if (!query) return {};
+  if (query.from || query.to) return { from: query.from, to: query.to };
+  const now = Date.now();
+  if (query.preset === "live") return { from: new Date(now - LIVE_WINDOW_MS).toISOString() };
+  if (query.preset === "15m") return { from: new Date(now - 15 * 60 * 1000).toISOString() };
+  if (query.preset === "24h") return { from: new Date(now - 24 * 60 * 60 * 1000).toISOString() };
+  if (query.preset === "7d") return { from: new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString() };
+  return {};
+}
+
+function querySummary(query: TelemetryQuery, range: { from?: string; to?: string }) {
+  return {
+    preset: query.preset,
+    from: range.from,
+    to: range.to,
+    q: query.q,
+    filters: query.filters,
+    sort: query.sort
+  };
+}
+
+function paginationSummary(query: TelemetryQuery, returnedCount: number, totalMatchedCount: number) {
+  const nextOffset = query.offset + returnedCount < totalMatchedCount ? query.offset + returnedCount : undefined;
+  return {
+    limit: query.limit,
+    offset: query.offset,
+    returnedCount,
+    totalMatchedCount,
+    nextOffset
+  };
+}
+
+function sqlTelemetrySelect(query: TelemetryQuery | undefined, dialect: "postgres" | "sqlite"): { text: string; values: unknown[] } {
+  const range = effectiveQueryRange(query);
+  const where = ["tenant_id = PLACEHOLDER"];
+  const values: unknown[] = [];
+  if (range.from) {
+    values.push(range.from);
+    where.push("coalesce(observed_at, received_at) >= PLACEHOLDER");
+  }
+  if (range.to) {
+    values.push(range.to);
+    where.push("coalesce(observed_at, received_at) <= PLACEHOLDER");
+  }
+  values.push(sqlReadLimit(query));
+  const order = query?.sort === "asc" ? "asc" : "desc";
+  const template = `select event_id, event_type, session_id, observed_at, received_at, payload
+         from console_telemetry_events
+         where ${where.join(" and ")}
+         order by coalesce(observed_at, received_at) ${order}
+         limit PLACEHOLDER`;
+  let index = 0;
+  const text = template.replace(/PLACEHOLDER/g, () => {
+    index += 1;
+    return dialect === "postgres" ? `$${index}` : "?";
+  });
+  return { text, values };
+}
+
+function sqlReadLimit(query: TelemetryQuery | undefined): number {
+  if (!query) return MAX_JSONL_LINES_PER_FILE;
+  if (query.q || query.filters.length) return MAX_JSONL_LINES_PER_FILE;
+  return Math.min(MAX_JSONL_LINES_PER_FILE, Math.max(query.limit + query.offset, query.limit));
+}
+
 function compactStringRecord(values: Record<string, string | undefined>): Record<string, string> {
-  return Object.fromEntries(Object.entries(values).filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0));
+  return Object.fromEntries(Object.entries(values)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0)
+    .map(([key, value]) => [key, isSensitiveTelemetryKey(key) ? "[redacted]" : value]));
+}
+
+function isSensitiveTelemetryKey(key: string): boolean {
+  return /authorization|api[-_]?key|password|secret|token/i.test(key);
 }
 
 function addRecords(records: TelemetryRecordSummary[], seen: Set<string>, additions: TelemetryRecordSummary[]): void {
@@ -1081,6 +1336,10 @@ function countBy(records: TelemetryRecordSummary[], field: "eventType"): Record<
 
 function compareRecordTimeDesc(left: TelemetryRecordSummary, right: TelemetryRecordSummary): number {
   return Date.parse(right.observedAt || "") - Date.parse(left.observedAt || "");
+}
+
+function compareRecordTimeAsc(left: TelemetryRecordSummary, right: TelemetryRecordSummary): number {
+  return Date.parse(left.observedAt || "") - Date.parse(right.observedAt || "");
 }
 
 function resolvePath(rootDir: string, maybeRelativePath: string): string {
