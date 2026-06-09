@@ -38,27 +38,45 @@ export function TelemetrySection({ telemetry, error, liveStatus, lastLiveAt }: T
 function TelemetryTotals({ telemetry }: { telemetry: ConsoleTelemetryResponse | null }) {
   const toolInvocations = telemetry?.totals.eventTypeCounts["tool.invoke"] || 0;
   const delegations = telemetry?.totals.eventTypeCounts["agent.delegate"] || 0;
+  const projectCount = facetById(telemetry, "projects")?.counts.length || 0;
   return (
     <div className="telemetry-metrics" aria-label="Telemetry totals">
       <TelemetryMetric label="records" value={telemetry?.totals.recordCount ?? 0} />
       <TelemetryMetric label="sessions" value={telemetry?.totals.sessionCount ?? 0} />
+      <TelemetryMetric label="projects" value={projectCount} />
       <TelemetryMetric label="tools" value={toolInvocations} />
       <TelemetryMetric label="delegations" value={delegations} />
-      <TelemetryMetric label="product" value={telemetry?.totals.productRecordCount ?? 0} />
     </div>
   );
 }
 
 function TelemetryGrid({ telemetry, recentEvents }: { telemetry: ConsoleTelemetryResponse | null; recentEvents: ConsoleTelemetryResponse["records"] }) {
   const facets = telemetry?.analytics.facets || fallbackFacets(telemetry, recentEvents);
+  const primaryFacetIds = ["projects", "tools", "runtimes", "agents", "models", "events"];
+  const primaryFacets = primaryFacetIds
+    .map((id) => facets.find((facet) => facet.id === id))
+    .filter((facet): facet is NonNullable<typeof facet> => Boolean(facet));
+  const secondaryFacets = facets.filter((facet) => !primaryFacetIds.includes(facet.id));
   return (
     <div className="telemetry-grid">
       <TelemetrySources sources={telemetry?.sources || []} />
-      {facets.slice(0, 6).map((facet) => (
+      {primaryFacets.map((facet) => (
         <TelemetryPanel label={facet.id} title={facet.label} key={facet.id}>
           <BarList entries={facet.counts.map((item) => [item.name, item.count])} />
         </TelemetryPanel>
       ))}
+      {secondaryFacets.length ? (
+        <TelemetryPanel label="Dimensions" title="Additional breakdowns">
+          <div className="dimension-stack">
+            {secondaryFacets.slice(0, 6).map((facet) => (
+              <div className="dimension-row" key={facet.id}>
+                <strong>{facet.label}</strong>
+                <span>{facet.counts.slice(0, 3).map((item) => `${item.name} ${item.count}`).join(" / ") || "none"}</span>
+              </div>
+            ))}
+          </div>
+        </TelemetryPanel>
+      ) : null}
       {(telemetry?.analytics.flows || []).map((flow) => <TelemetryFlowPanel flow={flow} key={flow.id} />)}
     </div>
   );
@@ -123,8 +141,19 @@ function RecentTelemetryEvents({ events }: { events: ConsoleTelemetryResponse["r
           <div className="timeline-row" key={`${event.sourceId}:${event.eventId}`}>
             <span>{event.eventType}</span>
             <div>
-              <strong>{event.toolName || event.agentName || event.runtime || event.sourceId}</strong>
-              <p>{[event.sessionId, event.status].filter(Boolean).join(" / ") || event.sourceId}</p>
+              <strong>{event.toolName || event.agentName || event.runtime || event.project || event.sourceId}</strong>
+              <p>{eventSubtitle(event)}</p>
+              <details className="telemetry-details">
+                <summary>Details</summary>
+                <dl>
+                  {dimensionEntries(event).map(([label, value]) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
             </div>
             <time>{event.observedAt ? formatTime(event.observedAt) : "unknown"}</time>
           </div>
@@ -195,10 +224,53 @@ function countBy<T>(values: T[], field: keyof T): Record<string, number> {
   }, {});
 }
 
+function facetById(telemetry: ConsoleTelemetryResponse | null, id: string) {
+  return telemetry?.analytics.facets.find((facet) => facet.id === id);
+}
+
+function eventSubtitle(event: ConsoleTelemetryResponse["records"][number]): string {
+  return [
+    event.project,
+    event.runtime,
+    event.agentName,
+    event.model,
+    event.status || event.outcome,
+    event.sessionId
+  ].filter(Boolean).join(" / ") || event.sourceId;
+}
+
+function dimensionEntries(event: ConsoleTelemetryResponse["records"][number]): Array<[string, string]> {
+  const base: Record<string, string | undefined> = {
+    project: event.project,
+    cwd: event.cwd,
+    runtime: event.runtime,
+    runtimeVersion: event.runtimeVersion,
+    model: event.model,
+    agent: event.agentName,
+    tool: event.toolName,
+    hook: event.hookEventName,
+    outcome: event.outcome,
+    status: event.status,
+    session: event.sessionId,
+    runtimeSession: event.runtimeSessionId,
+    turn: event.turnId,
+    delegation: event.delegationTarget,
+    source: event.sourceId,
+    path: event.path
+  };
+  const merged = { ...event.attributes, ...base };
+  return Object.entries(merged)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0)
+    .sort(([left], [right]) => left.localeCompare(right));
+}
+
 function fallbackFacets(telemetry: ConsoleTelemetryResponse | null, recentEvents: ConsoleTelemetryResponse["records"]) {
   return [
+    { id: "projects", label: "Projects", counts: topEntries(countBy(recentEvents, "project"), 8).map(([name, count]) => ({ name, count })) },
     { id: "events", label: "Runtime event mix", counts: topEntries(telemetry?.totals.eventTypeCounts || {}, 8).map(([name, count]) => ({ name, count })) },
     { id: "tools", label: "Invocation mix", counts: topEntries(countBy(recentEvents, "toolName"), 8).map(([name, count]) => ({ name, count })) },
-    { id: "runtimes", label: "Harness mix", counts: topEntries(countBy(recentEvents, "runtime"), 8).map(([name, count]) => ({ name, count })) }
+    { id: "runtimes", label: "Harness mix", counts: topEntries(countBy(recentEvents, "runtime"), 8).map(([name, count]) => ({ name, count })) },
+    { id: "agents", label: "Agents", counts: topEntries(countBy(recentEvents, "agentName"), 8).map(([name, count]) => ({ name, count })) },
+    { id: "models", label: "Models", counts: topEntries(countBy(recentEvents, "model"), 8).map(([name, count]) => ({ name, count })) }
   ];
 }

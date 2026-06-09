@@ -256,7 +256,18 @@ test("local hub server summarizes telemetry logs without product-specific descri
   const flowAgentsRoot = path.join(rootDir, "flow-agents", ".flow-agents");
   fs.mkdirSync(telemetryRoot, { recursive: true });
   fs.mkdirSync(path.join(flowAgentsRoot, "telemetry-task"), { recursive: true });
-  fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), `${JSON.stringify(telemetryRecord("evt-telemetry-1", "tool.invoke", "session-a", "2026-06-08T12:00:00.000Z"))}\n`, "utf8");
+  const richRecord: any = telemetryRecord("evt-telemetry-1", "tool.invoke", "session-a", "2026-06-08T12:00:00.000Z");
+  richRecord.agent.version = "codex-cli 0.138.0";
+  richRecord.hook = {
+    event_name: "PreToolUse",
+    runtime_session_id: "runtime-session-a",
+    turn_id: "turn-a",
+    model: "gpt-5.5"
+  };
+  richRecord.context = { cwd: "/workspace/kontour-console" };
+  richRecord.tool = { name: "Bash", normalized_name: "execute_bash", status: "ok" };
+  richRecord.delegation = { targets: ["tool-worker"] };
+  fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), `${JSON.stringify(richRecord)}\n`, "utf8");
   fs.writeFileSync(path.join(telemetryRoot, "analytics.jsonl"), `${JSON.stringify(telemetryRecord("evt-telemetry-2", "turn.user", "session-a", "2026-06-08T12:01:00.000Z"))}\n`, "utf8");
   fs.writeFileSync(path.join(flowAgentsRoot, "telemetry-task", "state.json"), JSON.stringify({
     schema_version: "1.0",
@@ -276,6 +287,18 @@ test("local hub server summarizes telemetry logs without product-specific descri
     assert.equal(telemetry.body.totals.eventTypeCounts["tool.invoke"], 1);
     assert.equal(telemetry.body.totals.productRecordCount, 0);
     assert.equal(telemetry.body.records.some((record: any) => record.eventId === "evt-telemetry-1"), true);
+    const richSummary = telemetry.body.records.find((record: any) => record.eventId === "evt-telemetry-1");
+    assert.equal(richSummary.project, "kontour-console");
+    assert.equal(richSummary.cwd, "/workspace/kontour-console");
+    assert.equal(richSummary.runtimeVersion, "codex-cli 0.138.0");
+    assert.equal(richSummary.model, "gpt-5.5");
+    assert.equal(richSummary.hookEventName, "PreToolUse");
+    assert.equal(richSummary.runtimeSessionId, "runtime-session-a");
+    assert.equal(richSummary.turnId, "turn-a");
+    assert.equal(richSummary.delegationTarget, "tool-worker");
+    assert.equal(richSummary.outcome, "ok");
+    assert.equal(telemetry.body.analytics.facets.some((facet: any) => facet.id === "projects" && facet.counts.some((item: any) => item.name === "kontour-console")), true);
+    assert.equal(telemetry.body.analytics.facets.some((facet: any) => facet.id === "models" && facet.counts.some((item: any) => item.name === "gpt-5.5")), true);
     assert.equal(telemetry.body.sources.some((source: any) => String(source.path).startsWith(rootDir)), false);
     assert.equal(telemetry.body.sources.some((source: any) => String(source.path).includes("..")), false);
     assert.equal(telemetry.body.records.some((record: any) => String(record.path).startsWith(rootDir)), false);

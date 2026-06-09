@@ -488,6 +488,19 @@ function readTelemetryJsonl(filePath: string, displayPath: string, sourceId: str
 }
 
 function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, filePath: string): TelemetryRecordSummary {
+  const cwd = nestedString(record, ["context", "cwd"]);
+  const project = projectNameFromCwd(cwd);
+  const delegation = delegationTarget(record);
+  const hookEventName = nestedString(record, ["hook", "event_name"]);
+  const runtimeSessionId = nestedString(record, ["hook", "runtime_session_id"]);
+  const turnId = nestedString(record, ["hook", "turn_id"]);
+  const model = nestedString(record, ["hook", "model"]) || nestedString(record, ["usage", "model"]);
+  const runtimeVersion = nestedString(record, ["agent", "version"]);
+  const agentName = nestedString(record, ["agent", "name"]);
+  const runtime = nestedString(record, ["agent", "runtime"]);
+  const toolName = nestedString(record, ["tool", "normalized_name"]) || nestedString(record, ["tool", "name"]);
+  const status = nestedString(record, ["status"]) || hookEventName;
+  const outcome = nestedString(record, ["outcome"]) || nestedString(record, ["tool", "status"]);
   return {
     sourceId,
     sourceKind: "runtime",
@@ -495,20 +508,37 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
     eventType: record.event_type,
     sessionId: record.session_id,
     observedAt: normalizeTimestamp(record.timestamp),
-    status: nestedString(record, ["status"]) || nestedString(record, ["hook", "event_name"]),
-    outcome: nestedString(record, ["outcome"]) || nestedString(record, ["tool", "status"]),
+    status,
+    outcome,
     durationMs: numberField(record, "duration_ms"),
-    agentName: nestedString(record, ["agent", "name"]),
-    runtime: nestedString(record, ["agent", "runtime"]),
-    toolName: nestedString(record, ["tool", "normalized_name"]) || nestedString(record, ["tool", "name"]),
+    agentName,
+    runtime,
+    runtimeVersion,
+    model,
+    hookEventName,
+    runtimeSessionId,
+    turnId,
+    project,
+    cwd,
+    delegationTarget: delegation,
+    toolName,
     attributes: compactStringRecord({
       sourceKind: "runtime",
       eventType: record.event_type,
       sessionId: record.session_id,
-      agentName: nestedString(record, ["agent", "name"]),
-      runtime: nestedString(record, ["agent", "runtime"]),
-      toolName: nestedString(record, ["tool", "normalized_name"]) || nestedString(record, ["tool", "name"]),
-      delegationTarget: delegationTarget(record)
+      agentName,
+      runtime,
+      runtimeVersion,
+      model,
+      hookEventName,
+      runtimeSessionId,
+      turnId,
+      project,
+      cwd,
+      toolName,
+      status,
+      outcome,
+      delegationTarget: delegation
     }),
     path: filePath
   };
@@ -725,15 +755,22 @@ function dedupeFlowItems(items: TelemetryFlowItem[]): TelemetryFlowItem[] {
 function delegationTarget(record: TelemetryRecord): string | undefined {
   const targets = nestedValue(record, ["delegation", "targets"]);
   if (Array.isArray(targets) && typeof targets[0] === "string") return targets[0];
+  const query = nestedString(record, ["delegation", "targets", "query"]);
+  if (query) return query;
   return undefined;
 }
 
 function defaultFacetDescriptors(): TelemetryFacetDescriptor[] {
   return [
+    { id: "projects", label: "Projects", attribute: "project" },
     { id: "tools", label: "Tools", attribute: "toolName" },
     { id: "runtimes", label: "Runtimes", attribute: "runtime" },
+    { id: "models", label: "Models", attribute: "model" },
     { id: "agents", label: "Agents", attribute: "agentName" },
     { id: "events", label: "Events", attribute: "eventType" },
+    { id: "outcomes", label: "Outcomes", attribute: "outcome" },
+    { id: "hooks", label: "Hook events", attribute: "hookEventName" },
+    { id: "delegations", label: "Delegation targets", attribute: "delegationTarget" },
     { id: "workflow-status", label: "Workflow status", attribute: "status" }
   ];
 }
@@ -994,6 +1031,13 @@ function nestedValue(data: unknown, keys: string[]): unknown {
     current = current[key];
   }
   return current;
+}
+
+function projectNameFromCwd(cwd: string | undefined): string | undefined {
+  if (!cwd) return undefined;
+  const normalized = path.normalize(cwd);
+  const basename = path.basename(normalized);
+  return basename === "." || basename === path.sep ? undefined : basename;
 }
 
 function normalizeTimestamp(value: unknown): string | undefined {
