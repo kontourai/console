@@ -17,4 +17,10 @@ npm install
 npm run dev
 ```
 
-The UI defaults to `http://127.0.0.1:3737`, connects with `EventSource` on the supported `/events` SSE compatibility path, and updates from `state` and `record.accepted` SSE events. New clients should prefer canonical `/stream`. It does not poll, execute actions, or include graph rendering.
+The UI defaults to `http://127.0.0.1:3737`. Override it for dogfood or alternate local hubs:
+
+```sh
+VITE_CONSOLE_HUB_URL=http://127.0.0.1:3738 npm run dev
+```
+
+The UI connects with `EventSource` on the canonical `/stream` SSE path and updates from `state`, `record.accepted`, and `telemetry.updated` events. It does not poll for hub state or execute actions.
