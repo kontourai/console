@@ -11,6 +11,7 @@ import type {
   ConsoleTelemetryResponse,
   TelemetryQueryInput
 } from "./serverApiTypes";
+import { normalizeTelemetryQuery } from "./utils/telemetryQuery";
 
 const viteEnv = (import.meta as ImportMeta & { env?: Partial<ImportMetaEnv> }).env;
 export const DEFAULT_HUB_URL = viteEnv?.VITE_CONSOLE_HUB_URL || "http://127.0.0.1:3737";
@@ -129,17 +130,16 @@ function hubApiUrl(hubUrl: string, path: string): string {
 }
 
 function telemetryPath(query?: TelemetryQueryInput): string {
+  const normalized = query ? normalizeTelemetryQuery(query) : undefined;
   const params = new URLSearchParams();
-  if (query?.preset) params.set("preset", query.preset);
-  if (query?.from) params.set("from", query.from);
-  if (query?.to) params.set("to", query.to);
-  if (query?.q) params.set("q", query.q);
-  for (const filter of query?.filters || []) {
-    if (filter.facetId && filter.value) params.append("filter", `${filter.facetId}:${filter.value}`);
-  }
-  if (typeof query?.limit === "number") params.set("limit", String(query.limit));
-  if (typeof query?.offset === "number") params.set("offset", String(query.offset));
-  if (query?.sort) params.set("sort", query.sort);
+  if (normalized?.preset) params.set("preset", normalized.preset);
+  if (normalized?.from) params.set("from", normalized.from);
+  if (normalized?.to) params.set("to", normalized.to);
+  if (normalized?.q) params.set("q", normalized.q);
+  for (const filter of normalized?.filters || []) params.append("filter", `${filter.facetId}:${filter.value}`);
+  if (typeof normalized?.limit === "number") params.set("limit", String(normalized.limit));
+  if (typeof normalized?.offset === "number") params.set("offset", String(normalized.offset));
+  if (normalized?.sort) params.set("sort", normalized.sort);
   const encoded = params.toString();
   return encoded ? `/api/telemetry?${encoded}` : "/api/telemetry";
 }

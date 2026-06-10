@@ -899,7 +899,24 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
       { id: "cwd", label: "Working directories", attribute: "cwd" },
       { id: "workflow-status", label: "Workflow status", attribute: "status" }
     ],
-    flows: [{ id: "builder.shape", label: "Builder shape", match: { attribute: "taskSlug", includes: "shape" }, titleAttribute: "title" }]
+    flows: [{
+      id: "builder.shape",
+      label: "Builder shape",
+      match: { attribute: "taskSlug", includes: "shape" },
+      titleAttribute: "title",
+      detailAttributes: {
+        Project: "project",
+        Skill: "skill",
+        Status: "status"
+      }
+    }, {
+      id: "malformed.detail",
+      label: "Malformed detail",
+      match: { attribute: "taskSlug", includes: "shape" },
+      detailAttributes: {
+        Project: ["project"]
+      }
+    }]
   }), "utf8");
   fs.writeFileSync(path.join(widgetRepo, "console.telemetry.json"), JSON.stringify({
     recordSources: [{
@@ -914,7 +931,17 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
         observedAt: "updated"
       }
     }],
-    facets: [{ id: "widget-projects", label: "Widget projects", attribute: "project" }]
+    facets: [{ id: "widget-projects", label: "Widget projects", attribute: "project" }],
+    flows: [{
+      id: "widget.release",
+      label: "Widget release",
+      match: { attribute: "project", equals: "widget-console" },
+      titleAttribute: "title",
+      detailAttributes: {
+        Project: "project",
+        State: "status"
+      }
+    }]
   }), "utf8");
   fs.writeFileSync(path.join(flowAgentsRoot, "shape-provider-settings", "state.json"), JSON.stringify({
     schema_version: "1.0",
@@ -959,6 +986,7 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
     rootDir,
     port: 0,
     telemetryRoot,
+    telemetryDescriptorPaths: ["product:flow-agents:console.telemetry.json"],
     telemetryProductRoots: {
       "flow-agents": flowAgentsRepo,
       widget: widgetRepo
@@ -984,6 +1012,18 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
     assert.equal(telemetry.body.analytics.flows[0].id, "builder.shape");
     assert.equal(telemetry.body.analytics.flows[0].total, 1);
     assert.equal(telemetry.body.analytics.flows[0].items[0].title, "Shape provider settings");
+    assert.equal(telemetry.body.analytics.flows.filter((flow: any) => flow.id === "builder.shape").length, 1);
+    assert.deepEqual(telemetry.body.analytics.flows[0].items[0].details, [
+      { label: "Project", value: "kontour-console" },
+      { label: "Skill", value: "builder-shape" },
+      { label: "Status", value: "done" }
+    ]);
+    const widgetFlow = telemetry.body.analytics.flows.find((flow: any) => flow.id === "widget.release");
+    assert.deepEqual(widgetFlow.items[0].details, [
+      { label: "Project", value: "widget-console" },
+      { label: "State", value: "ready" }
+    ]);
+    assert.equal(telemetry.body.analytics.flows.some((flow: any) => flow.id === "malformed.detail"), false);
     assert.equal(workflowRecord.attributes.secretToken, "[redacted]");
     assert.equal(workflowRecord.attributes.leakyTitle, "[redacted]");
     assert.equal(JSON.stringify(telemetry.body).includes("super-secret-workflow-token"), false);

@@ -52,6 +52,7 @@ export interface ConsoleTelemetryFlowItem {
   status?: string;
   updatedAt?: string;
   attributes?: Record<string, string>;
+  details?: Array<{ label: string; value: string }>;
 }
 
 export interface ConsoleTelemetryFacetSummary {

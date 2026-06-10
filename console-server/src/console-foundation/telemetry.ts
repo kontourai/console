@@ -53,6 +53,7 @@ interface TelemetryFlowDescriptor {
   label?: string;
   match?: TelemetryDescriptorMatch;
   titleAttribute?: string;
+  detailAttributes?: Record<string, string>;
   limit?: number;
 }
 
@@ -858,7 +859,8 @@ function summarizeDescriptorFlow(records: TelemetryRecordSummary[], flow: Teleme
       title: recordAttribute(record, flow.titleAttribute || "title") || record.title,
       status: record.status,
       updatedAt: record.observedAt,
-      attributes: record.attributes
+      attributes: record.attributes,
+      details: flowDetails(record, flow.detailAttributes || {})
     }));
   const uniqueItems = dedupeFlowItems(items);
   return {
@@ -867,6 +869,15 @@ function summarizeDescriptorFlow(records: TelemetryRecordSummary[], flow: Teleme
     total: uniqueItems.length,
     items: uniqueItems.slice(0, flow.limit || 10)
   };
+}
+
+function flowDetails(record: TelemetryRecordSummary, detailAttributes: Record<string, string>): Array<{ label: string; value: string }> | undefined {
+  const details = Object.entries(detailAttributes).flatMap(([label, attribute]) => {
+    if (!label || isSensitiveTelemetryKey(label) || isSensitiveTelemetrySelector(attribute)) return [];
+    const value = recordAttribute(record, attribute);
+    return value ? [{ label, value }] : [];
+  });
+  return details.length ? details : undefined;
 }
 
 function dedupeFlowItems(items: TelemetryFlowItem[]): TelemetryFlowItem[] {
@@ -961,10 +972,20 @@ function loadTelemetryDescriptor(rootDir: string, productRoots: TelemetryProduct
       resolveContainedPath(productRoot, path.join(".kontour", "console.telemetry.json"))
     ])
   ];
-  const descriptors = candidates
+  const descriptors = uniqueExistingDescriptorPaths(candidates)
     .filter((candidate: string) => fs.existsSync(candidate))
     .map((candidate: string) => readTelemetryDescriptor(candidate));
   return mergeTelemetryDescriptors(descriptors);
+}
+
+function uniqueExistingDescriptorPaths(candidates: string[]): string[] {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = fs.existsSync(candidate) ? fs.realpathSync(candidate) : path.resolve(candidate);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function resolveDescriptorPath(rootDir: string, productRoots: TelemetryProductRoots, descriptorPath: string): string {
@@ -1010,11 +1031,24 @@ function isFacetDescriptor(value: unknown): value is TelemetryFacetDescriptor {
 }
 
 function isFlowDescriptor(value: unknown): value is TelemetryFlowDescriptor {
-  return isOpenRecord(value) && typeof value.id === "string";
+  return isOpenRecord(value)
+    && typeof value.id === "string"
+    && (value.detailAttributes === undefined || isDescriptorStringMap(value.detailAttributes));
 }
 
 function isRecordSourceDescriptor(value: unknown): value is TelemetryRecordSourceDescriptor {
   return isOpenRecord(value) && typeof value.id === "string";
+}
+
+function isDescriptorStringMap(value: unknown): value is Record<string, string> {
+  if (!isOpenRecord(value) || Array.isArray(value)) return false;
+  return Object.entries(value).every(([key, selector]) => (
+    typeof selector === "string"
+    && key.length > 0
+    && key.length <= MAX_TELEMETRY_QUERY_FILTER_PART_LENGTH
+    && selector.length > 0
+    && selector.length <= MAX_TELEMETRY_QUERY_FILTER_PART_LENGTH
+  ));
 }
 
 function descriptorMatch(record: TelemetryRecordSummary, match?: TelemetryDescriptorMatch): boolean {

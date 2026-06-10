@@ -126,6 +126,10 @@ const telemetryState = {
             status: "done",
             updatedAt: "2026-06-08T15:00:00.000Z",
             attributes: { toolName: "execute_bash", project: "kontour-console" },
+            details: [
+              { label: "Artifact", value: "provider-settings.md" },
+              { label: "Project", value: "kontour-console" },
+            ],
           },
           {
             slug: "shape-surface-telemetry",
@@ -133,6 +137,7 @@ const telemetryState = {
             status: "done",
             updatedAt: "2026-06-08T14:59:00.000Z",
             attributes: { toolName: "read_file", project: "surface" },
+            details: [{ label: "Artifact", value: "surface-telemetry.md" }],
           },
         ],
       },
@@ -183,6 +188,12 @@ const telemetryState = {
       observedAt: "2026-06-08T15:00:00.000Z",
       sessionId: "telemetry-task",
       status: "execution",
+      project: "kontour-console",
+      attributes: {
+        flow: "builder.shape",
+        project: "kontour-console",
+        status: "execution",
+      },
     },
     {
       eventId: "evt-telemetry-2",
@@ -276,6 +287,7 @@ test("renders telemetry usage from the console API", async ({ page }) => {
   await expect(page.getByRole("main")).toContainText("kontour-console");
   await expect(page.getByRole("main")).toContainText("gpt-5.5");
   await expect(page.getByRole("main")).toContainText("Builder shape");
+  await expect(page.getByRole("main")).toContainText("provider-settings.md");
   await expect(page.getByRole("main")).toContainText("deliver");
   await expect(page.getByRole("main")).toContainText("execute_bash");
   await expect(page.getByRole("main")).toContainText("read_file");
@@ -309,11 +321,11 @@ test("renders telemetry usage from the console API", async ({ page }) => {
   await expect(page.locator(".telemetry-recent")).toContainText("read_file");
   await expect(page.locator(".telemetry-recent")).not.toContainText("execute_bash");
   await page.getByRole("button", { name: "Clear", exact: true }).click();
-  await page.getByRole("button", { name: /execute_bash/ }).click();
+  await page.getByRole("button", { name: "execute_bash 18" }).click();
   await expect(page.getByLabel("Telemetry filters")).toContainText("Tools: execute_bash");
   await expect(page.locator(".telemetry-recent")).not.toContainText("read_file");
   await expect(page.getByRole("main")).toContainText("1 visible / 1 matched");
-  await page.getByRole("button", { name: /read_file/ }).click();
+  await page.getByRole("button", { name: "read_file 3" }).click();
   await expect(page.locator(".telemetry-recent")).toContainText("read_file");
   await expect(page.getByRole("main")).toContainText("2 visible / 2 matched");
   await expect(page.locator(".bar-row", { hasText: "execute_bash" }).first()).toHaveAttribute("aria-pressed", "true");
@@ -335,7 +347,7 @@ test("renders telemetry usage from the console API", async ({ page }) => {
   await expect(page.getByRole("main")).toContainText("codex-cli 0.138.0");
   await expect(page.getByRole("main")).toContainText('"eventId": "evt-telemetry-1"');
   await page.getByRole("button", { name: "Clear", exact: true }).click();
-  await page.getByRole("button", { name: /window.__kontourConsoleXss=true/ }).click();
+  await page.getByRole("button", { name: /<img src=x onerror=.* 1/ }).click();
   await openFirstTelemetryDetails(page);
   await expect(page.getByRole("main")).toContainText('"secretToken": "[redacted]"');
   await expect(page.getByRole("main")).not.toContainText("super-secret-token");
@@ -351,6 +363,97 @@ test("opens telemetry directly from the browser route", async ({ page }) => {
 
   await expect(page.getByRole("button", { name: "Telemetry", exact: true })).toHaveClass(/active/);
   await expect(page.getByRole("main")).toContainText("Runtime and workflow usage");
+  expect(consoleErrors).toEqual([]);
+});
+
+test("syncs telemetry query state with URL and browser history", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  await page.goto("/telemetry?preset=24h&q=read_file&filter=tools:read_file&limit=24&sort=desc");
+
+  await expect(page.getByRole("button", { name: "Telemetry", exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole("textbox", { name: "Search" })).toHaveValue("read_file");
+  await expect(page.getByLabel("Telemetry filters")).toContainText("Tools: read_file");
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["tools:read_file"]);
+  await page.getByRole("button", { name: "Last 15m" }).click();
+  await expect(page).toHaveURL(/preset=15m/);
+  await page.goBack();
+  await expect(page.getByRole("textbox", { name: "Search" })).toHaveValue("read_file");
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.preset)).toBe("24h");
+  expect(consoleErrors).toEqual([]);
+});
+
+test("saves applies reloads and deletes telemetry query presets safely", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  await page.goto("/telemetry");
+  await page.evaluate(() => window.localStorage.setItem("kontour.console.telemetry.presets.v1", "{broken"));
+  await page.reload();
+  await expect(page.getByLabel("Saved telemetry presets")).toBeVisible();
+  await page.evaluate(() => window.localStorage.setItem("kontour.console.telemetry.presets.v1", JSON.stringify([{
+    version: 1,
+    name: "Broken shape",
+    query: { filters: { facetId: "tools", value: "read_file" } },
+    createdAt: "2026-06-08T15:00:00.000Z",
+    updatedAt: "2026-06-08T15:00:00.000Z",
+  }])));
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Broken shape", exact: true })).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Search" }).fill("read_file");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await page.getByRole("button", { name: /Open Tools drilldown read_file/ }).click();
+  await page.getByRole("textbox", { name: "Preset" }).fill("Read tools");
+  await page.getByRole("button", { name: "Save" }).click();
+  const stored = await page.evaluate(() => window.localStorage.getItem("kontour.console.telemetry.presets.v1"));
+  expect(stored).toContain("\"name\":\"Read tools\"");
+  expect(stored).toContain("\"query\"");
+  expect(stored).not.toContain("evt-telemetry-1");
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Read tools", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await page.getByRole("button", { name: "Read tools", exact: true }).click();
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.q)).toBe("read_file");
+  await page.getByRole("button", { name: "Delete preset Read tools" }).click();
+  await expect(page.getByRole("button", { name: "Read tools", exact: true })).toHaveCount(0);
+  expect(consoleErrors).toEqual([]);
+});
+
+test("opens and refreshes telemetry dimension drilldown routes", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  await page.goto("/telemetry/tools/read_file?preset=24h&q=read");
+  await expect(page.getByLabel("Telemetry drilldown")).toContainText("read_file");
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["tools:read_file"]);
+  await page.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(page).toHaveURL(/\/telemetry\/tools\/read_file/);
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["tools:read_file"]);
+  await page.evaluate(() => window.localStorage.setItem("kontour.console.telemetry.presets.v1", JSON.stringify([{
+    version: 1,
+    name: "Search execute",
+    query: { preset: "24h", q: "execute", limit: 24, sort: "desc" },
+    createdAt: "2026-06-08T15:00:00.000Z",
+    updatedAt: "2026-06-08T15:00:00.000Z",
+  }])));
+  await page.reload();
+  await page.getByRole("button", { name: "Search execute", exact: true }).click();
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["tools:read_file"]);
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.q)).toBe("execute");
+  await page.getByRole("button", { name: "Remove Tools filter read_file" }).click();
+  await expect(page).toHaveURL(/\/telemetry($|\?)/);
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual([]);
+  await page.reload();
+  await expect(page.getByLabel("Telemetry drilldown")).toHaveCount(0);
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual([]);
+
+  await page.goto("/telemetry/projects/kontour-console?preset=24h");
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["projects:kontour-console"]);
+  await page.goto("/telemetry/flows/builder.shape?preset=24h");
+  await expect(page.getByLabel("Telemetry drilldown")).toContainText("builder.shape");
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["flows:builder.shape"]);
   expect(consoleErrors).toEqual([]);
 });
 
@@ -373,7 +476,7 @@ test("keeps the primary console sections within the mobile viewport", async ({ p
   }
 
   await page.getByRole("button", { name: "Telemetry", exact: true }).click();
-  await page.getByRole("button", { name: /window.__kontourConsoleXss=true/ }).click();
+  await page.getByRole("button", { name: /<img src=x onerror=.* 1/ }).click();
   await openFirstTelemetryDetails(page);
   const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(viewport).not.toBeNull();

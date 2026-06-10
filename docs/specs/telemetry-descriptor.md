@@ -78,6 +78,10 @@ Integration](../integrations/flow-agents-console.md).
       "label": "Release validation",
       "match": { "attribute": "feature", "includes": "release" },
       "titleAttribute": "title",
+      "detailAttributes": {
+        "Component": "component",
+        "Status": "status"
+      },
       "limit": 10
     }
   ]
@@ -129,7 +133,9 @@ Console analytics are descriptor-driven:
 - `facets[]` define count surfaces by naming a stable `id`, display `label`, and
   source `attribute`.
 - `flows[]` define grouped lists by matching generic attributes and choosing
-  display attributes such as `titleAttribute`.
+  display attributes such as `titleAttribute`. They may also provide
+  `detailAttributes`, a label-to-attribute map for compact generic detail rows
+  on each flow item.
 - `recordSources[]` define how product-owned records are read and mapped into
   generic attributes before analytics are computed.
 
