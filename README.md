@@ -1,18 +1,37 @@
-# Console
+# Kontour Console
 
-Console is the suite-level management and visibility product for Kontour.
+**One operating plane for the whole suite: claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.**
 
-The primitives remain portable:
+The primitives remain portable — Console never becomes the authority for any of them:
 
-- Surface owns claim trust state.
-- Flow owns process transparency and gate control.
-- Survey owns fact-review records.
-- Veritas owns repo/change governance.
-- Flow Agents owns agent-facing runtime distribution.
-
-Console brings those products together into one operating plane for claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.
+- [Surface](https://kontourai.io/surface) owns claim trust state.
+- [Flow](https://kontourai.io/flow) owns process transparency and gate control.
+- [Survey](https://kontourai.io/survey) owns fact-review records.
+- [Veritas](https://kontourai.io/veritas) owns repo/change governance.
+- [Flow Agents](https://kontourai.io/flow-agents) owns agent-facing runtime distribution.
 
 This repo ships local-first Console foundation code alongside the product context and architecture decisions. It includes fixture inspection, local file sinks, deterministic replay, and a loopback-only development server; it is not a hosted production service.
+
+![Console local operating plane showing a replayed process flow with passed and waiting gates, claims, and an active process](docs/assets/console-operating-plane.png)
+
+## See it locally
+
+Start the hub and the UI, then replay the bundled cross-product example streams into it:
+
+```sh
+# terminal 1: loopback hub + UI together
+npm run dev:local
+
+# terminal 2: replay the example streams into the hub
+for f in docs/examples/event-streams/*.jsonl; do
+  while IFS= read -r line; do
+    [ -n "$line" ] && curl -s -X POST -H "content-type: application/json" \
+      --data "$line" http://127.0.0.1:3737/records >/dev/null
+  done < "$f"
+done
+```
+
+Open the UI, hit Reconnect, and the operating plane renders the replayed state: a Flow run waiting on a required-fields coverage gate, Surface claim freshness, and a Survey field review — the suite story in one screen.
 
 ## Package Layout
 
