@@ -1,14 +1,17 @@
 import { Empty } from "@kontourai/console-kit/react";
 import type { FormEvent, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ConsoleTelemetryResponse, TelemetryQueryFilter, TelemetryQueryInput, TelemetryQueryPreset } from "../serverApiTypes";
 import { formatTime } from "../utils/format";
+import { isTelemetryQueryInput, normalizeTelemetryQuery, parseTelemetryRoute, serializeTelemetryRoute, type TelemetryRouteState } from "../utils/telemetryQuery";
 
 interface TelemetrySectionProps {
   telemetry: ConsoleTelemetryResponse | null;
   error: string | null;
   query: TelemetryQueryInput;
+  drilldown?: TelemetryRouteState["drilldown"];
   onQueryChange(query: TelemetryQueryInput): void;
+  onOpenRoute(route: TelemetryRouteState): void;
   liveStatus: string;
   lastLiveAt?: string | null;
 }
@@ -30,7 +33,19 @@ interface TelemetryQueryControlState {
   onQueryChange(query: TelemetryQueryInput): void;
 }
 
-export function TelemetrySection({ telemetry, error, query, onQueryChange, liveStatus, lastLiveAt }: TelemetrySectionProps) {
+interface SavedTelemetryPreset {
+  version: 1;
+  name: string;
+  query: TelemetryQueryInput;
+  createdAt: string;
+  updatedAt: string;
+}
+
+const SAVED_PRESETS_KEY = "kontour.console.telemetry.presets.v1";
+const MAX_SAVED_PRESETS = 12;
+const MAX_PRESET_NAME_LENGTH = 48;
+
+export function TelemetrySection({ telemetry, error, query, drilldown, onQueryChange, onOpenRoute, liveStatus, lastLiveAt }: TelemetrySectionProps) {
   const allEvents = telemetry?.records || [];
   const filters = useMemo(() => labelFilters(query.filters || [], telemetry), [query.filters, telemetry]);
   const facets = useMemo(() => telemetryFacets(telemetry, allEvents), [telemetry, allEvents]);
@@ -60,6 +75,8 @@ export function TelemetrySection({ telemetry, error, query, onQueryChange, liveS
         query={query}
         controls={actions.controls}
       />
+      <TelemetrySavedPresets query={query} onQueryChange={onQueryChange} />
+      {drilldown ? <TelemetryDrilldownHeader drilldown={drilldown} onOpenRoute={onOpenRoute} query={query} /> : null}
       <TelemetryTotals telemetry={telemetry} />
       <TelemetryFilterBar
         filters={filters}
@@ -68,12 +85,16 @@ export function TelemetrySection({ telemetry, error, query, onQueryChange, liveS
         query={query}
         onRemove={actions.removeFilter}
         onClear={actions.clearQuery}
+        drilldown={drilldown}
+        onOpenRoute={onOpenRoute}
       />
       <TelemetryGrid
         telemetry={telemetry}
         facets={facets}
         filters={filters}
         onToggleFilter={actions.toggleFilter}
+        onOpenRoute={onOpenRoute}
+        query={query}
       />
       <RecentTelemetryEvents
         events={allEvents}
@@ -96,6 +117,9 @@ function useTelemetryQueryActions(
   const [searchDraft, setSearchDraft] = useState(query.q || "");
   const [fromDraft, setFromDraft] = useState(toDatetimeLocalValue(query.from));
   const [toDraft, setToDraft] = useState(toDatetimeLocalValue(query.to));
+  useEffect(() => setSearchDraft(query.q || ""), [query.q]);
+  useEffect(() => setFromDraft(toDatetimeLocalValue(query.from)), [query.from]);
+  useEffect(() => setToDraft(toDatetimeLocalValue(query.to)), [query.to]);
   return {
     controls: { searchDraft, fromDraft, toDraft, setSearchDraft, setFromDraft, setToDraft, onQueryChange, query },
     toggleFilter: (filter: TelemetryFilter) => onQueryChange(toggleQueryFilter(query, filter)),
@@ -115,6 +139,96 @@ function useTelemetryQueryActions(
       onQueryChange({ ...query, offset: Math.max(0, currentOffset - limit) });
     }
   };
+}
+
+function TelemetrySavedPresets({ query, onQueryChange }: { query: TelemetryQueryInput; onQueryChange(query: TelemetryQueryInput): void }) {
+  const [presets, setPresets] = useState<SavedTelemetryPreset[]>(loadSavedPresets);
+  const [name, setName] = useState("");
+  function persist(nextPresets: SavedTelemetryPreset[]) {
+    setPresets(nextPresets);
+    try {
+      window.localStorage.setItem(SAVED_PRESETS_KEY, JSON.stringify(nextPresets));
+    } catch {
+      // Storage can be unavailable in private/browser-restricted contexts; keep the in-memory preset list usable.
+    }
+  }
+  function saveCurrent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = name.trim().slice(0, MAX_PRESET_NAME_LENGTH);
+    if (!trimmed) return;
+    const now = new Date().toISOString();
+    const existing = presets.find((preset) => preset.name.toLowerCase() === trimmed.toLowerCase());
+    const nextPreset: SavedTelemetryPreset = {
+      version: 1,
+      name: trimmed,
+      query: normalizeTelemetryQuery(query),
+      createdAt: existing?.createdAt || now,
+      updatedAt: now
+    };
+    persist([nextPreset, ...presets.filter((preset) => preset.name.toLowerCase() !== trimmed.toLowerCase())].slice(0, MAX_SAVED_PRESETS));
+    setName("");
+  }
+  return (
+    <div className="telemetry-saved-presets" aria-label="Saved telemetry presets">
+      <form onSubmit={saveCurrent}>
+        <label htmlFor="telemetry-preset-name">Preset</label>
+        <input id="telemetry-preset-name" value={name} maxLength={MAX_PRESET_NAME_LENGTH} onChange={(event) => setName(event.target.value)} />
+        <button type="submit">Save</button>
+      </form>
+      <div className="telemetry-preset-list">
+        {presets.map((preset) => (
+          <span key={preset.name}>
+            <button type="button" onClick={() => onQueryChange(normalizeTelemetryQuery(preset.query))}>{preset.name}</button>
+            <button type="button" aria-label={`Delete preset ${preset.name}`} onClick={() => persist(presets.filter((item) => item.name !== preset.name))}>Delete</button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function loadSavedPresets(): SavedTelemetryPreset[] {
+  try {
+    const raw = window.localStorage.getItem(SAVED_PRESETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isSavedPreset).slice(0, MAX_SAVED_PRESETS);
+  } catch {
+    return [];
+  }
+}
+
+function isSavedPreset(value: unknown): value is SavedTelemetryPreset {
+  if (!value || typeof value !== "object") return false;
+  const preset = value as Partial<SavedTelemetryPreset>;
+  return preset.version === 1
+    && typeof preset.name === "string"
+    && preset.name.length > 0
+    && preset.name.length <= MAX_PRESET_NAME_LENGTH
+    && typeof preset.createdAt === "string"
+    && typeof preset.updatedAt === "string"
+    && isTelemetryQueryInput(preset.query);
+}
+
+function TelemetryDrilldownHeader({
+  drilldown,
+  query,
+  onOpenRoute
+}: {
+  drilldown: NonNullable<TelemetryRouteState["drilldown"]>;
+  query: TelemetryQueryInput;
+  onOpenRoute(route: TelemetryRouteState): void;
+}) {
+  return (
+    <div className="telemetry-drilldown" aria-label="Telemetry drilldown">
+      <div>
+        <span>{startCase(drilldown.dimension)}</span>
+        <strong>{drilldown.value}</strong>
+      </div>
+      <button type="button" onClick={() => onOpenRoute(parseTelemetryRoute("/telemetry", queryString(stripFilter(query, drilldown.dimension, drilldown.value))))}>All telemetry</button>
+    </div>
+  );
 }
 
 function TelemetryQueryControls({
@@ -257,7 +371,9 @@ function TelemetryFilterBar({
   totalCount,
   query,
   onRemove,
-  onClear
+  onClear,
+  drilldown,
+  onOpenRoute
 }: {
   filters: TelemetryFilter[];
   shownCount: number;
@@ -265,6 +381,8 @@ function TelemetryFilterBar({
   query: TelemetryQueryInput;
   onRemove(filter: TelemetryFilter): void;
   onClear(): void;
+  drilldown?: TelemetryRouteState["drilldown"];
+  onOpenRoute(route: TelemetryRouteState): void;
 }) {
   const hasQuery = Boolean((query.filters || []).length || query.q || query.from || query.to || query.preset !== "live" || (query.offset || 0) > 0);
   return (
@@ -276,7 +394,18 @@ function TelemetryFilterBar({
       <div className="telemetry-filter-actions">
         {query.q ? <button type="button" onClick={() => onClear()} aria-label={`Clear search ${query.q}`}>Search: {query.q}</button> : null}
         {filters.map((filter) => (
-          <button type="button" key={`${filter.facetId}:${filter.value}`} onClick={() => onRemove(filter)} aria-label={`Remove ${filter.label} filter ${filter.value}`}>
+          <button
+            type="button"
+            key={`${filter.facetId}:${filter.value}`}
+            onClick={() => {
+              if (drilldown && filter.facetId === drilldown.dimension && filter.value === drilldown.value) {
+                onOpenRoute(parseTelemetryRoute("/telemetry", queryString(stripFilter(query, drilldown.dimension, drilldown.value))));
+              } else {
+                onRemove(filter);
+              }
+            }}
+            aria-label={`Remove ${filter.label} filter ${filter.value}`}
+          >
             {filter.label}: {filter.value}
           </button>
         ))}
@@ -290,12 +419,16 @@ function TelemetryGrid({
   telemetry,
   facets,
   filters,
-  onToggleFilter
+  onToggleFilter,
+  onOpenRoute,
+  query
 }: {
   telemetry: ConsoleTelemetryResponse | null;
   facets: ConsoleTelemetryResponse["analytics"]["facets"];
   filters: TelemetryFilter[];
   onToggleFilter(filter: TelemetryFilter): void;
+  onOpenRoute(route: TelemetryRouteState): void;
+  query: TelemetryQueryInput;
 }) {
   const primaryFacetIds = ["projects", "cwd", "tools", "runtimes", "models", "events"];
   const primaryFacets = primaryFacetIds
@@ -307,7 +440,7 @@ function TelemetryGrid({
       <TelemetrySources sources={telemetry?.sources || []} />
       {primaryFacets.map((facet) => (
         <TelemetryPanel label={facet.id} title={facet.label} key={facet.id}>
-          <BarList facet={facet} filters={filters} onToggleFilter={onToggleFilter} />
+          <BarList facet={facet} filters={filters} onToggleFilter={onToggleFilter} onOpenRoute={onOpenRoute} query={query} />
         </TelemetryPanel>
       ))}
       {secondaryFacets.length ? (
@@ -318,15 +451,19 @@ function TelemetryGrid({
                 <strong>{facet.label}</strong>
                 <span>
                   {facet.counts.slice(0, 3).map((item) => (
-                    <button
-                      type="button"
-                      key={item.name}
-                      className={isFilterActive(filters, facet.id, item.name) ? "active" : ""}
-                      aria-pressed={isFilterActive(filters, facet.id, item.name)}
-                      onClick={() => onToggleFilter({ facetId: facet.id, label: facet.label, value: item.name })}
-                    >
-                      {item.name} {item.count}
-                    </button>
+                    <span className="dimension-actions" key={item.name}>
+                      <button
+                        type="button"
+                        className={isFilterActive(filters, facet.id, item.name) ? "active" : ""}
+                        aria-pressed={isFilterActive(filters, facet.id, item.name)}
+                        onClick={() => onToggleFilter({ facetId: facet.id, label: facet.label, value: item.name })}
+                      >
+                        {item.name} {item.count}
+                      </button>
+                      {drilldownDimension(facet.id) ? (
+                        <button type="button" aria-label={`Open ${facet.label} drilldown ${item.name}`} onClick={() => openDrilldown(onOpenRoute, query, facet.id, item.name)}>Open</button>
+                      ) : null}
+                    </span>
                   ))}
                   {!facet.counts.length ? "none" : null}
                 </span>
@@ -335,12 +472,20 @@ function TelemetryGrid({
           </div>
         </TelemetryPanel>
       ) : null}
-      {(telemetry?.analytics.flows || []).map((flow) => <TelemetryFlowPanel flow={flow} key={flow.id} />)}
+      {(telemetry?.analytics.flows || []).map((flow) => <TelemetryFlowPanel flow={flow} key={flow.id} query={query} onOpenRoute={onOpenRoute} />)}
     </div>
   );
 }
 
-function TelemetryFlowPanel({ flow }: { flow: ConsoleTelemetryResponse["analytics"]["flows"][number] }) {
+function TelemetryFlowPanel({
+  flow,
+  query,
+  onOpenRoute
+}: {
+  flow: ConsoleTelemetryResponse["analytics"]["flows"][number];
+  query: TelemetryQueryInput;
+  onOpenRoute(route: TelemetryRouteState): void;
+}) {
   const items = flow.items;
   return (
     <TelemetryPanel label="Flow" title={flow.label}>
@@ -359,11 +504,26 @@ function TelemetryFlowPanel({ flow }: { flow: ConsoleTelemetryResponse["analytic
               <span>{item.status || "status"}</span>
             </div>
             <p>{item.title || item.updatedAt || "No descriptor title field."}</p>
+            {item.details?.length ? <TelemetryFlowDetails details={item.details} /> : null}
           </div>
         ))}
+        <button type="button" className="telemetry-open-drilldown" onClick={() => openDrilldown(onOpenRoute, query, "flows", flow.id)}>Open flow</button>
         {!items.length ? <Empty label="No flow items returned." /> : null}
       </div>
     </TelemetryPanel>
+  );
+}
+
+function TelemetryFlowDetails({ details }: { details: NonNullable<ConsoleTelemetryResponse["analytics"]["flows"][number]["items"][number]["details"]> }) {
+  return (
+    <dl className="telemetry-flow-details">
+      {details.map((detail) => (
+        <div key={`${detail.label}:${detail.value}`}>
+          <dt>{detail.label}</dt>
+          <dd>{detail.value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -475,34 +635,63 @@ function TelemetryMetric({ label, value }: { label: string; value: number }) {
 function BarList({
   facet,
   filters,
-  onToggleFilter
+  onToggleFilter,
+  onOpenRoute,
+  query
 }: {
   facet: ConsoleTelemetryResponse["analytics"]["facets"][number];
   filters: TelemetryFilter[];
   onToggleFilter(filter: TelemetryFilter): void;
+  onOpenRoute(route: TelemetryRouteState): void;
+  query: TelemetryQueryInput;
 }) {
   const entries = facet.counts.map((item) => [item.name, item.count] as [string, number]);
   const max = Math.max(...entries.map(([, count]) => count), 1);
   return (
     <div className="bar-list">
       {entries.map(([label, count]) => (
-        <button
-          type="button"
-          className={isFilterActive(filters, facet.id, label) ? "bar-row active" : "bar-row"}
-          key={label}
-          aria-pressed={isFilterActive(filters, facet.id, label)}
-          onClick={() => onToggleFilter({ facetId: facet.id, label: facet.label, value: label })}
-        >
-          <div>
-            <span>{label}</span>
-            <strong>{count.toLocaleString()}</strong>
-          </div>
-          <i style={{ inlineSize: `${Math.max(4, (count / max) * 100)}%` }} />
-        </button>
+        <div className="bar-row-wrap" key={label}>
+          <button
+            type="button"
+            className={isFilterActive(filters, facet.id, label) ? "bar-row active" : "bar-row"}
+            aria-pressed={isFilterActive(filters, facet.id, label)}
+            onClick={() => onToggleFilter({ facetId: facet.id, label: facet.label, value: label })}
+          >
+            <div>
+              <span>{label}</span>
+              <strong>{count.toLocaleString()}</strong>
+            </div>
+            <i style={{ inlineSize: `${Math.max(4, (count / max) * 100)}%` }} />
+          </button>
+          {drilldownDimension(facet.id) ? (
+            <button type="button" className="bar-drilldown" aria-label={`Open ${facet.label} drilldown ${label}`} onClick={() => openDrilldown(onOpenRoute, query, facet.id, label)}>Open</button>
+          ) : null}
+        </div>
       ))}
       {!entries.length ? <Empty label="No counts available." /> : null}
     </div>
   );
+}
+
+function openDrilldown(onOpenRoute: (route: TelemetryRouteState) => void, query: TelemetryQueryInput, facetId: string, value: string): void {
+  const dimension = drilldownDimension(facetId);
+  if (!dimension) return;
+  onOpenRoute(parseTelemetryRoute(`/telemetry/${dimension}/${encodeURIComponent(value)}`, queryString(query)));
+}
+
+function drilldownDimension(facetId: string): NonNullable<TelemetryRouteState["drilldown"]>["dimension"] | null {
+  return facetId === "skills" || facetId === "tools" || facetId === "flows" || facetId === "projects" ? facetId : null;
+}
+
+function queryString(query: TelemetryQueryInput): string {
+  const serialized = serializeTelemetryRoute(query);
+  const question = serialized.indexOf("?");
+  return question >= 0 ? serialized.slice(question) : "";
+}
+
+function stripFilter(query: TelemetryQueryInput, facetId: string, value: string): TelemetryQueryInput {
+  const filters = (query.filters || []).filter((filter) => filter.facetId !== facetId || filter.value !== value);
+  return { ...query, filters: filters.length ? filters : undefined };
 }
 
 function topEntries(values: Record<string, number>, limit: number): Array<[string, number]> {

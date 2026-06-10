@@ -496,6 +496,7 @@ export interface TelemetryFlowItem {
   status?: string;
   updatedAt?: string;
   attributes?: Record<string, string>;
+  details?: Array<{ label: string; value: string }>;
 }
 
 export interface TelemetryFacetSummary {
