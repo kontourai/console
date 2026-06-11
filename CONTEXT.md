@@ -37,7 +37,7 @@ A portable reference connecting related objects across products, using product, 
 _Avoid_: UI-only join, implicit path convention, lossy correlation, unrelated ref systems
 
 **Unified Work Queue**:
-A suite-level queue that brings together stale claims, evidence gaps, open Flow gates, Survey Review Items, producer reverification requests, Veritas readiness gaps, Survey candidate reviews, and Flow Agents continuation needs.
+A suite-level queue that brings together stale claims, evidence gaps, open Flow gates, Survey Review Items, producer reverification requests, Veritas readiness gaps, Survey candidate reviews, Flow Agents continuation needs, unsupported-gap inquiries, and pending mapping proposals.
 _Avoid_: Replacing product-owned queues, generic task board, hiding product authority
 
 **Survey Console Extension**:

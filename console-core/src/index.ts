@@ -3,6 +3,7 @@ export type {
   ConsoleClaim,
   ConsoleEvidence,
   ConsoleGate,
+  ConsoleInquiry,
   ConsoleLearning,
   ConsoleLink,
   ConsoleProcess,

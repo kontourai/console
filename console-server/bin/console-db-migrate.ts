@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --import tsx
+#!/usr/bin/env node
 
 const { applyConsoleMigrations } = require("../src/console-foundation/migrations");
 const { loadConsoleMigrations } = require("../src/console-foundation/migrations");
@@ -40,3 +40,5 @@ main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });
+
+export {};

@@ -27,6 +27,7 @@ type MutableReplayState = {
   claims: Map<string, ReplayObject>;
   evidence: Map<string, ReplayObject>;
   learnings: Map<string, ReplayObject>;
+  inquiries: Map<string, ReplayObject>;
   actions: Map<string, ConsoleActionRecord>;
   links: Map<string, ConsoleLink>;
   timeline: JsonObject[];
@@ -53,6 +54,7 @@ function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | C
     claims: [],
     evidence: [],
     learnings: [],
+    inquiries: [],
     actions: [],
     links: [],
     timeline: []
@@ -64,6 +66,7 @@ function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | C
     claims: new Map<string, ReplayObject>(),
     evidence: new Map<string, ReplayObject>(),
     learnings: new Map<string, ReplayObject>(),
+    inquiries: new Map<string, ReplayObject>(),
     actions: new Map<string, ConsoleActionRecord>(),
     links: new Map<string, ConsoleLink>(),
     timeline: []
@@ -79,6 +82,7 @@ function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | C
   state.claims = claims;
   state.evidence = sortById([...working.evidence.values()]);
   state.learnings = sortById([...working.learnings.values()]);
+  state.inquiries = sortById([...working.inquiries.values()]);
   state.actions = sortById([...working.actions.values()]).map((action: ConsoleActionRecord) => ({
     ...action,
     readOnly: true
@@ -171,6 +175,14 @@ function applyEvent(state: MutableReplayState, event: ConsoleEventRecord, stream
       break;
     case "evidence.attached":
       upsertEvidence(state, event, subject, refs, summary);
+      break;
+    case "inquiry.resolved":
+    case "inquiry.mapping.proposed":
+    case "inquiry.mapping.reviewed":
+      upsertInquiry(state, event, subject, refs, after, summary);
+      break;
+    case "claim.dispute.resolved":
+      upsertClaimDisputeResolved(state, event, subject, refs, after);
       break;
     default:
       if (typeof event.type === "string" && event.type.startsWith("learning.")) {
@@ -314,6 +326,80 @@ function upsertEvidence(state: MutableReplayState, event: ConsoleEventRecord, su
   };
 
   state.evidence.set(subject.id, compactObject(next));
+}
+
+function upsertInquiry(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch, summary: unknown): void {
+  // Console folds inquiry records as append-only testimony. It accumulates counts
+  // and links but never recomputes outcomes. Surface is the authority for resolution.
+  const existing: ReplayObject = state.inquiries.get(subject.id) || {
+    id: subject.id,
+    label: subject.label,
+    sourceRef: subject,
+    claimRefs: [],
+    ruleRefs: []
+  };
+
+  // Only inquiry.resolved events carry the inquiry resolution outcome (matched/derived/unsupported).
+  // inquiry.mapping.proposed and inquiry.mapping.reviewed carry the mapping/review outcome,
+  // not the inquiry resolution outcome. Never overwrite the resolution outcome from those events.
+  const isResolutionEvent = event.type === "inquiry.resolved";
+  const outcome = isResolutionEvent
+    ? ((after.outcome as string | undefined) || (existing.outcome as string | undefined) || "unsupported")
+    : (existing.outcome as string | undefined) || "unsupported";
+  const next: ReplayObject = {
+    ...existing,
+    id: subject.id,
+    label: subject.label || existing.label,
+    sourceRef: subject,
+    outcome,
+    asker: (after.asker as string | undefined) || (existing.asker as string | undefined),
+    statusFunctionVersion: (after.statusFunctionVersion as string | undefined) || (existing.statusFunctionVersion as string | undefined),
+    resolvedAt: (existing.resolvedAt as string | undefined) || (isResolutionEvent ? event.occurredAt : undefined)
+  };
+
+  // For inquiry.resolved: fold claim refs (matched/derived) and rule refs (derived).
+  // Console stores these for cross-product navigation only — it does not re-derive status.
+  next.claimRefs = mergeRefs(
+    existing.claimRefs,
+    refs.filter((ref: CrossProductRef) => ref.product === "surface" && ref.kind === "claim")
+  );
+  next.ruleRefs = mergeRefs(
+    existing.ruleRefs,
+    refs.filter((ref: CrossProductRef) => ref.kind === "rule" || ref.kind === "derivation_rule")
+  );
+
+  state.inquiries.set(subject.id, compactObject(next));
+}
+
+function upsertClaimDisputeResolved(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch): void {
+  // claim.dispute.resolved is an append-only verification event in Surface's ledger.
+  // Console folds it as a decision record for timeline and navigation.
+  // The resulting claim status update arrives through a separate claim.status.changed event.
+  // Do not attempt to update claim status here — Surface is the authority.
+  const decisionId = `decision-dispute-${subject.id}-${event.occurredAt}`;
+  const decision: ReplayObject = {
+    id: decisionId,
+    label: `Dispute resolved: ${subject.label || subject.id}`,
+    sourceRef: subject,
+    kind: "dispute_resolution",
+    decidedAt: event.occurredAt,
+    subjectRefs: [subject, ...refs.filter((ref: CrossProductRef) => ref.product === "surface" && ref.kind === "claim")],
+    resolvedStatus: after.resolvedStatus || after.status
+  };
+  // Store as an action-queue note only; the dispute decision projection lives in decisions[]
+  // which are projection-only objects emitted directly by producers, not folded from events here.
+  // We keep the inquiry record updated if the dispute resolves an inquiry-related claim.
+  refs.filter((ref: CrossProductRef) => ref.product === "surface" && ref.kind === "inquiry").forEach((inquiryRef: CrossProductRef) => {
+    const existing = state.inquiries.get(inquiryRef.id);
+    if (existing) {
+      state.inquiries.set(inquiryRef.id, compactObject({
+        ...existing,
+        claimRefs: mergeRefs(existing.claimRefs, refs.filter((ref: CrossProductRef) => ref.product === "surface" && ref.kind === "claim"))
+      }));
+    }
+  });
+  // Surface-owned decision; Console records the id for timeline reference
+  void decision;
 }
 
 function upsertLearning(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], payload: OpenRecord, summary: unknown): void {

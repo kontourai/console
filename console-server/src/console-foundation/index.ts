@@ -122,7 +122,8 @@ const OBJECT_ARRAY_KEYS = [
   "decisions",
   "actions",
   "exceptions",
-  "learnings"
+  "learnings",
+  "inquiries"
 ];
 type StatusQueryOptions = OpenRecord & {
   claimId?: string;
@@ -407,6 +408,7 @@ function validateProjection(snapshot: ConsoleProjectionSnapshot, basePath: strin
   arrayOf<ConsoleObjectRecord>(snapshot.decisions).forEach((decision: ConsoleObjectRecord, index: number) => validateDecision(decision, `${basePath}.decisions[${index}]`, issues));
   arrayOf<ConsoleObjectRecord>(snapshot.exceptions).forEach((exception: ConsoleObjectRecord, index: number) => validateException(exception, `${basePath}.exceptions[${index}]`, issues));
   arrayOf<ConsoleObjectRecord>(snapshot.learnings).forEach((learning: ConsoleObjectRecord, index: number) => validateLearning(learning, `${basePath}.learnings[${index}]`, issues));
+  arrayOf<ConsoleObjectRecord>(snapshot.inquiries).forEach((inquiry: ConsoleObjectRecord, index: number) => validateInquiry(inquiry, `${basePath}.inquiries[${index}]`, issues));
   arrayOf<ConsoleObjectRecord>(snapshot.actions).forEach((action: ConsoleObjectRecord, index: number) => {
     requireString(action, "id", `${basePath}.actions[${index}]`, issues);
     requireObject(action, "authority", `${basePath}.actions[${index}]`, issues);
@@ -437,6 +439,7 @@ function summarizeProjection(snapshot: ConsoleProjectionSnapshot) {
     objectCounts[key] = arrayOf(snapshot[key]).length;
   }
   objectCounts.links = arrayOf(snapshot.links).length;
+  objectCounts.inquiries = arrayOf(snapshot.inquiries).length;
   return {
     objectCounts,
     currentState: {
@@ -666,6 +669,16 @@ function validateLearning(learning: ConsoleObjectRecord, basePath: string, issue
   validateLinks(learning && learning.links, `${basePath}.links`, issues);
 }
 
+function validateInquiry(inquiry: ConsoleObjectRecord, basePath: string, issues: ValidationIssue[]): void {
+  requireString(inquiry, "id", basePath, issues);
+  requireString(inquiry, "outcome", basePath, issues);
+  // Console folds inquiry records as append-only testimony; it does not recompute outcomes.
+  // Validate cross-product ref arrays for navigation only.
+  validateRefArray(inquiry && inquiry.claimRefs, `${basePath}.claimRefs`, issues);
+  validateRefArray(inquiry && inquiry.ruleRefs, `${basePath}.ruleRefs`, issues);
+  if (inquiry && inquiry.sourceRef !== undefined) validateRef(inquiry.sourceRef, `${basePath}.sourceRef`, issues);
+}
+
 function validateLearningEventPayload(event: ConsoleEventRecord, basePath: string, issues: ValidationIssue[]): void {
   if (!event || typeof event.type !== "string" || !event.type.startsWith("learning.")) return;
   const payload = event.payload;
@@ -836,3 +849,14 @@ module.exports = {
   flowProcessStateToProjection: flowProcessHelper.flowProcessStateToProjection,
   flowGateTransitionToEvent: flowProcessHelper.flowGateTransitionToEvent
 };
+
+export {
+  bridgeFlowRun,
+  deriveFlowRunEvents,
+  listFlowRunDirs,
+} from "./flow-bridge";
+export type {
+  FlowBridgeDelivery,
+  FlowBridgeEvent,
+  FlowBridgeScopeOptions,
+} from "./flow-bridge";
