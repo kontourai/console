@@ -7,6 +7,7 @@
     "type": "git",
     "url": "git+https://github.com/kontourai/console.git"
   },
+  "homepage": "https://kontourai.github.io/console/",
   "type": "commonjs",
   "engines": {
     "node": ">=22"

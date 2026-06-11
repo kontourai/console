@@ -1,3 +1,4 @@
+/* ── Design tokens / aliases ─────────────────────────────────────────────── */
 :root {
   color-scheme: dark;
   --bg: var(--k-bg);
@@ -25,9 +26,42 @@
   --active-glow-pulse: color-mix(in srgb, var(--k-brand) 20%, transparent);
   --active-glow-ring: color-mix(in srgb, var(--k-brand) 8%, transparent);
   --flow-lane-stroke: color-mix(in srgb, var(--k-text-muted) 24%, transparent);
+  /* Flow node dimensions as CSS vars for responsive override */
+  --flow-node-w: 184px;
+  --flow-node-h: 82px;
+  /* Flow canvas responsive height */
+  --flow-canvas-h: clamp(340px, 52vh, 560px);
   font-family: var(--k-font-ui);
 }
 
+[data-theme="light"] {
+  color-scheme: light;
+  --dark-field: color-mix(in srgb, var(--k-bg) 90%, white);
+  --dark-row: color-mix(in srgb, var(--k-bg) 88%, white);
+  --grid-accent: color-mix(in srgb, var(--k-brand) 8%, transparent);
+  --grid-line: color-mix(in srgb, var(--k-text) 6%, transparent);
+  --aura: color-mix(in srgb, var(--k-active) 10%, transparent);
+  --panel-shell: color-mix(in srgb, var(--k-panel) 95%, transparent);
+}
+
+/* ── React Flow token overrides ─────────────────────────────────────────── */
+.flow-rf.react-flow {
+  --xy-background-color: var(--dark-field);
+  --xy-edge-stroke: var(--line-hot);
+  --xy-edge-stroke-width: 2;
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-node-border: 1px solid var(--line);
+  --xy-node-border-selected: 1px solid var(--accent);
+  --xy-selection-background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+  --xy-selection-border: 1px dotted var(--accent);
+  --xy-minimap-background-color: var(--panel);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--bg) 60%, transparent);
+  --xy-minimap-node-background-color: var(--panel-2);
+  --xy-handle-background-color: transparent;
+  --xy-attribution-background-color: transparent;
+}
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
 * {
   box-sizing: border-box;
 }
@@ -49,6 +83,7 @@ input {
   font: inherit;
 }
 
+/* ── Shell ──────────────────────────────────────────────────────────────── */
 .shell {
   width: min(1480px, calc(100vw - 32px));
   margin: 0 auto;
@@ -67,6 +102,7 @@ input {
   box-shadow: var(--shadow);
 }
 
+/* ── Topbar ─────────────────────────────────────────────────────────────── */
 .topbar {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(320px, 560px) auto;
@@ -84,6 +120,34 @@ input {
   align-items: end;
 }
 
+.topbar-status-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* ── Theme toggle ───────────────────────────────────────────────────────── */
+.theme-toggle {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 900;
+  background: var(--dark-row);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.theme-toggle:hover,
+.theme-toggle[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* ── Typography ─────────────────────────────────────────────────────────── */
 .eyebrow,
 .section-label,
 label {
@@ -118,6 +182,7 @@ h2 {
   letter-spacing: 0;
 }
 
+/* ── Hub form ───────────────────────────────────────────────────────────── */
 .hub-form {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -154,6 +219,7 @@ h2 {
   cursor: pointer;
 }
 
+/* ── Stage band ─────────────────────────────────────────────────────────── */
 .stage-band {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -183,6 +249,7 @@ h2 {
   color: var(--bad);
 }
 
+/* ── View tabs ──────────────────────────────────────────────────────────── */
 .view-tabs {
   display: inline-grid;
   grid-template-columns: repeat(2, minmax(110px, 1fr));
@@ -209,6 +276,7 @@ h2 {
   background: var(--accent);
 }
 
+/* ── Work grid ──────────────────────────────────────────────────────────── */
 .work-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -218,8 +286,8 @@ h2 {
 }
 
 .flow-panel {
+  position: relative;
   min-width: 0;
-  min-height: 454px;
   padding: 14px;
 }
 
@@ -242,6 +310,7 @@ h2 {
   padding: 14px;
 }
 
+/* ── Section utilities ──────────────────────────────────────────────────── */
 .section-head,
 .row-title,
 .timeline-row {
@@ -266,6 +335,26 @@ h2 {
   padding: 10px;
   background: var(--dark-row);
   border: 1px solid var(--line);
+}
+
+/* Side-panel row buttons that wrap data rows */
+.data-row-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.data-row-btn:hover .data-row {
+  border-color: var(--line-hot);
+}
+
+.data-row-btn.selected .data-row {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--dark-row));
 }
 
 .learning-row {
@@ -339,65 +428,114 @@ dd {
   overflow-wrap: anywhere;
 }
 
-.flow-scroll {
+/* ── Flow Canvas (React Flow) ───────────────────────────────────────────── */
+
+/* Wrapper: gives the canvas a responsive fixed height so it fills panel */
+.flow-canvas-wrap {
+  position: relative;
   margin-top: 12px;
-  overflow-x: auto;
-  overflow-y: hidden;
+  height: var(--flow-canvas-h);
   border: 1px solid var(--line);
-  background:
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0 / 28px 100%,
-    linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0 / 100% 28px,
-    var(--dark-field);
+  background: var(--dark-field);
+  overflow: hidden;
 }
 
-.flow-svg {
-  display: block;
-  min-width: 1260px;
+/* The ReactFlow root itself fills the wrapper */
+.flow-rf {
   width: 100%;
-  height: auto;
+  height: 100%;
 }
 
-.flow-lane-label {
-  fill: var(--dim);
-  font-size: 11px;
+/* Lane header bar that sits at the top of the canvas */
+.flow-lane-headers {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 26px;
+  z-index: 10;
+  pointer-events: none;
+  /* subtle gradient to separate from canvas */
+  background: linear-gradient(to bottom, var(--panel) 70%, transparent);
+  border-bottom: 1px solid var(--flow-lane-stroke);
+}
+
+.flow-lane-header {
+  position: absolute;
+  top: 4px;
+  color: var(--dim);
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.flow-lane-line {
-  stroke: var(--flow-lane-stroke);
-  stroke-dasharray: 2 8;
+/* Controls styling */
+.flow-controls.react-flow__controls {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
 }
 
-.flow-edge {
-  fill: none;
-  stroke: var(--line-hot);
-  stroke-width: 2;
-  marker-end: none;
+.flow-controls .react-flow__controls-button {
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  fill: var(--muted);
 }
 
-.flow-edge-active {
-  stroke: var(--accent);
-  stroke-dasharray: 8 8;
-  animation: flow-edge-run 1.8s linear infinite;
+.flow-controls .react-flow__controls-button:hover {
+  background: var(--dark-row);
+  fill: var(--text);
 }
 
+/* MiniMap */
+.flow-minimap.react-flow__minimap {
+  border: 1px solid var(--line);
+}
+
+/* Hide minimap and controls on narrow screens */
+@media (max-width: 720px) {
+  .flow-minimap {
+    display: none;
+  }
+}
+
+/* ── Flow nodes ─────────────────────────────────────────────────────────── */
 .flow-node {
-  width: 184px;
-  height: 82px;
+  width: var(--flow-node-w);
+  height: var(--flow-node-h);
   padding: 9px;
   overflow: hidden;
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
   border-left: 5px solid var(--dim);
+  transition: opacity 0.15s, box-shadow 0.15s;
+  cursor: pointer;
 }
 
 .flow-node-active {
   border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--active-glow-soft), 0 0 0 0 var(--active-glow-mid);
   animation: flow-node-pulse 1.6s ease-in-out infinite;
+}
+
+.flow-node-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.flow-node-dimmed {
+  opacity: 0.32;
+}
+
+.flow-node-hovered {
+  outline: 1px dashed var(--accent);
+  outline-offset: 2px;
+  opacity: 1;
 }
 
 .flow-node-stage {
@@ -465,6 +603,18 @@ dd {
   -webkit-line-clamp: 2;
 }
 
+/* React Flow edge overrides */
+.react-flow__edge.flow-edge-active .react-flow__edge-path {
+  stroke: var(--accent) !important;
+  stroke-dasharray: 8 8;
+  animation: flow-edge-run 1.8s linear infinite;
+}
+
+.react-flow__edge.flow-edge-dimmed {
+  opacity: 0.2;
+}
+
+/* Accessible node list (sr-only) */
 .flow-node-list {
   position: absolute;
   width: 1px;
@@ -477,6 +627,7 @@ dd {
   border: 0;
 }
 
+/* ── Flow animations ────────────────────────────────────────────────────── */
 @keyframes flow-node-pulse {
   0%,
   100% {
@@ -494,16 +645,178 @@ dd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .flow-edge-active,
+  .react-flow__edge.flow-edge-active .react-flow__edge-path,
   .flow-node-active {
     animation: none;
   }
 }
 
+/* ── Node detail drawer ─────────────────────────────────────────────────── */
+.node-detail-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 280px;
+  max-width: 90%;
+  overflow-y: auto;
+  z-index: 20;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  border-left-color: var(--accent);
+  box-shadow: -4px 0 24px -8px color-mix(in srgb, var(--k-bg) 60%, transparent);
+  display: flex;
+  flex-direction: column;
+}
+
+.node-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
+}
+
+.node-detail-header h2 {
+  margin-top: 4px;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.node-detail-close {
+  flex: 0 0 auto;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0 6px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.node-detail-close:hover {
+  color: var(--text);
+  border-color: var(--line-hot);
+}
+
+.node-detail-body {
+  flex: 1;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.node-detail-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.node-detail-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+
+.node-detail-fields {
+  display: grid;
+  gap: 1px;
+  margin: 0 0 12px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.node-detail-fields div {
+  padding: 7px 9px;
+  background: var(--panel-2);
+}
+
+.node-detail-learnings {
+  margin-top: 10px;
+}
+
+.node-detail-learning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  border-bottom: 1px solid var(--line);
+}
+
+.node-detail-raw {
+  margin-top: 12px;
+}
+
+.node-detail-raw summary {
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+
+.node-detail-raw pre {
+  max-height: 240px;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: var(--dark-row);
+  border: 1px solid var(--line);
+}
+
+/* ── Timeline ───────────────────────────────────────────────────────────── */
 .timeline-section {
   margin-top: 14px;
 }
 
+.timeline {
+  display: grid;
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.timeline-row {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 56px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.timeline-row time,
+.timeline-row span {
+  color: var(--dim);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.timeline-row div {
+  flex: 1;
+  min-width: 0;
+}
+
+.empty {
+  padding: 14px 0;
+}
+
+/* ── Telemetry ──────────────────────────────────────────────────────────── */
 .telemetry-section {
   min-width: 0;
   max-width: 100%;
@@ -972,37 +1285,7 @@ dd {
   border: 1px solid var(--line);
 }
 
-.timeline {
-  display: grid;
-  margin-top: 12px;
-  border-top: 1px solid var(--line);
-}
-
-.timeline-row {
-  min-width: 0;
-  max-width: 100%;
-  min-height: 56px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.timeline-row time,
-.timeline-row span {
-  color: var(--dim);
-  font-size: 0.78rem;
-  font-weight: 900;
-  text-transform: uppercase;
-}
-
-.timeline-row div {
-  flex: 1;
-  min-width: 0;
-}
-
-.empty {
-  padding: 14px 0;
-}
-
+/* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .topbar,
   .stage-band,
@@ -1065,5 +1348,21 @@ dd {
   .telemetry-search button,
   .status {
     width: 100%;
+  }
+
+  /* On mobile, canvas uses touch pan/zoom and is slightly shorter */
+  :root {
+    --flow-canvas-h: clamp(280px, 44vh, 420px);
+  }
+
+  /* Detail drawer full-width on mobile */
+  .node-detail-drawer {
+    width: 100%;
+    max-width: 100%;
+    top: auto;
+    bottom: 0;
+    height: 60%;
+    border-left: none;
+    border-top: 2px solid var(--accent);
   }
 }

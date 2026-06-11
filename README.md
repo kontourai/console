@@ -38,9 +38,8 @@ kontour-flow-bridge --help # bridge local Flow runs into the hub
 
 ## Published packages
 
-- `@kontourai/console` — the installable/npx entry point; ships compiled `kontour`, `console-inspect`, and `kontour-flow-bridge` bins.
+- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and compiled `kontour`, `console-inspect`, and `kontour-flow-bridge` bins.
 - `@kontourai/console-core` — shared record and process-flow shapes.
-- `@kontourai/console` — the local hub (event ingestion, projections, telemetry, SSE).
 
 The React UI (`console-ui`) remains an app in this repo rather than a package.
 
@@ -237,54 +236,14 @@ await emitter.emitEvent(surfaceFreshnessTransitionToEvent({
 
 Optional action descriptors supplied to the helper are persisted as inert projection data only. The helper does not fetch Surface data, start Flow, execute commands, dereference URLs, or mutate product state.
 
-### Flow Process/Gate Status Producer Helper
+### Other producer helpers
 
-`flowProcessStateToProjection()` and `flowGateTransitionToEvent()` are dependency-free Flow Console producer helper/example functions. They map caller-owned process and gate state into local Console records; they are not real Flow integration, do not run Flow control semantics, and do not perform action descriptors. Action descriptors are inert, read-only metadata for display and review.
+The same `emitProjection` + `emitEvent` pattern applies to the Flow and Survey helpers. Import the relevant pair for your product:
 
-```ts
-const {
-  KontourEmitter,
-  LocalFileSink,
-  inspectLocalKontour,
-  getFlowProcessStatus,
-  flowProcessStateToProjection,
-  flowGateTransitionToEvent
-} = require("@kontourai/console");
+- `flowProcessStateToProjection` / `flowGateTransitionToEvent` — map caller-owned Flow process and gate state into Console records.
+- `inspectLocalKontour` / `getFlowProcessStatus` — read back the local `.kontour` tree and query process projections.
 
-const emitter = new KontourEmitter({
-  sink: new LocalFileSink({ root: ".kontour" })
-});
-
-await emitter.emitProjection(flowProcessStateToProjection({
-  processId: "run-provider-onboarding-42",
-  status: "running",
-  currentStep: { id: "review-provider-fields" },
-  percentComplete: 62,
-  generatedAt: "2026-06-01T18:12:30Z",
-  openGateRefs: [{ product: "flow", kind: "gate", id: "gate-provider-review" }],
-  gates: [{ id: "gate-provider-review", status: "open" }],
-  actions: [{
-    id: "action-resume-provider-onboarding",
-    kind: "resume",
-    authority: { product: "flow", command: "flow.run.resume" },
-    subjectRefs: [{ product: "flow", kind: "run", id: "run-provider-onboarding-42" }]
-  }]
-}));
-
-await emitter.emitEvent(flowGateTransitionToEvent({
-  processId: "run-provider-onboarding-42",
-  gateId: "gate-provider-review",
-  occurredAt: "2026-06-01T18:15:00Z",
-  before: { status: "waiting" },
-  after: { status: "open" }
-}));
-
-const report = inspectLocalKontour({ rootDir: process.cwd() });
-const statuses = getFlowProcessStatus(report.projections, {
-  processId: "run-provider-onboarding-42"
-});
-console.log(statuses[0].status, statuses[0].actions[0].readOnly);
-```
+All helpers are dependency-free and treat action descriptors as inert, read-only metadata — no product commands are executed.
 
 ## Telemetry Storage
 
@@ -316,6 +275,8 @@ does not fall back to local JSONL when a SQL adapter is selected; writes fail
 safely if the selected adapter cannot be opened.
 
 ## Docs
+
+[**kontourai.github.io/console**](https://kontourai.github.io/console/) — the published docs site.
 
 - [Product Boundaries](docs/product-boundaries.md)
 - [Event And Projection Schema](docs/specs/projection-schema.md)

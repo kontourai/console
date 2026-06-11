@@ -15,10 +15,7 @@ or secret names for a specific operator.
 | Base Console packages | Generic server, UI, core contracts, local JSONL defaults, descriptor loading, emitter and sink contracts, typed options. | Public deployment domains, production secret names, tenant ids, product-specific database names, or hosted policy defaults. |
 | Deployment overlay | Hostname, process manager, network policy, TLS, allowed origins, tenant bootstrap, database URL, migration order, secret source, readiness checks, rollback procedure. | Product semantics, Flow gate behavior, Surface trust behavior, or Console package source changes. |
 
-Kontour's hosted overlay lives under `your deployment overlay repository/` and
-your overlay's config directory. Other operators should be able to remove those directories
-and provide their own deployment overlay without modifying `console-core`,
-`console-server`, or `console-ui`.
+A deployment overlay lives in a separate repository or config directory. Other operators can provide their own overlay without modifying `console-core`, `console-server`, or `console-ui`.
 
 ## console.example.com Composition
 

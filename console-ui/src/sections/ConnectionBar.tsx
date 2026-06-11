@@ -7,13 +7,26 @@ interface ConnectionBarProps {
   draftAuthToken: string;
   draftTenantId: string;
   status: ConnectionStatus;
+  theme: "dark" | "light";
   onDraftHubUrlChange(value: string): void;
   onDraftAuthTokenChange(value: string): void;
   onDraftTenantIdChange(value: string): void;
   onSubmit(event: FormEvent<HTMLFormElement>): void;
+  onThemeToggle(): void;
 }
 
-export function ConnectionBar({ draftHubUrl, draftAuthToken, draftTenantId, status, onDraftHubUrlChange, onDraftAuthTokenChange, onDraftTenantIdChange, onSubmit }: ConnectionBarProps) {
+export function ConnectionBar({
+  draftHubUrl,
+  draftAuthToken,
+  draftTenantId,
+  status,
+  theme,
+  onDraftHubUrlChange,
+  onDraftAuthTokenChange,
+  onDraftTenantIdChange,
+  onSubmit,
+  onThemeToggle,
+}: ConnectionBarProps) {
   return (
     <Topbar
       eyebrow="Console"
@@ -46,7 +59,18 @@ export function ConnectionBar({ draftHubUrl, draftAuthToken, draftTenantId, stat
             />
             <Button variant="primary" type="submit">Reconnect</Button>
           </form>
-          <StatusBadge status={status} />
+          <div className="topbar-status-row">
+            <StatusBadge status={status} />
+            <button
+              type="button"
+              className="theme-toggle"
+              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-pressed={theme === "light"}
+              onClick={onThemeToggle}
+            >
+              {theme === "dark" ? "☀" : "◐"}
+            </button>
+          </div>
         </>
       }
     />

@@ -2,6 +2,7 @@ import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
 import { DEFAULT_HUB_URL, getTelemetry } from "./hubClient";
 import { useHubConnection } from "./hooks/useHubConnection";
+import { useTheme } from "./hooks/useTheme";
 import type { ConsoleTelemetryResponse, TelemetryQueryInput } from "./serverApiTypes";
 import { ConnectionBar } from "./sections/ConnectionBar";
 import { StageBand } from "./sections/StageBand";
@@ -25,6 +26,8 @@ export default function App() {
   const [telemetryQuery, setTelemetryQuery] = useState<TelemetryQueryInput>(() => viewFromPath(window.location.pathname) === "telemetry" ? initialRoute.query : DEFAULT_TELEMETRY_QUERY);
   const [telemetry, setTelemetry] = useState<ConsoleTelemetryResponse | null>(null);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const { theme, toggleTheme } = useTheme();
   const auth = { token: authToken || undefined, tenantId: tenantId || undefined };
   const { status, state, lastAccepted, lastTelemetryUpdated, error } = useHubConnection(hubUrl, auth);
 
@@ -108,10 +111,12 @@ export default function App() {
         draftAuthToken={draftAuthToken}
         draftTenantId={draftTenantId}
         status={status}
+        theme={theme}
         onDraftHubUrlChange={setDraftHubUrl}
         onDraftAuthTokenChange={setDraftAuthToken}
         onDraftTenantIdChange={setDraftTenantId}
         onSubmit={submitHubUrl}
+        onThemeToggle={toggleTheme}
       />
       <nav className="view-tabs" aria-label="Console views">
         <button type="button" className={view === "operate" ? "active" : ""} onClick={() => selectView("operate")}>Operate</button>
@@ -121,7 +126,11 @@ export default function App() {
         <>
           <StageBand state={state} />
           {error ? <div className="notice">{error}</div> : null}
-          <WorkGrid state={state} />
+          <WorkGrid
+            state={state}
+            selectedNodeId={selectedNodeId}
+            onNodeSelect={setSelectedNodeId}
+          />
           <TimelineSection state={state} lastAccepted={lastAccepted} />
         </>
       ) : (

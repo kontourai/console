@@ -1,0 +1,19 @@
+title: Kontour Console
+description: Suite-level operating plane for Kontour. Claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions — without making Console the authority for any primitive.
+markdown: kramdown
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+exclude:
+  - backlog
+  - prototypes
+
+plugins:
+  - jekyll-optional-front-matter
+  - jekyll-relative-links
+  - jekyll-readme-index
+  - jekyll-titles-from-headings

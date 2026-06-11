@@ -950,7 +950,7 @@ These examples can be emitted in event `links`, projection `links`, and supporti
 
 ## Survey Review Extension Example
 
- should normally project its admin review workflow through Survey, Surface, and Flow rather than emitting Console records directly:
+A vertical product should normally project its admin review workflow through Survey, Surface, and Flow rather than emitting Console records directly:
 
 - provider registration status claim -> `ClaimStatusProjection` emitted by Surface
 - crawl or review workflow -> `ProcessStatusProjection` emitted by Flow
@@ -1002,9 +1002,3 @@ Surface says: the same question resolves as matched on the next inquiry — inqu
 
 This lifecycle requires no changes to Survey review machinery. The `inquiry_unsupported_gap` and `mapping_proposal` kinds are new values in the `ReviewItemProjection.kind` vocabulary; Survey's candidate-to-review path handles them as additional item types through the existing workbench.
 
-## Open Questions
-
-- After v0 local JSONL, should later versions add hosted stream ingestion as an optional transport?
-- Should each product emit one projection file, or should Console assemble projections from events and product-native APIs?
-- Should action authority start as CLI commands, local HTTP endpoints, or both?
-- Which events must be emitted synchronously, and which can be backfilled from product snapshots?
