@@ -9,7 +9,7 @@
   },
   "type": "commonjs",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "workspaces": [
     "console-core",
