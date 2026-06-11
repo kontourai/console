@@ -1,4 +1,4 @@
-import { formatStep, type ConsoleLearning, type ConsoleProcess } from "@kontour/console-core";
+import { formatStep, type ConsoleLearning, type ConsoleProcess } from "@kontourai/console-core";
 import { Badge, Progress } from "@kontourai/console-kit/react";
 import { formatTime } from "../utils/format";
 import { LearningNotes } from "./Rows";
