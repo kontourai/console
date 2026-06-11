@@ -15,21 +15,21 @@ or secret names for a specific operator.
 | Base Console packages | Generic server, UI, core contracts, local JSONL defaults, descriptor loading, emitter and sink contracts, typed options. | Public deployment domains, production secret names, tenant ids, product-specific database names, or hosted policy defaults. |
 | Deployment overlay | Hostname, process manager, network policy, TLS, allowed origins, tenant bootstrap, database URL, migration order, secret source, readiness checks, rollback procedure. | Product semantics, Flow gate behavior, Surface trust behavior, or Console package source changes. |
 
-Kontour's hosted overlay lives under `deployment/kontour/` and
-`config/kontour/`. Other operators should be able to remove those directories
+Kontour's hosted overlay lives under `your deployment overlay repository/` and
+your overlay's config directory. Other operators should be able to remove those directories
 and provide their own deployment overlay without modifying `console-core`,
 `console-server`, or `console-ui`.
 
-## console.kontourai.io Composition
+## console.example.com Composition
 
-The Kontour hosted deployment at `console.kontourai.io` should compose:
+The Kontour hosted deployment at `console.example.com` should compose:
 
 - the latest approved reusable Console package or source build
 - a Kontour-owned Postgres database for hosted telemetry storage
 - deployment-provided SQL client wiring and runtime dependency installation
 - versioned migration execution before accepting production traffic
 - TLS and routing at the platform edge
-- `https://console.kontourai.io` as the browser origin
+- `https://console.example.com` as the browser origin
 - trusted producer tokens for Kontour primitives and Flow Agents
 - tenant allowlist and bootstrap tenant mapping from deployment config
 - health and readiness checks wired into the hosting platform
@@ -48,8 +48,8 @@ runtime options. Do not add Kontour-specific names to base source.
 | `CONSOLE_RUNTIME_MODE=hosted` | Select hosted mode. | Local development should remain `local` or unset. |
 | `CONSOLE_HOST=0.0.0.0` | Bind address inside the deployment container or VM. | Edge routing owns the public hostname. |
 | `CONSOLE_PORT=3000` | Server listen port. | Match platform service config. |
-| `CONSOLE_PUBLIC_ORIGIN=https://console.kontourai.io` | Canonical public origin. | Used for links, CORS, and operator docs. |
-| `CONSOLE_ALLOWED_ORIGINS=https://console.kontourai.io` | Browser origins allowed to call hosted API. | Comma-separated when staging origins exist. |
+| `CONSOLE_PUBLIC_ORIGIN=https://console.example.com` | Canonical public origin. | Used for links, CORS, and operator docs. |
+| `CONSOLE_ALLOWED_ORIGINS=https://console.example.com` | Browser origins allowed to call hosted API. | Comma-separated when staging origins exist. |
 | `CONSOLE_TELEMETRY_STORAGE=postgres` | Hosted telemetry adapter selection. | The base local default remains `local-jsonl`. |
 | `CONSOLE_DATABASE_URL` | Postgres connection string. | Secret. Store only in the secret manager. |
 | `CONSOLE_TENANT_ID` | Default tenant id for single-tenant bootstrap auth. | Deployment-specific default. |
@@ -92,7 +92,7 @@ hosts with embedded credentials, or provider-specific secret payloads.
 6. Verify `/healthz` for process health.
 7. Verify `/readyz` for dependency readiness, including database and migration
    state once those checks exist in base server code.
-8. Route traffic from `console.kontourai.io`.
+8. Route traffic from `console.example.com`.
 9. Confirm producer emission from one trusted local or staging producer before
    enabling wider producer traffic.
 
@@ -131,7 +131,7 @@ state.
 
 ## Boundary Checks
 
-Kontour-specific literals such as `console.kontourai.io` should appear only in
+Kontour-specific literals such as `console.example.com` should appear only in
 deployment, config, docs, or scripts. They should not appear in base package
 source:
 

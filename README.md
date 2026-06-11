@@ -1,5 +1,8 @@
 # Kontour Console
 
+[![CI](https://github.com/kontourai/kontour-console/actions/workflows/ci.yml/badge.svg)](https://github.com/kontourai/kontour-console/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 **One operating plane for the whole suite: claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.**
 
 The primitives remain portable — Console never becomes the authority for any of them:
@@ -281,3 +284,7 @@ safely if the selected adapter cannot be opened.
 - [Telemetry Descriptor](docs/specs/telemetry-descriptor.md)
 - [Example event streams](docs/examples/event-streams/)
 - [ADR 0001: Console As Suite Management Plane](docs/adr/0001-console-as-suite-management-plane.md)
+
+## License
+
+[Apache-2.0](LICENSE) © Kontour AI
