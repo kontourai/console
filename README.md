@@ -1,6 +1,6 @@
 # Kontour Console
 
-[![CI](https://github.com/kontourai/kontour-console/actions/workflows/ci.yml/badge.svg)](https://github.com/kontourai/kontour-console/actions/workflows/ci.yml)
+[![CI](https://github.com/kontourai/console/actions/workflows/ci.yml/badge.svg)](https://github.com/kontourai/console/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **One operating plane for the whole suite: claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.**
