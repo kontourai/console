@@ -17,10 +17,30 @@ This repo ships local-first Console foundation code alongside the product contex
 
 ![Console local operating plane showing a replayed process flow with passed and waiting gates, claims, and an active process](docs/assets/console-operating-plane.png)
 
+## Install / npx
+
+Run the inspector against any directory without installing anything:
+
+```sh
+npx @kontourai/console console-inspect
+```
+
+Or install globally and run directly:
+
+```sh
+npm install -g @kontourai/console
+console-inspect            # inspect the current directory
+kontour serve              # start the local hub on 127.0.0.1:3737
+kontour-flow-bridge --help # bridge local Flow runs into the hub
+```
+
+`console-inspect` reads `.kontour/events/**/*.jsonl` and `.kontour/projections/**/*.json` in the current directory, validates the records, and prints event counts plus current claim, process, gate, review, action, and link summaries. It exits 0 on success and 1 if validation errors are found. No network access; no mutations.
+
 ## Published packages
 
-- `@kontour/console-core` — shared record and process-flow shapes.
-- `@kontour/console-server` — the local hub (event ingestion, projections, telemetry, SSE) plus the `kontour`, `console-inspect`, and `kontour-flow-bridge` bins.
+- `@kontourai/console` — the installable/npx entry point; ships compiled `kontour`, `console-inspect`, and `kontour-flow-bridge` bins.
+- `@kontourai/console-core` — shared record and process-flow shapes.
+- `@kontourai/console` — the local hub (event ingestion, projections, telemetry, SSE).
 
 The React UI (`console-ui`) remains an app in this repo rather than a package.
 
@@ -29,8 +49,8 @@ The React UI (`console-ui`) remains an app in this repo rather than a package.
 `kontour-flow-bridge` derives Console events from local [Flow](https://kontourai.io/flow) run files and delivers them to a hub — read-only over Flow's files, deterministic event ids, idempotent re-runs:
 
 ```sh
-npx --package @kontour/console-server kontour serve          # hub on 127.0.0.1:3737
-npx --package @kontour/console-server kontour-flow-bridge \
+npx --package @kontourai/console kontour serve          # hub on 127.0.0.1:3737
+npx --package @kontourai/console kontour-flow-bridge \
   --flow-root .flow --watch                                  # follow live runs
 ```
 
@@ -105,7 +125,7 @@ A Console producer is the Kontour product or product runtime that emits control-
 
 Products can write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under a configured `.kontour` root, appending events below `.kontour/events/` and writing current projection snapshots below `.kontour/projections/`.
 
-Prototype package exports point at TypeScript source. Run programmatic examples in this repo with `node --import tsx` or another TypeScript loader until the packages gain a compiled publish target.
+The published `@kontourai/console` package ships compiled CommonJS in `dist`. Programmatic examples below use `require('@kontourai/console')` directly against the compiled output. When working inside this repo, `node --import tsx` also works.
 
 ```ts
 const {
@@ -113,7 +133,7 @@ const {
   LocalFileSink,
   CompositeSink,
   InMemorySink
-} = require("@kontour/console-server");
+} = require("@kontourai/console");
 
 const memory = new InMemorySink();
 const emitter = new KontourEmitter({
@@ -151,7 +171,7 @@ node --import tsx console-server/bin/console-inspect.ts local
 The same local read path is exported for programmatic consumers:
 
 ```ts
-const { inspectLocalKontour } = require("@kontour/console-server");
+const { inspectLocalKontour } = require("@kontourai/console");
 
 const report = inspectLocalKontour({ rootDir: process.cwd() });
 console.log(report.eventStreams.length, report.projections.length);
@@ -189,7 +209,7 @@ const {
   LocalFileSink,
   surfaceClaimStateToProjection,
   surfaceFreshnessTransitionToEvent
-} = require("@kontour/console-server");
+} = require("@kontourai/console");
 
 const emitter = new KontourEmitter({
   sink: new LocalFileSink({ root: ".kontour" })
@@ -229,7 +249,7 @@ const {
   getFlowProcessStatus,
   flowProcessStateToProjection,
   flowGateTransitionToEvent
-} = require("@kontour/console-server");
+} = require("@kontourai/console");
 
 const emitter = new KontourEmitter({
   sink: new LocalFileSink({ root: ".kontour" })

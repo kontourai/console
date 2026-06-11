@@ -1,5 +1,5 @@
 {
-  "name": "@kontour/console-server",
+  "name": "@kontourai/console",
   "version": "0.1.0",
   "type": "commonjs",
   "exports": {
@@ -43,6 +43,6 @@
     "access": "public"
   },
   "dependencies": {
-    "@kontour/console-core": "^0.1.0"
+    "@kontourai/console-core": "^0.1.0"
   }
 }
