@@ -25,6 +25,10 @@ node --import tsx scripts/golden-demo.ts
 
 Set `GOLDEN_DEMO_FAST=1` to skip the narrative pacing. Re-record the GIF with `vhs scripts/golden-demo.tape` after the script or CLI output changes.
 
+## Bridging without the script
+
+The demo script emits its own events for narrative pacing. For real work, `kontour-flow-bridge --flow-root .flow --watch` derives the same events from any Flow run's files directly — see the README's *Bridge a real Flow run* section.
+
 ## Boundaries
 
 The demo is a consumer of public contracts only: the Flow CLI and run files, Survey's published adapter, and the hub's `/records` endpoint. Console renders what the products emitted; it does not decide gate outcomes, own review semantics, or invent state.

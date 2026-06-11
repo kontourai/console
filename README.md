@@ -17,6 +17,25 @@ This repo ships local-first Console foundation code alongside the product contex
 
 ![Console local operating plane showing a replayed process flow with passed and waiting gates, claims, and an active process](docs/assets/console-operating-plane.png)
 
+## Published packages
+
+- `@kontour/console-core` — shared record and process-flow shapes.
+- `@kontour/console-server` — the local hub (event ingestion, projections, telemetry, SSE) plus the `kontour`, `console-inspect`, and `kontour-flow-bridge` bins.
+
+The React UI (`console-ui`) remains an app in this repo rather than a package.
+
+## Bridge a real Flow run
+
+`kontour-flow-bridge` derives Console events from local [Flow](https://kontourai.io/flow) run files and delivers them to a hub — read-only over Flow's files, deterministic event ids, idempotent re-runs:
+
+```sh
+npx --package @kontour/console-server kontour serve          # hub on 127.0.0.1:3737
+npx --package @kontour/console-server kontour-flow-bridge \
+  --flow-root .flow --watch                                  # follow live runs
+```
+
+Point the Console UI at the hub and the operating plane follows your actual gated work — current step, advances, route-backs — with no demo scripting.
+
 ## See it locally
 
 Start the hub and the UI, then replay the bundled cross-product example streams into it:

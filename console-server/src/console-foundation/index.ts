@@ -849,3 +849,14 @@ module.exports = {
   flowProcessStateToProjection: flowProcessHelper.flowProcessStateToProjection,
   flowGateTransitionToEvent: flowProcessHelper.flowGateTransitionToEvent
 };
+
+export {
+  bridgeFlowRun,
+  deriveFlowRunEvents,
+  listFlowRunDirs,
+} from "./flow-bridge";
+export type {
+  FlowBridgeDelivery,
+  FlowBridgeEvent,
+  FlowBridgeScopeOptions,
+} from "./flow-bridge";
