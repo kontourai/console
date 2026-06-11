@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { OperatingState } from "@kontour/console-core";
+import type { OperatingState } from "@kontourai/console-core";
 import { connectHubEvents, DEFAULT_HUB_URL, type HubAuthOptions } from "../hubClient";
 import type { ConsoleAcceptedRecordSsePayload, ConsoleTelemetryUpdatedSsePayload } from "../serverApiTypes";
 import type { ConnectionStatus } from "../types";

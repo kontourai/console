@@ -1,4 +1,4 @@
-import type { FlowEdge, FlowNode } from "@kontour/console-core";
+import type { FlowEdge, FlowNode } from "@kontourai/console-core";
 
 const NODE_WIDTH = 184;
 const NODE_HEIGHT = 82;

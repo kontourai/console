@@ -1,4 +1,4 @@
-import type { OperatingState } from "@kontour/console-core";
+import type { OperatingState } from "@kontourai/console-core";
 import { Empty } from "@kontourai/console-kit/react";
 import { TimelineRow } from "../components/Rows";
 import type { ConsoleAcceptedRecordSsePayload } from "../serverApiTypes";

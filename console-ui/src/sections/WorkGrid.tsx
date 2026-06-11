@@ -2,7 +2,7 @@ import { Empty, Panel } from "@kontourai/console-kit/react";
 import { ProcessFlowDiagram } from "../components/ProcessFlowDiagram";
 import { ProcessView } from "../components/ProcessView";
 import { ActionRow, ClaimRow, GateRow, LearningRow } from "../components/Rows";
-import { buildProcessFlow, selectLearningsBySubjectRef, type ConsoleRef, type OperatingState } from "@kontour/console-core";
+import { buildProcessFlow, selectLearningsBySubjectRef, type ConsoleRef, type OperatingState } from "@kontourai/console-core";
 
 export function WorkGrid({ state }: { state: OperatingState }) {
   const flow = buildProcessFlow(state);

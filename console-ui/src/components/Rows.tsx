@@ -1,4 +1,4 @@
-import type { ConsoleAction, ConsoleClaim, ConsoleGate, ConsoleLearning, ConsoleRef, TimelineItem } from "@kontour/console-core";
+import type { ConsoleAction, ConsoleClaim, ConsoleGate, ConsoleLearning, ConsoleRef, TimelineItem } from "@kontourai/console-core";
 import { Badge } from "@kontourai/console-kit/react";
 import { formatTime } from "../utils/format";
 

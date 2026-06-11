@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      "@kontour/console-core": fileURLToPath(new URL("../console-core/src/index.ts", import.meta.url))
+      "@kontourai/console-core": fileURLToPath(new URL("../console-core/src/index.ts", import.meta.url))
     }
   },
   server: {

@@ -13,7 +13,7 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "paths": {
-      "@kontour/console-core": ["../console-core/src/index.ts"]
+      "@kontourai/console-core": ["../console-core/src/index.ts"]
     },
     "resolveJsonModule": true,
     "isolatedModules": true,

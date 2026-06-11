@@ -1,4 +1,4 @@
-import type { OperatingState } from "@kontour/console-core";
+import type { OperatingState } from "@kontourai/console-core";
 
 export type ConsoleStateResponse = OperatingState;
 

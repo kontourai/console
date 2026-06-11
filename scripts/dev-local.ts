@@ -147,7 +147,7 @@ function startDevServers(config: DevLocalConfig): ChildProcess[] {
     "npm",
     [
       "--workspace",
-      "@kontour/console-ui",
+      "@kontourai/console-ui",
       "run",
       "dev",
       "--",

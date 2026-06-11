@@ -1,4 +1,4 @@
-import type { OperatingState } from "@kontour/console-core";
+import type { OperatingState } from "@kontourai/console-core";
 import { Metric } from "@kontourai/console-kit/react";
 import { formatTime } from "../utils/format";
 

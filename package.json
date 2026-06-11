@@ -1,10 +1,15 @@
 {
-  "name": "console",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@kontourai/console",
+  "version": "0.1.0",
+  "description": "Kontour Console local hub: fixture inspection, projections, SSE, and the Flow run bridge.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/console.git"
+  },
   "type": "commonjs",
   "engines": {
-    "node": ">=24.0.0"
+    "node": ">=20"
   },
   "workspaces": [
     "console-core",
@@ -12,22 +17,33 @@
     "console-ui"
   ],
   "bin": {
-    "kontour": "console-server/bin/kontour.ts",
-    "console-inspect": "console-server/bin/console-inspect.ts"
+    "kontour": "console-server/dist/bin/kontour.js",
+    "console-inspect": "console-server/dist/bin/console-inspect.js",
+    "kontour-flow-bridge": "console-server/dist/bin/kontour-flow-bridge.js"
   },
+  "files": [
+    "console-server/dist",
+    "console-core/dist",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
-    "build": "npm run typecheck",
-    "inspect:fixtures": "npm --workspace @kontour/console-server run inspect:fixtures",
+    "build": "npm --workspace @kontourai/console-core run build && npm --workspace @kontourai/console run build",
+    "prepack": "npm run build",
+    "inspect:fixtures": "npm --workspace @kontourai/console run inspect:fixtures",
     "prototype:handoff": "node --import tsx scripts/serve-prototype.ts docs/prototypes/handoff-replay",
     "dev:local": "node --import tsx scripts/dev-local.ts",
-    "serve": "npm --workspace @kontour/console-server run serve --",
-    "test": "npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontour/console-core test && npm --workspace @kontour/console-server test && npm --workspace @kontour/console-ui test && npm --workspace @kontour/console-ui run typecheck && npm run test:dev-local && npm run test:browser",
+    "serve": "npm --workspace @kontourai/console run serve --",
+    "test": "npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontourai/console-core test && npm --workspace @kontourai/console test && npm --workspace @kontourai/console-ui test && npm --workspace @kontourai/console-ui run typecheck && npm run test:dev-local && npm run test:browser",
     "test:browser": "playwright test",
     "test:dev-local": "node --import tsx --test scripts/dev-local.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontour/console-core run typecheck && npm --workspace @kontour/console-server run typecheck && npm --workspace @kontour/console-ui run typecheck",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontourai/console-core run typecheck && npm --workspace @kontourai/console run typecheck && npm --workspace @kontourai/console-ui run typecheck",
     "check:content-boundary": "node --import tsx scripts/check-content-boundary.ts",
     "setup:repo-hooks": "node --import tsx scripts/setup-repo-hooks.ts",
     "validate:repo-hooks": "node --import tsx scripts/validate-repo-hooks.ts"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
