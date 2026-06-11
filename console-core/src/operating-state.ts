@@ -106,6 +106,18 @@ export interface ConsoleLearning {
   updatedAt?: string;
 }
 
+export interface ConsoleInquiry {
+  id: string;
+  label?: string;
+  outcome: "matched" | "derived" | "unsupported" | string;
+  asker?: string;
+  claimRefs?: ConsoleRef[];
+  ruleRefs?: ConsoleRef[];
+  statusFunctionVersion?: string;
+  resolvedAt?: string;
+  sourceRef?: ConsoleRef;
+}
+
 export interface TimelineItem {
   id: string;
   type?: string;
@@ -130,6 +142,7 @@ export interface OperatingState {
   claims?: ConsoleClaim[];
   evidence?: ConsoleEvidence[];
   learnings?: ConsoleLearning[];
+  inquiries?: ConsoleInquiry[];
   actions?: ConsoleAction[];
   links?: ConsoleLink[];
   timeline?: TimelineItem[];

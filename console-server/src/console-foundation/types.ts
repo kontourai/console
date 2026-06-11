@@ -39,6 +39,18 @@ export interface ConsoleActionRecord extends JsonObject {
   subjectRefs?: CrossProductRef[];
 }
 
+export interface ConsoleInquiryRecord extends JsonObject {
+  id: string;
+  label?: string;
+  outcome: string;
+  asker?: string;
+  claimRefs?: CrossProductRef[];
+  ruleRefs?: CrossProductRef[];
+  statusFunctionVersion?: string;
+  resolvedAt?: string;
+  sourceRef?: CrossProductRef;
+}
+
 export interface OperatingState {
   generatedAt?: string | null;
   currentStage?: string;
@@ -54,6 +66,7 @@ export interface OperatingState {
   claims?: Record<string, unknown>[];
   evidence?: Record<string, unknown>[];
   learnings?: Record<string, unknown>[];
+  inquiries?: Record<string, unknown>[];
   actions?: Record<string, unknown>[];
   links?: ConsoleLink[];
   timeline?: Record<string, unknown>[];
@@ -170,6 +183,7 @@ export interface ConsoleProjectionSnapshot extends ConsoleProjectionRecord {
   actions?: ConsoleObjectRecord[];
   exceptions?: ConsoleObjectRecord[];
   learnings?: ConsoleObjectRecord[];
+  inquiries?: ConsoleObjectRecord[];
   links?: ConsoleLink[];
 }
 

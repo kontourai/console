@@ -206,6 +206,10 @@ type ConsoleEventType =
   | "exception.requested"
   | "exception.accepted"
   | "exception.rejected"
+  | "inquiry.resolved"
+  | "inquiry.mapping.proposed"
+  | "inquiry.mapping.reviewed"
+  | "claim.dispute.resolved"
   | string;
 ```
 
@@ -243,6 +247,10 @@ The `| string` extension point lets products emit additional names, but custom e
 | Exceptions | `exception.requested` | A product or actor requested an exception to gate, readiness, policy, or process requirements. |
 | Exceptions | `exception.accepted` | The owning authority accepted an exception, optionally with expiry and trust implications. |
 | Exceptions | `exception.rejected` | The owning authority rejected an exception request. |
+| Inquiries | `inquiry.resolved` | Surface resolved an Inquiry with one of three outcomes: `matched` (an existing claim answers it), `derived` (a named derivation rule answers it), or `unsupported` (no claim or rule exists — a demand-signal gap). Carries `inquiryId`, `outcome`, resolved `claimRefs` or `ruleRefs`, `asker`, and `statusFunctionVersion`. Unsupported outcomes are the primary demand signal for new mappings and rules. |
+| Inquiries | `inquiry.mapping.proposed` | A probabilistic proposer proposed that a natural-language question maps to an existing canonical claim or rule. The proposal is a reviewable record with provenance (excerpt, rationale, confidence) and goes through Survey review machinery before counting. |
+| Inquiries | `inquiry.mapping.reviewed` | A Survey review of a mapping proposal completed. `outcome` is one of `verified`, `assumed`, or `rejected`. An accepted mapping makes future identical questions resolve as `matched` or `derived` rather than `unsupported`. |
+| Inquiries | `claim.dispute.resolved` | Surface recorded an authority-backed decision resolving a `disputed` claim status. Carries the decision event reference, the `reviewerAuthority`, `authorityTrace`, and resulting claim status. This is an append-only verification event, not a mutation of prior evidence. |
 
 ## Event Payload
 
@@ -296,6 +304,7 @@ type KontourConsoleProjection = {
   actions?: ConsoleActionProjection[];
   exceptions?: ExceptionProjection[];
   learnings?: LearningProjection[];
+  inquiries?: InquiryProjection[];
   links?: CrossProductLink[];
   extensions?: Record<string, unknown>;
 };
@@ -373,6 +382,7 @@ The v0 projection envelope carries arrays of product-owned objects plus explicit
 | Actions | `actions` | The authority descriptor identifies the owning product; Console must route execution through trusted product control paths. | Available next actions, disabled reasons, and pending/completed action state. |
 | Exceptions | `exceptions` | Flow or the product governance layer owns exception acceptance, rejection, expiry, and trust implications. | Exception requests and accepted exception visibility. |
 | Learnings | `learnings` | The emitting product owns the source schema, lifecycle, and meaning. Learning records are non-authoritative Console operating context only. | Explanatory context connected to workflows, decisions, source records, telemetry, or domain observations. |
+| Inquiries | `inquiries` | Surface owns Inquiry record identity, resolution path, outcome, and asker. Console folds only counts, outcome refs, and links; it does not recompute outcomes or mutate Inquiry records. | Unsupported-gap and pending-mapping-proposal attention queue items; cross-product navigation from inquiry to claim or rule. |
 | Links | `links` | Emitting products own explicit identity and relationship assertions. | Cross-product navigation and correlation without global id minting. |
 | Extensions | `extensions` | Namespaced product or deployment detail remains product-owned. | Optional vertical fields that are not required for core v0 behavior. |
 
@@ -424,6 +434,8 @@ type ConsoleSummary = {
   openGateCount?: number;
   reviewItemCount?: number;
   pendingActionCount?: number;
+  unsupportedInquiryCount?: number;
+  pendingMappingProposalCount?: number;
   lastUpdatedAt?: string;
 };
 ```
@@ -509,7 +521,7 @@ Gates belong to Flow. Console can expose status and actions, but it must route m
 type ReviewItemProjection = {
   id: string;
   label?: string;
-  kind: "claim_review" | "field_change" | "candidate_fact" | "gate_exception" | "evidence_gap" | "readiness_gap" | string;
+  kind: "claim_review" | "field_change" | "candidate_fact" | "gate_exception" | "evidence_gap" | "readiness_gap" | "inquiry_unsupported_gap" | "mapping_proposal" | string;
   status: "open" | "in_review" | "approved" | "rejected" | "applied" | "blocked" | "cancelled" | string;
   priority?: "low" | "medium" | "high" | "critical" | string;
   subjectRef?: CrossProductRef;
@@ -635,6 +647,36 @@ type LearningProjection = {
 Learning projection objects are thin Console control-plane summaries of product-owned learning records. `family` is limited to `workflow` or `domain`, `nonAuthority` must be `true`, and `summary` is the operator-facing statement. Optional `confidence`, `sourceRef`, `refs`, `links`, and namespaced `extensions` can connect the learning to source records, decisions, telemetry, Flow Agents `workflow-learning` records, or domain objects.
 
 Console does not own or define the source learning schema. Product-specific learning fields remain in product-owned source records, event `payload.data`, refs, links, or namespaced extensions. A learning cannot revoke, change, or override claims, gates, decisions, actions, source facts, product records, or product truth; authoritative changes require the owning product's normal event.
+
+## Inquiries
+
+```ts
+type InquiryProjection = {
+  id: string;
+  label?: string;
+  outcome: "matched" | "derived" | "unsupported" | string;
+  asker?: string;
+  claimRefs?: CrossProductRef[];
+  ruleRefs?: CrossProductRef[];
+  statusFunctionVersion?: string;
+  resolvedAt?: string;
+  sourceRef?: CrossProductRef;
+  extensions?: Record<string, unknown>;
+};
+```
+
+Inquiry records are append-only testimony emitted by Surface. Each record captures what was knowable at the moment the inquiry resolved — the question, the resolution path, the outcome, and the asker. Inquiry records are never updated because they are not present-tense truth claims; they assert what was knowable at a specific moment.
+
+Console projection rules for inquiries:
+
+- Console folds `inquiry.resolved` events into `inquiries[]` as count and link summaries only. It does not recompute resolution paths, derive outcomes, or mutate inquiry records.
+- `unsupported` outcomes join the suite-level attention queue as `review_item` objects with `kind: "inquiry_unsupported_gap"`. They represent demand signal gaps, not errors.
+- Pending mapping proposals from `inquiry.mapping.proposed` join the suite-level attention queue as `review_item` objects with `kind: "mapping_proposal"`, routed through Survey review machinery.
+- `matched` and `derived` outcomes appear in `inquiries[]` as fold-only records with `claimRefs` or `ruleRefs` for cross-product navigation to the Surface claim or derivation rule.
+- Console never recomputes claim status from inquiry records. Surface remains the authority; Console links the inquiry to the claim, not the other way.
+- `claim.dispute.resolved` events are folded as `decision` records. The resolution is an append-only verification event in Surface's ledger; Console records the decision reference for timeline and navigation without re-deriving the claim status.
+
+The `ConsoleSummary` fields `unsupportedInquiryCount` and `pendingMappingProposalCount` are display aids derivable from included `inquiries[]` and `reviewItems[]` objects.
 
 ## Freshness And Time Estimates
 
@@ -932,6 +974,33 @@ The primitive producers can emit events as the workflow happens:
 The read model shown in Console can then be rebuilt from the event stream or loaded from the latest projection snapshot.
 
 The checked-in `survey-field-review` fixtures show Survey as the review producer with vertical details represented as generic refs and Survey extension metadata.
+
+## Inquiry Lifecycle Worked Example
+
+The following table mirrors the Surface-and-Flow handoff example, showing how an agent asking an unmapped question flows through the Inquiry primitive and joins the suite-level attention queue.
+
+Concrete story:
+
+```text
+Surface says: agent asked a question with no registered claim — inquiry.resolved unsupported.
+Console says: unsupported gap joins the attention queue as an inquiry_unsupported_gap review item.
+Surface says: a probabilistic proposer proposed a mapping — inquiry.mapping.proposed.
+Survey says:  the mapping proposal entered review as a mapping_proposal review item.
+Survey says:  the mapping was reviewed and verified — inquiry.mapping.reviewed.
+Surface says: the same question resolves as matched on the next inquiry — inquiry.resolved matched.
+```
+
+| Moment | Console event | Primary subject | Important refs/links | Projection effect |
+| --- | --- | --- | --- | --- |
+| Agent asks unmapped question | `inquiry.resolved` | Surface inquiry | `outcome: "unsupported"`; `inquiryId`, `asker`, `statusFunctionVersion` in `payload.data`. | `inquiries[]` adds the record with `outcome: "unsupported"`; `summary.unsupportedInquiryCount` increments. A `review_item.opened` event should follow, adding a `reviewItems[]` entry with `kind: "inquiry_unsupported_gap"`. |
+| Unsupported gap enters attention queue | `review_item.opened` | Survey review item | `kind: "inquiry_unsupported_gap"`; refs the Surface inquiry and the asker. | `reviewItems[]` shows the gap as `open`; the suite-level attention queue surfaces it next to stale claims, evidence gaps, and open gates. |
+| Proposer proposes a mapping | `inquiry.mapping.proposed` | Surface mapping proposal | Refs the Surface inquiry and the candidate claim or rule. `payload.data` carries excerpt, rationale, and confidence. | A `review_item.opened` event should follow with `kind: "mapping_proposal"`, adding a `reviewItems[]` entry; `summary.pendingMappingProposalCount` increments. |
+| Mapping proposal enters Survey review | `review_item.opened` | Survey review item | `kind: "mapping_proposal"`; refs the mapping proposal and candidate claim or rule. | `reviewItems[]` shows the proposal as `open` or `in_review`; existing Survey review machinery handles the review workflow. |
+| Mapping reviewed and verified | `inquiry.mapping.reviewed` | Surface mapping | `outcome: "verified"`; refs the accepted mapping, the claim or rule it maps to. | A `review_item.approved` or `review_item.rejected` event should follow. `reviewItems[]` advances to `approved`. The accepted mapping is the durable reusable artifact that makes future identical questions resolve as `matched`. |
+| Mapping accepted; review item closed | `review_item.approved` | Survey review item | Refs the mapping proposal and resolved claim or rule. | `reviewItems[]` moves to `approved`; `pendingMappingProposalCount` decrements; `decision.recorded` may follow with the reviewer authority. |
+| Subsequent inquiry resolves matched | `inquiry.resolved` | Surface inquiry | `outcome: "matched"`; refs the matched claim; `statusFunctionVersion`. | `inquiries[]` adds the matched record; `claimRefs` links to the Surface claim for cross-product navigation; Console does not recompute the match — Surface is the authority. |
+
+This lifecycle requires no changes to Survey review machinery. The `inquiry_unsupported_gap` and `mapping_proposal` kinds are new values in the `ReviewItemProjection.kind` vocabulary; Survey's candidate-to-review path handles them as additional item types through the existing workbench.
 
 ## Open Questions
 
