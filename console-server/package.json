@@ -11,7 +11,8 @@
   "bin": {
     "kontour": "dist/bin/kontour.js",
     "console-inspect": "dist/bin/console-inspect.js",
-    "kontour-flow-bridge": "dist/bin/kontour-flow-bridge.js"
+    "kontour-flow-bridge": "dist/bin/kontour-flow-bridge.js",
+    "console-db-migrate": "dist/bin/console-db-migrate.js"
   },
   "scripts": {
     "db:migrate": "node --import tsx bin/console-db-migrate.ts",
