@@ -4,6 +4,12 @@ const { applyConsoleMigrations } = require("../src/console-foundation/migrations
 const { loadConsoleMigrations } = require("../src/console-foundation/migrations");
 
 async function main() {
+  // A runner with zero migrations is a packaging bug, not a success
+  // (bit the first hosted deploy: .sql files missing from the tarball).
+  if (loadConsoleMigrations().length === 0) {
+    console.error("No migration files found — the migrations directory is missing or empty.");
+    process.exit(2);
+  }
   if (process.argv.includes("--dry-run")) {
     for (const migration of loadConsoleMigrations()) {
       console.log(`would apply ${migration.name}`);

@@ -5,19 +5,25 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 import { assertConsoleRuntimeConfig, resolveConsoleRuntimeConfig, type ConsoleRuntimeConfig } from "./config";
 import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./sse-stream";
-import { createTelemetryStore, parseTelemetryQuery, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
+import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
 import type {
+  ConsoleEventRecord,
   ConsoleRecord,
   ConsoleHubServer,
   ConsoleHubServerOptions,
   ConsoleRequestContext,
+  ConsoleSqlClient,
+  CurrentOperatingStateOptions,
   DeliveryResult,
   Hub,
+  InspectionReport,
   ListenOptions,
+  OperatingState,
   OpenRecord,
   RequestError,
   ValidationIssue
 } from "./types";
+import { CoreRecordsRepository } from "./core-records";
 
 const { LocalConsoleHub } = require("./console-hub");
 
@@ -98,6 +104,19 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
   const hostedHubs = new Map<string, Hub>();
   const hostedEvents = new Map<string, SseBroker>();
   const telemetry = createTelemetryStore(options);
+  // Resolve the SQL client once so it can be shared between telemetry and the
+  // core-records persistence layer.  In hosted mode the postgres adapter is
+  // required (assertConsoleRuntimeConfig enforces this), so the client will
+  // always be present there.  Local mode never wires one (options.telemetrySqlClient
+  // is absent and no DATABASE_URL is set), so coreSqlClient is undefined and
+  // PostgresConsoleHub falls back gracefully to the local-file hub.
+  const coreSqlClient: ConsoleSqlClient | undefined =
+    options.telemetrySqlClient ??
+    createOptionalPgClient(
+      runtimeConfig.mode === "hosted"
+        ? (options.telemetryDatabaseUrl || process.env.CONSOLE_DATABASE_URL || process.env.CONSOLE_TELEMETRY_DATABASE_URL)
+        : undefined
+    );
   const uiDistDir = resolveUiDistDir();
   const server = http.createServer((request: IncomingMessage, response: ServerResponse) => {
     routeRequest({
@@ -108,6 +127,7 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
       telemetry,
       options,
       runtimeConfig,
+      coreSqlClient,
       uiDistDir,
       request,
       response
@@ -141,11 +161,12 @@ async function routeRequest(input: {
   telemetry: TelemetryStore;
   options: ConsoleHubServerOptions;
   runtimeConfig: ConsoleRuntimeConfig;
+  coreSqlClient?: ConsoleSqlClient;
   uiDistDir: string;
   request: IncomingMessage;
   response: ServerResponse;
 }): Promise<void> {
-  const { telemetry, options, runtimeConfig, uiDistDir, request, response } = input;
+  const { telemetry, options, runtimeConfig, coreSqlClient, uiDistDir, request, response } = input;
   const url = new URL(request.url || "/", `http://${request.headers.host || DEFAULT_HOST}`);
   if (!applyCorsPolicy(request, response, runtimeConfig)) return;
 
@@ -225,15 +246,19 @@ async function routeRequest(input: {
       return;
     }
     const context = auth.context;
-    const hub = runtimeConfig.mode === "hosted" ? hostedHubForTenant(input.hostedHubs, options, context.tenantId) : input.localHub;
+    const hub = runtimeConfig.mode === "hosted" ? hostedHubForTenant(input.hostedHubs, options, context.tenantId, coreSqlClient) : input.localHub;
     const events = runtimeConfig.mode === "hosted" ? hostedEventsForTenant(input.hostedEvents, context.tenantId) : input.localEvents;
 
     if (request.method === "GET" && (url.pathname === "/stream" || url.pathname === "/events")) {
+      // Await the initial Postgres load so SSE late-join state reflects full history.
+      if ((hub as any).readyForState) await (hub as any).readyForState();
       handleEvents(hub, events, request, response, url.pathname);
       return;
     }
 
     if (request.method === "GET" && url.pathname === "/state") {
+      // Await the initial Postgres load so /state reflects full history after restarts.
+      if ((hub as any).readyForState) await (hub as any).readyForState();
       writeJson(response, 200, hub.currentOperatingState());
       return;
     }
@@ -910,19 +935,116 @@ function requestTenantId(request: IncomingMessage): string | undefined {
   return typeof headerTenant === "string" && headerTenant ? headerTenant : undefined;
 }
 
-function hostedHubForTenant(hostedHubs: Map<string, Hub>, options: ConsoleHubServerOptions, tenantId: string): Hub {
+function hostedHubForTenant(
+  hostedHubs: Map<string, Hub>,
+  options: ConsoleHubServerOptions,
+  tenantId: string,
+  sqlClient?: ConsoleSqlClient
+): Hub {
   const safeTenantId = safePathToken(tenantId);
   const existing = hostedHubs.get(safeTenantId);
   if (existing) return existing;
   const baseRoot = options.kontourRoot || options.localRoot || ".kontour";
-  const tenantHub = new LocalConsoleHub({
+  const localHub = new LocalConsoleHub({
     ...options,
     hub: undefined,
     sink: undefined,
     kontourRoot: path.join(baseRoot, "tenants", safeTenantId)
   });
+  // In hosted mode with a SQL client, wrap with PostgresConsoleHub so records
+  // survive redeploys.  Without a SQL client (shouldn't happen in valid hosted
+  // config, but safe fallback) use the local hub as-is.
+  const tenantHub = sqlClient
+    ? new PostgresConsoleHub(localHub, sqlClient, tenantId)
+    : localHub;
   hostedHubs.set(safeTenantId, tenantHub);
   return tenantHub;
+}
+
+/**
+ * Hub implementation for hosted mode that persists accepted records to
+ * Postgres and builds /state from Postgres-sourced in-memory records.
+ *
+ * Invariants:
+ *   - At construction the full tenant record set is loaded from Postgres
+ *     in sequence order (async, via loadPromise).  The Hub interface's
+ *     synchronous currentOperatingState() is safe to call at any point;
+ *     call await hub.readyForState() first when you need a complete picture
+ *     (routeRequest does this for /state and SSE late-join).
+ *   - Subsequent appends wait for the initial load before persisting so that
+ *     in-memory order matches Postgres sequence order.
+ *   - currentOperatingState() and SSE late-join state are both built from
+ *     the in-memory cache, so they survive redeploys.
+ *   - inspect() is delegated to the underlying LocalConsoleHub so the
+ *     current-session JSONL file view (useful for debugging) still works.
+ *   - Duplicate record IDs follow the Postgres on-conflict update semantics:
+ *     the insert succeeds (returns accepted) just like the JSONL append
+ *     path — consistent with existing dedup behaviour.
+ */
+class PostgresConsoleHub implements Hub {
+  private readonly repo: CoreRecordsRepository;
+  private readonly events: ConsoleEventRecord[] = [];
+  /** Resolves when the initial Postgres load is done (or errored gracefully). */
+  private readonly loadPromise: Promise<void>;
+
+  constructor(
+    private readonly localHub: InstanceType<typeof LocalConsoleHub>,
+    sqlClient: ConsoleSqlClient,
+    private readonly tenantId: string
+  ) {
+    this.repo = new CoreRecordsRepository(sqlClient);
+    // Start the load immediately so /state benefits from it on the first
+    // request without needing an explicit trigger.
+    this.loadPromise = this.repo.loadRecords(tenantId).then((records) => {
+      for (const record of records) {
+        if (isConsoleEventRecord(record)) {
+          this.events.push(record);
+        }
+      }
+    }).catch(() => {
+      // Errors are swallowed; the events array stays empty and the hub
+      // degrades to an empty-state view rather than crashing.
+    });
+  }
+
+  /**
+   * Wait for the initial Postgres load to complete.
+   * routeRequest calls this before currentOperatingState() so /state and
+   * SSE late-join always reflect the full persistent history.
+   */
+  readyForState(): Promise<void> {
+    return this.loadPromise;
+  }
+
+  async append(record: ConsoleRecord): Promise<DeliveryResult> {
+    // Ensure load is complete before appending so in-memory order is stable.
+    await this.loadPromise;
+    const observedAt = new Date().toISOString();
+    // Persist to Postgres first.  A failure returns a failed DeliveryResult
+    // to the caller — we do not silently fall through to JSONL in hosted mode.
+    const persisted = await this.repo.persist(record, this.tenantId, observedAt);
+    if (persisted.outcome !== "accepted") return persisted;
+    // Also write to the local file sink for the current session
+    // (enables inspect() to show streams; harmless if disk is ephemeral).
+    await this.localHub.append(record);
+    // Add events to the in-memory cache for currentOperatingState().
+    if (isConsoleEventRecord(record)) {
+      this.events.push(record);
+    }
+    return persisted;
+  }
+
+  inspect(): InspectionReport {
+    return this.localHub.inspect();
+  }
+
+  currentOperatingState(options: CurrentOperatingStateOptions = {}): OperatingState {
+    return foundation().buildCurrentOperatingState(this.events, options);
+  }
+}
+
+function isConsoleEventRecord(record: ConsoleRecord): record is ConsoleEventRecord {
+  return record.schema === "kontour.console.event";
 }
 
 function hostedEventsForTenant(hostedEvents: Map<string, SseBroker>, tenantId: string): SseBroker {

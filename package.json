@@ -28,7 +28,8 @@
     "console-core/dist",
     "LICENSE",
     "README.md",
-    "console-ui/dist"
+    "console-ui/dist",
+    "console-server/migrations"
   ],
   "scripts": {
     "build": "npm --workspace @kontourai/console-core run build && npm --workspace @kontourai/console run build && npm --workspace @kontourai/console-ui run build",

@@ -111,6 +111,25 @@ Health and readiness are operational telemetry. They do not prove Surface
 claims, Flow gates, Survey reviews, Veritas checks, or Flow Agents runtime
 state.
 
+## Data Durability
+
+As of this version both core event records and telemetry records are persisted
+in Postgres.  The Render (and similar) free-tier ephemeral filesystem no longer
+causes data loss on redeploy.
+
+| Table | Purpose | Survives redeploy |
+| --- | --- | --- |
+| `console_telemetry_events` | Agent and runtime telemetry records | Yes — Postgres |
+| `console_core_records` | Core console event records (gates, claims, processes, learnings, actions) | Yes — Postgres |
+
+A single `npm --workspace @kontourai/console run db:migrate` run covers all
+tables.  Re-running it on upgrade is safe and idempotent — already-applied
+migrations are skipped.
+
+The `/state` endpoint and SSE late-join state are both rebuilt from the
+Postgres-loaded in-memory record set on startup, so the operating plane
+state reflects full history across redeploys.
+
 ## Rollback Notes
 
 - Roll back the routing target or artifact pin before changing database state.
