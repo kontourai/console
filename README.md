@@ -19,6 +19,8 @@ This repo ships local-first Console foundation code alongside the product contex
 
 ## Install / npx
 
+Requires Node.js 22 or newer.
+
 Run the inspector against any directory without installing anything:
 
 ```sh
