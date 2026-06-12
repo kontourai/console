@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { DEFAULT_HUB_URL, getTelemetry } from "./hubClient";
+import { DEFAULT_HUB_URL, IS_SAME_ORIGIN, getTelemetry, getSession, postSessionLogout } from "./hubClient";
 import { useHubConnection } from "./hooks/useHubConnection";
 import { useTheme } from "./hooks/useTheme";
 import type { ConsoleTelemetryResponse, TelemetryQueryInput } from "./serverApiTypes";
@@ -29,7 +29,30 @@ export default function App() {
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const { theme, toggleTheme } = useTheme();
-  const auth = { token: authToken || undefined, tenantId: tenantId || undefined };
+
+  // Hosted session state: set when GET /session returns 200 at the same origin.
+  // When true, auth is via the HttpOnly session cookie — no Authorization header needed.
+  const [cookieAuth, setCookieAuth] = useState(false);
+  const [sessionTenantId, setSessionTenantId] = useState<string | null>(null);
+
+  // On startup: check for a hosted session when running at the same origin.
+  useEffect(() => {
+    if (!IS_SAME_ORIGIN) return;
+    getSession(DEFAULT_HUB_URL).then((session) => {
+      if (session) {
+        setCookieAuth(true);
+        setSessionTenantId(session.tenantId);
+        // Pre-fill the connect bar's draft tenant field so it reflects the session.
+        setTenantId(session.tenantId);
+        setDraftTenantId(session.tenantId);
+      }
+    });
+  }, []);
+
+  const auth = cookieAuth
+    ? { useCookie: true as const, tenantId: sessionTenantId || undefined }
+    : { token: authToken || undefined, tenantId: tenantId || undefined };
+
   const { status, state, lastAccepted, lastTelemetryUpdated, error } = useHubConnection(hubUrl, auth);
 
   useEffect(() => {
@@ -67,13 +90,21 @@ export default function App() {
       cancelled = true;
       window.clearInterval(intervalId);
     };
-  }, [hubUrl, authToken, tenantId, telemetryQuery, lastAccepted?.delivery?.recordId, lastTelemetryUpdated?.telemetry?.generatedAt]);
+  }, [hubUrl, authToken, tenantId, cookieAuth, telemetryQuery, lastAccepted?.delivery?.recordId, lastTelemetryUpdated?.telemetry?.generatedAt]);
 
   function submitHubUrl(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setHubUrl(draftHubUrl.trim() || DEFAULT_HUB_URL);
     setAuthToken(draftAuthToken.trim());
     setTenantId(draftTenantId.trim());
+  }
+
+  async function handleSignOut() {
+    await postSessionLogout(hubUrl);
+    setCookieAuth(false);
+    setSessionTenantId(null);
+    // Reload to land on the gate page.
+    window.location.reload();
   }
 
   function selectView(nextView: AppView) {
@@ -117,11 +148,14 @@ export default function App() {
         draftTenantId={draftTenantId}
         status={status}
         theme={theme}
+        cookieAuth={cookieAuth}
+        sessionTenantId={sessionTenantId}
         onDraftHubUrlChange={setDraftHubUrl}
         onDraftAuthTokenChange={setDraftAuthToken}
         onDraftTenantIdChange={setDraftTenantId}
         onSubmit={submitHubUrl}
         onThemeToggle={toggleTheme}
+        onSignOut={handleSignOut}
       />
       <nav className="view-tabs" aria-label="Console views">
         <button type="button" className={view === "operate" ? "active" : ""} onClick={() => selectView("operate")}>Operate</button>

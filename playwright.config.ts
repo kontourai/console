@@ -12,7 +12,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "npm --workspace @kontourai/console-ui run build && npm --workspace @kontourai/console-ui run preview -- --host 127.0.0.1 --port 4183",
+    command: "VITE_CONSOLE_HUB_URL=http://127.0.0.1:3737 npm --workspace @kontourai/console-ui run build && npm --workspace @kontourai/console-ui run preview -- --host 127.0.0.1 --port 4183",
     url: "http://127.0.0.1:4183",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

@@ -26,7 +26,7 @@ export const DEFAULT_HUB_URL = viteEnv?.VITE_CONSOLE_HUB_URL
  * True when the UI is running at the same origin as the hub (production bundle
  * served from the hub). Used to decide whether to check for a hosted session.
  */
-export const IS_SAME_ORIGIN = !viteEnv?.VITE_CONSOLE_HUB_URL && !viteEnv?.DEV && typeof window !== "undefined";
+export const IS_SAME_ORIGIN = typeof window !== "undefined" && DEFAULT_HUB_URL === window.location.origin;
 
 export interface HubConnection {
   close(): void;
@@ -35,6 +35,17 @@ export interface HubConnection {
 export interface HubAuthOptions {
   token?: string;
   tenantId?: string;
+  /**
+   * When true, rely on the browser-managed HttpOnly session cookie for auth.
+   * No Authorization header is sent. EventSource is always used for streaming
+   * (browser auto-sends the cookie). This mode is set by App.tsx when GET
+   * /session returns 200 at the same origin.
+   */
+  useCookie?: boolean;
+}
+
+export interface HubSessionInfo {
+  tenantId: string;
 }
 
 export function connectHubEvents(hubUrl: string, handlers: HubEventHandlers, auth: HubAuthOptions = {}): HubConnection {
@@ -65,32 +76,75 @@ export async function postRecord(hubUrl: string, record: ConsoleRecordsRequest, 
   return parseResponseJson<ConsoleRecordsResponse>(response);
 }
 
+/**
+ * GET /session — returns {tenantId} when a valid session cookie is present.
+ * Returns null when unauthenticated (401) or on any network error.
+ * Only meaningful when called against the same origin as the current page.
+ */
+export async function getSession(hubUrl: string): Promise<HubSessionInfo | null> {
+  try {
+    const response = await fetch(hubApiUrl(hubUrl, "/session"), {
+      headers: { accept: "application/json" }
+    });
+    if (response.status === 200) {
+      return await response.json() as HubSessionInfo;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POST /session/logout — clears the session cookie.
+ * Ignores errors — the page reload or redirect will handle the rest.
+ */
+export async function postSessionLogout(hubUrl: string): Promise<void> {
+  try {
+    await fetch(hubApiUrl(hubUrl, "/session/logout"), { method: "POST" });
+  } catch {
+    // Ignore — best effort logout.
+  }
+}
+
 export function connectStream(hubUrl: string, handlers: HubEventHandlers, auth: HubAuthOptions = {}): HubConnection {
   const streamUrl = hubApiUrl(hubUrl, "/stream");
   handlers.onStatus("connecting");
+
+  // Cookie auth mode: browser auto-sends the HttpOnly session cookie.
+  // EventSource is the right choice here — it sends cookies automatically
+  // and is sufficient since there are no custom headers to add.
+  if (auth.useCookie) {
+    const source = new EventSource(streamUrl);
+    return wireEventSource(source, streamUrl, handlers);
+  }
+
   if (auth.token || auth.tenantId) return connectFetchStream(streamUrl, handlers, auth);
 
   const source = new EventSource(streamUrl);
+  return wireEventSource(source, streamUrl, handlers);
+}
 
+function wireEventSource(source: EventSource, streamUrl: string, handlers: HubEventHandlers): HubConnection {
   source.addEventListener("open", () => {
     handlers.onStatus("connected");
     handlers.onOpen?.();
   });
 
   source.addEventListener("state", (event) => {
-    const state = parseSseJson<ConsoleSsePayloadMap["state"]>(event.data, "state");
+    const state = parseSseJson<ConsoleSsePayloadMap["state"]>((event as MessageEvent).data, "state");
     if (state) handlers.onState(state);
   });
 
   source.addEventListener("record.accepted", (event) => {
-    const accepted = parseSseJson<ConsoleAcceptedRecordSsePayload>(event.data, "record.accepted");
+    const accepted = parseSseJson<ConsoleAcceptedRecordSsePayload>((event as MessageEvent).data, "record.accepted");
     if (!accepted) return;
     handlers.onRecordAccepted(accepted);
     handlers.onState(accepted.state);
   });
 
   source.addEventListener("telemetry.updated", (event) => {
-    const updated = parseSseJson<ConsoleTelemetryUpdatedSsePayload>(event.data, "telemetry.updated");
+    const updated = parseSseJson<ConsoleTelemetryUpdatedSsePayload>((event as MessageEvent).data, "telemetry.updated");
     if (!updated) return;
     handlers.onTelemetryUpdated?.(updated);
   });
@@ -173,6 +227,7 @@ async function getJson<T>(hubUrl: string, path: string, auth: HubAuthOptions): P
 }
 
 function authHeaders(auth: HubAuthOptions): Record<string, string> {
+  if (auth.useCookie) return {};
   return Object.fromEntries(Object.entries({
     authorization: auth.token ? `Bearer ${auth.token}` : undefined,
     "x-console-tenant-id": auth.tenantId || undefined
