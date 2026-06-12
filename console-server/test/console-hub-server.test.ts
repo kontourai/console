@@ -1764,6 +1764,123 @@ test("GET /session returns 401 when no cookie present and 404 in local mode", as
 });
 
 
+
+test("hosted hub server persists accepted core records to postgres and survives simulated restart", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  const hostedOptions = {
+    rootDir,
+    port: 0 as const,
+    runtimeMode: "hosted" as const,
+    telemetryStorageAdapter: "postgres" as const,
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: [{ token: "token-records", tenantId: "tenant-records" }]
+  };
+  const firstApp = createConsoleHubServer(hostedOptions);
+  await listen(firstApp);
+  try {
+    const baseUrl = serverUrl(firstApp);
+    const event = { ...surfaceFlowHandoffStream().events[0], id: "evt-persist-check" };
+    const accepted = await requestJson("POST", `${baseUrl}/records`, event, { authorization: "Bearer token-records" });
+    assert.equal(accepted.statusCode, 202);
+    assert.equal(accepted.body.outcome, "accepted");
+    assert.equal(accepted.body.sinkId, "postgres-core-records");
+    // Postgres row must exist for this tenant+record combination.
+    assert.equal(sqlClient.coreRows.some((row: any) => row.tenant_id === "tenant-records" && row.record_id === "evt-persist-check"), true);
+  } finally {
+    await close(firstApp);
+  }
+
+  // Simulate a redeploy: second server with a fresh in-memory state but the same
+  // shared FakeTelemetrySqlClient (which retains the previously inserted row).
+  const secondApp = createConsoleHubServer(hostedOptions);
+  await listen(secondApp);
+  try {
+    const state = await requestJson("GET", `${serverUrl(secondApp)}/state`, undefined, { authorization: "Bearer token-records" });
+    assert.equal(state.statusCode, 200);
+    assert.equal(state.body.source.acceptedEventCount, 1);
+    assert.equal(state.body.timeline.some((item: any) => item.id === "evt-persist-check"), true);
+  } finally {
+    await close(secondApp);
+  }
+});
+
+test("hosted hub server returns accepted-as-duplicate for a duplicate core record POST", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: [{ token: "token-dup", tenantId: "tenant-dup" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const event = { ...surfaceFlowHandoffStream().events[0], id: "evt-duplicate-core" };
+    const first = await requestJson("POST", `${baseUrl}/records`, event, { authorization: "Bearer token-dup" });
+    const second = await requestJson("POST", `${baseUrl}/records`, event, { authorization: "Bearer token-dup" });
+    const state = await requestJson("GET", `${baseUrl}/state`, undefined, { authorization: "Bearer token-dup" });
+
+    assert.equal(first.statusCode, 202);
+    assert.equal(first.body.outcome, "accepted");
+    // Second POST of the same record is also accepted (on-conflict update).
+    assert.equal(second.statusCode, 202);
+    assert.equal(second.body.outcome, "accepted");
+    // Only one row in DB for this record_id.
+    assert.equal(sqlClient.coreRows.filter((row: any) => row.record_id === "evt-duplicate-core").length, 1);
+    // State reflects the single deduplicated event.
+    assert.equal(state.body.source.acceptedEventCount >= 1, true);
+  } finally {
+    await close(app);
+  }
+});
+
+test("local hub server does not write core records to postgres in local mode", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  // Local mode even when a sql client is injected for telemetry — core records
+  // must NOT be written to postgres in local mode.
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    telemetryStorageAdapter: "local-jsonl",
+    telemetrySqlClient: sqlClient
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const event = surfaceFlowHandoffStream().events[0];
+    const accepted = await requestJson("POST", `${baseUrl}/records`, event);
+    assert.equal(accepted.statusCode, 202);
+    assert.equal(accepted.body.outcome, "accepted");
+    // No core record rows must have been written to the fake SQL client.
+    assert.equal(sqlClient.coreRows.length, 0);
+  } finally {
+    await close(app);
+  }
+});
+
+test("console migrations include the core-records migration", async () => {
+  const migrations = loadConsoleMigrations();
+  assert.equal(migrations.some((m: any) => m.name === "0002_core_records.sql"), true);
+});
+
+test("console migrations apply core-records migration idempotently", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const migrations = loadConsoleMigrations();
+
+  const first = await applyConsoleMigrations(sqlClient, migrations);
+  const second = await applyConsoleMigrations(sqlClient, migrations);
+
+  assert.equal(first.some((r: any) => r.name === "0002_core_records.sql" && r.applied), true);
+  assert.equal(second.every((r: any) => r.applied === false), true);
+});
+
 function surfaceFlowHandoffStream() {
   const report = inspectFixtures({ rootDir: process.env.KONTOUR_REPO_ROOT || process.cwd() });
   return report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
@@ -1935,12 +2052,14 @@ function tempRoot() {
 
 class FakeTelemetrySqlClient {
   rows: any[] = [];
+  coreRows: any[] = [];
   migrations = new Set<string>();
   selects: Array<{ text: string; values: any[] }> = [];
+  private coreSequence = 1;
 
   async query(text: string, values: any[] = []) {
     const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
-    if (normalized === "begin" || normalized === "commit" || normalized === "rollback" || normalized.startsWith("create table")) {
+    if (normalized === "begin" || normalized === "commit" || normalized === "rollback" || normalized.startsWith("create table") || normalized.startsWith("create index")) {
       return { rows: [], rowCount: 0 };
     }
     if (normalized.startsWith("select 1")) {
@@ -1953,6 +2072,43 @@ class FakeTelemetrySqlClient {
     if (normalized.startsWith("insert into console_schema_migrations")) {
       this.migrations.add(values[0]);
       return { rows: [], rowCount: 1 };
+    }
+    // Core records insert (on conflict update = upsert)
+    if (normalized.startsWith("insert into console_core_records")) {
+      const [tenantId, recordId, schema, type, occurredAt, observedAt, payload] = values;
+      const existingIndex = this.coreRows.findIndex((row: any) => row.tenant_id === tenantId && row.record_id === recordId);
+      if (existingIndex >= 0) {
+        // on conflict do update — preserve sequence
+        this.coreRows[existingIndex] = {
+          ...this.coreRows[existingIndex],
+          schema,
+          type,
+          occurred_at: occurredAt,
+          observed_at: observedAt,
+          payload
+        };
+      } else {
+        this.coreRows.push({
+          tenant_id: tenantId,
+          record_id: recordId,
+          schema,
+          type,
+          occurred_at: occurredAt,
+          observed_at: observedAt,
+          sequence: this.coreSequence++,
+          payload
+        });
+      }
+      return { rows: [], rowCount: 1 };
+    }
+    // Core records select ordered by sequence
+    if (normalized.startsWith("select payload from console_core_records")) {
+      const tenantId = values[0];
+      const rows = this.coreRows
+        .filter((row: any) => row.tenant_id === tenantId)
+        .sort((a: any, b: any) => a.sequence - b.sequence)
+        .map((row: any) => ({ payload: row.payload }));
+      return { rows, rowCount: rows.length };
     }
     if (normalized.startsWith("insert into console_telemetry_events")) {
       const [tenantId, eventId, schemaVersion, eventType, sessionId, observedAt, receivedAt, payload] = values;

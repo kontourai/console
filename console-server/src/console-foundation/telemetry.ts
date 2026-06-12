@@ -1429,7 +1429,7 @@ function parseCsv(value: string | undefined): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-function createOptionalPgClient(databaseUrl: string | undefined): ConsoleSqlClient | undefined {
+export function createOptionalPgClient(databaseUrl: string | undefined): ConsoleSqlClient | undefined {
   if (!databaseUrl) return undefined;
   try {
     const pg = require("pg");
