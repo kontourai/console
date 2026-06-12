@@ -1,4 +1,5 @@
 import http = require("node:http");
+import fs = require("node:fs");
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -29,6 +30,37 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5173"
 ];
 
+const CONTENT_TYPE_MAP: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".woff2": "font/woff2",
+  ".ico": "image/x-icon",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8"
+};
+
+/**
+ * Resolve the console-ui dist directory.
+ *
+ * Resolution order:
+ * 1. CONSOLE_UI_DIST env var override — lets operators point to a custom build.
+ * 2. Relative to __dirname: four levels up, then console-ui/dist.
+ *    This works for both layouts:
+ *      - Repo:      <root>/console-server/src/console-foundation/  → 3× .. → <root>/  → console-ui/dist
+ *      - Published: <root>/console-server/dist/src/console-foundation/ → 4× .. → <root>/ → console-ui/dist
+ *    In both cases path.resolve(__dirname, "../../../../console-ui/dist") resolves correctly
+ *    because the TypeScript source mirrors the compiled output structure.
+ *
+ * Returns the resolved path string (which may or may not exist — callers check).
+ */
+export function resolveUiDistDir(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.CONSOLE_UI_DIST) return path.resolve(env.CONSOLE_UI_DIST);
+  return path.resolve(__dirname, "../../../../console-ui/dist");
+}
+
 export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): ConsoleHubServer {
   const runtimeConfig = resolveConsoleRuntimeConfig(options);
   assertConsoleRuntimeConfig(runtimeConfig);
@@ -37,6 +69,7 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
   const hostedHubs = new Map<string, Hub>();
   const hostedEvents = new Map<string, SseBroker>();
   const telemetry = createTelemetryStore(options);
+  const uiDistDir = resolveUiDistDir();
   const server = http.createServer((request: IncomingMessage, response: ServerResponse) => {
     routeRequest({
       localHub: hub,
@@ -46,6 +79,7 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
       telemetry,
       options,
       runtimeConfig,
+      uiDistDir,
       request,
       response
     });
@@ -78,10 +112,11 @@ async function routeRequest(input: {
   telemetry: TelemetryStore;
   options: ConsoleHubServerOptions;
   runtimeConfig: ConsoleRuntimeConfig;
+  uiDistDir: string;
   request: IncomingMessage;
   response: ServerResponse;
 }): Promise<void> {
-  const { telemetry, options, runtimeConfig, request, response } = input;
+  const { telemetry, options, runtimeConfig, uiDistDir, request, response } = input;
   const url = new URL(request.url || "/", `http://${request.headers.host || DEFAULT_HOST}`);
   if (!applyCorsPolicy(request, response, runtimeConfig)) return;
 
@@ -101,6 +136,15 @@ async function routeRequest(input: {
       const readiness = await telemetry.ready();
       writeJson(response, readiness.ok ? 200 : 503, readiness);
       return;
+    }
+
+    // Serve static UI assets before auth — public static files need no token.
+    // Only fires when the UI dist directory is present (opt-in via bundled build).
+    // Disabled when CONSOLE_SERVE_UI=0 or --no-ui was passed (serveUi option).
+    const serveUi = resolveServeUi(options);
+    if (serveUi && request.method === "GET" && !isKnownRoute(url.pathname)) {
+      const served = await serveStaticAsset(uiDistDir, url.pathname, response);
+      if (served) return;
     }
 
     const auth = authenticateRequest(request, runtimeConfig, options);
@@ -153,6 +197,90 @@ async function routeRequest(input: {
     const requestError = error as RequestError;
     writeApiError(response, requestError.statusCode || 400, requestError.code || "BAD_REQUEST", requestError.safeMessage || "request could not be processed", requestError.validation);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Static asset serving
+// ---------------------------------------------------------------------------
+
+/**
+ * Attempt to serve a static file from the UI dist directory.
+ *
+ * - Resolves the file within the dist directory, rejecting path traversal.
+ * - Serves the exact file when it exists.
+ * - Falls back to index.html for client-side routes (e.g. /telemetry, /environment).
+ * - Returns false when the dist directory is absent (hub-only deploys unaffected).
+ */
+async function serveStaticAsset(uiDistDir: string, pathname: string, response: ServerResponse): Promise<boolean> {
+  if (!fs.existsSync(uiDistDir)) return false;
+
+  // Decode and sanitize the path component; strip query string (already stripped by URL parse).
+  const decodedPath = safeDecodePath(pathname);
+  if (decodedPath === null) return false;
+
+  // Resolve relative to the dist dir and reject traversal escapes.
+  const resolved = path.resolve(uiDistDir, "." + decodedPath);
+  if (!resolved.startsWith(path.resolve(uiDistDir) + path.sep) && resolved !== path.resolve(uiDistDir)) {
+    return false;
+  }
+
+  let filePath = resolved;
+  let stat: fs.Stats | null = null;
+
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    stat = null;
+  }
+
+  // If path points at a directory or file doesn't exist, try index.html fallback.
+  if (!stat || stat.isDirectory()) {
+    const indexPath = path.join(uiDistDir, "index.html");
+    if (!fs.existsSync(indexPath)) return false;
+    filePath = indexPath;
+    stat = fs.statSync(filePath);
+  }
+
+  const ext = path.extname(filePath).toLowerCase();
+  const contentType = CONTENT_TYPE_MAP[ext] || "application/octet-stream";
+  const isHtml = ext === ".html";
+
+  const headers: Record<string, string | number> = {
+    "content-type": contentType,
+    "content-length": stat.size
+  };
+  if (isHtml) {
+    headers["cache-control"] = "no-store";
+  } else {
+    // Assets have content-hashed filenames from vite — safe to cache long-term.
+    headers["cache-control"] = "public, max-age=31536000, immutable";
+  }
+
+  response.writeHead(200, headers);
+  fs.createReadStream(filePath).pipe(response);
+  return true;
+}
+
+function safeDecodePath(pathname: string): string | null {
+  try {
+    const decoded = decodeURIComponent(pathname);
+    // Reject any path that still contains encoded or literal traversal sequences.
+    if (decoded.includes("..")) return null;
+    // Normalize to always start with /
+    return decoded.startsWith("/") ? decoded : `/${decoded}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve whether to serve the UI.
+ * Disabled when CONSOLE_SERVE_UI=0 (env) or options.serveUi === false.
+ */
+function resolveServeUi(options: ConsoleHubServerOptions): boolean {
+  if (options.serveUi === false) return false;
+  if (process.env.CONSOLE_SERVE_UI === "0") return false;
+  return true;
 }
 
 function handleEvents(hub: Hub, events: SseBroker, request: IncomingMessage, response: ServerResponse, pathname: string): void {

@@ -377,6 +377,7 @@ export interface ConsoleHubServerOptions extends LocalConsoleHubOptions {
   telemetryFlowAgentsRoot?: string;
   telemetrySinkRoot?: string;
   telemetryToken?: string;
+  serveUi?: boolean;
 }
 
 export interface ListenOptions {

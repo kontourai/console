@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_CONSOLE_HUB_URL?: string;
+  readonly DEV: boolean;
 }
 
 interface ImportMeta {

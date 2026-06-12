@@ -13,8 +13,20 @@ import type {
 } from "./serverApiTypes";
 import { normalizeTelemetryQuery } from "./utils/telemetryQuery";
 
-const viteEnv = (import.meta as ImportMeta & { env?: Partial<ImportMetaEnv> }).env;
-export const DEFAULT_HUB_URL = viteEnv?.VITE_CONSOLE_HUB_URL || "http://127.0.0.1:3737";
+const viteEnv = (import.meta as ImportMeta & { env?: Partial<ImportMetaEnv & { DEV?: boolean }> }).env;
+// When an explicit VITE_CONSOLE_HUB_URL override is set, use it.
+// In Vite dev mode (import.meta.env.DEV === true) the UI runs on its own dev
+// server so fall back to the local hub default.
+// In production (bundled and served from the hub at its origin), use
+// window.location.origin so the UI connects to the same host automatically.
+export const DEFAULT_HUB_URL = viteEnv?.VITE_CONSOLE_HUB_URL
+  || (viteEnv?.DEV ? "http://127.0.0.1:3737" : (typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:3737"));
+
+/**
+ * True when the UI is running at the same origin as the hub (production bundle
+ * served from the hub). Used to decide whether to check for a hosted session.
+ */
+export const IS_SAME_ORIGIN = !viteEnv?.VITE_CONSOLE_HUB_URL && !viteEnv?.DEV && typeof window !== "undefined";
 
 export interface HubConnection {
   close(): void;
