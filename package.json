@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/console",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Kontour Console local hub: fixture inspection, projections, SSE, and the Flow run bridge.",
   "license": "Apache-2.0",
   "repository": {
