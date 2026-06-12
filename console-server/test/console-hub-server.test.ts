@@ -10,6 +10,7 @@ const {
   inspectFixtures,
   loadConsoleMigrations
 } = require("../src/console-foundation");
+const { signSessionCookie, verifySessionCookieValue } = require("../src/console-foundation/console-hub-server");
 
 type RawResponse = { statusCode?: number; headers: Record<string, any>; body: string };
 type JsonResponse = { statusCode?: number; body: any };
@@ -1414,6 +1415,355 @@ test("hub server serveUi: false option disables static file serving", async () =
 });
 
 
+test("local hub mode serves index.html at / without any session gate", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-local");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<!DOCTYPE html><html><body>Console UI</body></html>", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const index = await rawRequest("GET", `${baseUrl}/`);
+    const telemetryPage = await rawRequest("GET", `${baseUrl}/telemetry`);
+
+    // Local mode: no gate, index.html served directly.
+    assert.equal(index.statusCode, 200);
+    assert.equal(index.body.includes("Console UI"), true);
+    assert.equal(telemetryPage.statusCode, 200);
+    assert.equal(telemetryPage.body.includes("Console UI"), true);
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("hosted hub mode returns session gate page for unauthenticated / when dist present", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-gate");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<!DOCTYPE html><html><body>Console UI</body></html>", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [{ token: "tok-hosted", tenantId: "tenant-hosted" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const index = await rawRequest("GET", `${baseUrl}/`);
+    const telemetryPage = await rawRequest("GET", `${baseUrl}/telemetry`);
+    const envPage = await rawRequest("GET", `${baseUrl}/environment`);
+
+    // Gate page returned, NOT the app, with no product info.
+    assert.equal(index.statusCode, 200);
+    assert.equal(index.headers["content-type"], "text/html; charset=utf-8");
+    assert.equal(index.body.includes("Console UI"), false);
+    assert.equal(index.body.includes("<form"), true);
+    assert.equal(index.body.includes("Token"), true);
+    assert.equal(telemetryPage.statusCode, 200);
+    assert.equal(telemetryPage.body.includes("Console UI"), false);
+    assert.equal(envPage.statusCode, 200);
+    assert.equal(envPage.body.includes("Console UI"), false);
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("hosted hub mode serves JS and CSS assets without a session cookie", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-assets");
+  fs.mkdirSync(path.join(uiDist, "assets"), { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<html><body>App</body></html>", "utf8");
+  fs.writeFileSync(path.join(uiDist, "assets", "main.abc.js"), "// bundle", "utf8");
+  fs.writeFileSync(path.join(uiDist, "assets", "main.abc.css"), "body{}", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [{ token: "tok-asset", tenantId: "tenant-asset" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const jsAsset = await rawRequest("GET", `${baseUrl}/assets/main.abc.js`);
+    const cssAsset = await rawRequest("GET", `${baseUrl}/assets/main.abc.css`);
+
+    // Static hashed assets served without auth (no product info in bundles).
+    assert.equal(jsAsset.statusCode, 200);
+    assert.equal(jsAsset.headers["content-type"], "application/javascript; charset=utf-8");
+    assert.equal(String(jsAsset.headers["cache-control"]).includes("max-age=31536000"), true);
+    assert.equal(cssAsset.statusCode, 200);
+    assert.equal(cssAsset.headers["content-type"], "text/css; charset=utf-8");
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("POST /session rejects bad credentials with 401 without revealing which field failed", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-session-bad");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<html><body>App</body></html>", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [{ token: "tok-session", tenantId: "tenant-session" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const wrongToken = await requestJson("POST", `${baseUrl}/session`, { token: "wrong-token", tenant: "tenant-session" });
+    const wrongTenant = await requestJson("POST", `${baseUrl}/session`, { token: "tok-session", tenant: "wrong-tenant" });
+    const noToken = await requestJson("POST", `${baseUrl}/session`, { tenant: "tenant-session" });
+    const malformed = await rawRequest("POST", `${baseUrl}/session`, "not-json");
+
+    assert.equal(wrongToken.statusCode, 401);
+    assert.equal(wrongToken.body.error, "UNAUTHORIZED");
+    assert.equal(wrongToken.body.safeMessage, "credentials are invalid");
+    assert.equal(wrongTenant.statusCode, 401);
+    assert.equal(wrongTenant.body.error, "UNAUTHORIZED");
+    assert.equal(noToken.statusCode, 401);
+    assert.equal(malformed.statusCode, 400);
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("POST /session issues a signed cookie and cookie grants access to state and stream", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-session-ok");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<html><body>App</body></html>", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const streamClient: SseHolder = {};
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    allowedOrigins: [LOCAL_UI_ORIGIN],
+    hostedAuthTokens: [{ token: "tok-cookie", tenantId: "tenant-cookie" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+
+    // POST /session with correct credentials.
+    const sessionResp = await rawRequest("POST", `${baseUrl}/session`, JSON.stringify({ token: "tok-cookie", tenant: "tenant-cookie" }));
+    assert.equal(sessionResp.statusCode, 204);
+    const setCookie = sessionResp.headers["set-cookie"];
+    assert.ok(setCookie, "set-cookie header must be present");
+    const cookieValue = String(setCookie).match(/console_session=([^;]+)/)?.[1];
+    assert.ok(cookieValue, "console_session cookie value must be present");
+    assert.ok(String(setCookie).includes("HttpOnly"), "cookie must be HttpOnly");
+    assert.ok(String(setCookie).includes("SameSite=Strict"), "cookie must be SameSite=Strict");
+    assert.ok(String(setCookie).includes("Secure"), "cookie must have Secure");
+    assert.ok(String(setCookie).includes("Path=/"), "cookie must be Path=/");
+
+    // Cookie grants access to /state.
+    const stateWithCookie = await requestJson("GET", `${baseUrl}/state`, undefined, { cookie: `console_session=${cookieValue}` });
+    assert.equal(stateWithCookie.statusCode, 200);
+    assert.ok("source" in stateWithCookie.body);
+
+    // Cookie grants access to /stream (SSE).
+    const eventStream = connectSse(`${baseUrl}/stream`, streamClient, { cookie: `console_session=${cookieValue}` });
+    const ready = await eventStream.nextEvent();
+    const initialState = await eventStream.nextEvent();
+    assert.equal(ready.event, "ready");
+    assert.equal(initialState.event, "state");
+
+    // GET /session returns {tenantId} when cookie is present.
+    const sessionCheck = await requestJson("GET", `${baseUrl}/session`, undefined, { cookie: `console_session=${cookieValue}` });
+    assert.equal(sessionCheck.statusCode, 200);
+    assert.equal(sessionCheck.body.tenantId, "tenant-cookie");
+  } finally {
+    if (streamClient.request) streamClient.request.destroy();
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("bearer token continues to work unchanged in hosted mode with dist present", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-bearer");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<html><body>App</body></html>", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [{ token: "tok-bearer", tenantId: "tenant-bearer" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const withBearer = await requestJson("GET", `${baseUrl}/state`, undefined, { authorization: "Bearer tok-bearer" });
+    const noAuth = await requestJson("GET", `${baseUrl}/state`);
+
+    assert.equal(withBearer.statusCode, 200);
+    assert.ok("source" in withBearer.body);
+    assert.equal(noAuth.statusCode, 401);
+    assert.equal(noAuth.body.error, "UNAUTHORIZED");
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("POST /session/logout sets Max-Age=0 to clear the session cookie", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-logout");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<html><body>App</body></html>", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [{ token: "tok-logout", tenantId: "tenant-logout" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+
+    // Create a session.
+    const sessionResp = await rawRequest("POST", `${baseUrl}/session`, JSON.stringify({ token: "tok-logout" }));
+    assert.equal(sessionResp.statusCode, 204);
+    const cookieValue = String(sessionResp.headers["set-cookie"]).match(/console_session=([^;]+)/)?.[1];
+    assert.ok(cookieValue);
+
+    // Verify cookie grants access.
+    const withCookie = await requestJson("GET", `${baseUrl}/state`, undefined, { cookie: `console_session=${cookieValue}` });
+    assert.equal(withCookie.statusCode, 200);
+
+    // Logout.
+    const logoutResp = await rawRequest("POST", `${baseUrl}/session/logout`);
+    assert.equal(logoutResp.statusCode, 204);
+    const clearCookie = String(logoutResp.headers["set-cookie"]);
+    assert.ok(clearCookie.includes("Max-Age=0"), "logout must set Max-Age=0 to clear cookie");
+    assert.ok(clearCookie.includes("console_session="), "logout must target the session cookie");
+
+    // GET /session without any cookie returns 401.
+    const sessionCheckNoAuth = await requestJson("GET", `${baseUrl}/session`);
+    assert.equal(sessionCheckNoAuth.statusCode, 401);
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("signSessionCookie and verifySessionCookieValue are consistent", () => {
+  const tenantId = "test-tenant";
+  const rawToken = "test-secret-token";
+  const fakeConfig: any = {
+    mode: "hosted",
+    allowedOrigins: [],
+    defaultTenantId: tenantId,
+    hostedTenantIds: [tenantId],
+    hostedAuthTokens: [{ token: rawToken, tenantId }],
+    telemetryStorageAdapter: "postgres",
+    validation: []
+  };
+
+  const cookieValue = signSessionCookie(tenantId, rawToken);
+  const result = verifySessionCookieValue(cookieValue, fakeConfig);
+  assert.ok(result, "valid cookie must verify");
+  assert.equal(result.tenantId, tenantId);
+
+  // Tampered signature should fail.
+  const parts = cookieValue.split(".");
+  const tampered = parts[0] + "." + parts[1] + "." + "a".repeat(parts[2].length);
+  assert.equal(verifySessionCookieValue(tampered, fakeConfig), null);
+
+  // Unknown tenant should fail.
+  const fakeConfig2 = { ...fakeConfig, hostedAuthTokens: [{ token: rawToken, tenantId: "other" }] };
+  assert.equal(verifySessionCookieValue(cookieValue, fakeConfig2), null);
+});
+
+test("GET /session returns 401 when no cookie present and 404 in local mode", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-session-check");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<html><body>App</body></html>", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+
+  // Hosted mode.
+  const hostedApp = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [{ token: "tok-check", tenantId: "tenant-check" }]
+  });
+  await listen(hostedApp);
+
+  // Local mode.
+  const localApp = createConsoleHubServer({ rootDir: tempRoot(), port: 0 });
+  await listen(localApp);
+
+  try {
+    const hostedUrl = serverUrl(hostedApp);
+    const localUrl = serverUrl(localApp);
+
+    const hostedNoSession = await requestJson("GET", `${hostedUrl}/session`);
+    const localSession = await requestJson("GET", `${localUrl}/session`);
+
+    assert.equal(hostedNoSession.statusCode, 401);
+    assert.equal(localSession.statusCode, 404);
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(hostedApp);
+    await close(localApp);
+  }
+});
+
+
 function surfaceFlowHandoffStream() {
   const report = inspectFixtures({ rootDir: process.env.KONTOUR_REPO_ROOT || process.cwd() });
   return report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));
@@ -1531,14 +1881,14 @@ function rawRequest(method: any, url: any, body?: any, extraHeaders: Record<stri
   });
 }
 
-function connectSse(url: any, holder: SseHolder = {}) {
+function connectSse(url: any, holder: SseHolder = {}, extraHeaders: Record<string, string> = {}) {
   const queue: SseEvent[] = [];
   const waiting: Array<(event: SseEvent) => void> = [];
   let buffer = "";
   let currentEvent: string | null = null;
   let currentData: string[] = [];
 
-  const request = http.request(url, { method: "GET", headers: { accept: "text/event-stream", origin: LOCAL_UI_ORIGIN } }, (response: any) => {
+  const request = http.request(url, { method: "GET", headers: { accept: "text/event-stream", origin: LOCAL_UI_ORIGIN, ...extraHeaders } }, (response: any) => {
     holder.headers = response.headers;
     response.setEncoding("utf8");
     response.on("data", (chunk: any) => {

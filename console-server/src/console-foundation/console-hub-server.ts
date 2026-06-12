@@ -24,7 +24,7 @@ const { LocalConsoleHub } = require("./console-hub");
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/api/telemetry", "/api/telemetry/records", "/healthz", "/readyz"];
+const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/api/telemetry", "/api/telemetry/records", "/healthz", "/readyz", "/session", "/session/logout"];
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://127.0.0.1:5173",
   "http://localhost:5173"
@@ -41,6 +41,35 @@ const CONTENT_TYPE_MAP: Record<string, string> = {
   ".json": "application/json; charset=utf-8",
   ".map": "application/json; charset=utf-8"
 };
+
+/**
+ * Session cookie name for the hosted-mode browser session gate.
+ *
+ * Cookie design (stateless + signed):
+ *   Value = base64url(tenantId) "." timestampMs "." HMAC-SHA256
+ *
+ * The HMAC input is: "<base64url(tenantId)>.<timestampMs>".
+ * The HMAC key is derived per-token-config:
+ *   SHA256( "console-session-v1:" + authToken )
+ *
+ * Validation steps:
+ *   1. Parse the three-part cookie value.
+ *   2. Decode the tenantId and find a matching hosted auth token config.
+ *   3. Re-derive the signing key from that token's secret.
+ *   4. Recompute HMAC and compare in constant time.
+ *   5. (Token config still present in config = credential still valid.)
+ *
+ * Session cookies are HttpOnly; Secure; SameSite=Strict; Path=/
+ * They have no server-side state — revoking a token in config instantly
+ * invalidates all cookies derived from it.
+ */
+const SESSION_COOKIE_NAME = "console_session";
+
+/**
+ * Session cookie max-age in seconds (30 days).
+ * Operators can rotate tokens sooner to force re-login.
+ */
+const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 /**
  * Resolve the console-ui dist directory.
@@ -138,12 +167,55 @@ async function routeRequest(input: {
       return;
     }
 
-    // Serve static UI assets before auth — public static files need no token.
-    // Only fires when the UI dist directory is present (opt-in via bundled build).
-    // Disabled when CONSOLE_SERVE_UI=0 or --no-ui was passed (serveUi option).
+    // Session routes — handled before the auth gate and before static asset serving.
+    // POST /session: validate {token, tenant} body and issue a session cookie (hosted + dist only).
+    // GET /session: check cookie, return {tenantId} (exempt from gate — used by UI on startup).
+    // POST /session/logout: clear the session cookie.
+    if (request.method === "POST" && url.pathname === "/session") {
+      await handleSessionCreate(request, response, runtimeConfig, uiDistDir);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/session") {
+      handleSessionCheck(request, response, runtimeConfig);
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/session/logout") {
+      handleSessionLogout(response);
+      return;
+    }
+
+    // Serve static UI assets before auth — only when the UI dist is present
+    // (opt-in via bundled build) and not disabled via CONSOLE_SERVE_UI=0 /
+    // --no-ui (serveUi option).
     const serveUi = resolveServeUi(options);
+
+    // Hosted mode + dist present: apply the session gate to HTML pages.
+    // Static JS/CSS assets are served without a session so cache-hinted
+    // bundles don't stale-lock behind auth; index.html IS gated — it's the
+    // application entry point. See docs/deployment/hosted-console.md.
+    if (
+      serveUi &&
+      runtimeConfig.mode === "hosted" &&
+      fs.existsSync(uiDistDir) &&
+      request.method === "GET" &&
+      !isKnownRoute(url.pathname)
+    ) {
+      const decodedPath = safeDecodePath(url.pathname);
+      const isHtmlRequest = !decodedPath || decodedPath === "/" || !path.extname(decodedPath);
+      if (isHtmlRequest) {
+        const sessionContext = verifySessionCookie(request, runtimeConfig);
+        if (!sessionContext) {
+          serveSessionGatePage(response);
+          return;
+        }
+      }
+    }
+
+    // Serve static UI assets (non-HTML always, HTML only when gated above).
     if (serveUi && request.method === "GET" && !isKnownRoute(url.pathname)) {
-      const served = await serveStaticAsset(uiDistDir, url.pathname, response);
+      const served = await serveStaticAsset(uiDistDir, url.pathname, response, runtimeConfig);
       if (served) return;
     }
 
@@ -200,18 +272,314 @@ async function routeRequest(input: {
 }
 
 // ---------------------------------------------------------------------------
+// Session gate handlers
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /session — validate {token, tenant} JSON body against hosted auth config
+ * and issue a signed HttpOnly session cookie on success.
+ *
+ * Returns 204 on success, 401 on any credential failure (no disclosure of which
+ * field was wrong), 400 on malformed request, 404 when gate is not active.
+ */
+async function handleSessionCreate(
+  request: IncomingMessage,
+  response: ServerResponse,
+  runtimeConfig: ConsoleRuntimeConfig,
+  uiDistDir: string
+): Promise<void> {
+  // Gate only active in hosted mode with a bundled UI present.
+  if (runtimeConfig.mode !== "hosted" || !fs.existsSync(uiDistDir)) {
+    writeApiError(response, 404, "NOT_FOUND", "route was not found");
+    return;
+  }
+
+  let body: unknown;
+  try {
+    body = await readJsonBody(request);
+  } catch {
+    writeApiError(response, 400, "INVALID_JSON", "invalid JSON body");
+    return;
+  }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    writeApiError(response, 400, "INVALID_BODY", "request body must be a JSON object");
+    return;
+  }
+
+  const { token, tenant } = body as Record<string, unknown>;
+  if (typeof token !== "string" || !token) {
+    // Generic message — do not reveal which field failed.
+    writeApiError(response, 401, "UNAUTHORIZED", "credentials are invalid");
+    return;
+  }
+
+  // Find matching token config.
+  const tokenConfig = runtimeConfig.hostedAuthTokens.find((candidate) =>
+    tokenMatches(candidate.token, token)
+  );
+  if (!tokenConfig) {
+    writeApiError(response, 401, "UNAUTHORIZED", "credentials are invalid");
+    return;
+  }
+
+  // If tenant was supplied, it must match the token's tenant.
+  if (typeof tenant === "string" && tenant && tenant !== tokenConfig.tenantId) {
+    writeApiError(response, 401, "UNAUTHORIZED", "credentials are invalid");
+    return;
+  }
+
+  // Issue signed session cookie.
+  const cookieValue = signSessionCookie(tokenConfig.tenantId, tokenConfig.token);
+  const cookieHeader = buildSessionCookieHeader(cookieValue, SESSION_COOKIE_MAX_AGE_SECONDS);
+  response.writeHead(204, {
+    "set-cookie": cookieHeader,
+    "cache-control": "no-store"
+  });
+  response.end();
+}
+
+/**
+ * GET /session — return {tenantId} if a valid session cookie is present, else 401.
+ * This endpoint is exempt from the HTML gate so the UI can check it on startup.
+ */
+function handleSessionCheck(
+  request: IncomingMessage,
+  response: ServerResponse,
+  runtimeConfig: ConsoleRuntimeConfig
+): void {
+  if (runtimeConfig.mode !== "hosted") {
+    writeApiError(response, 404, "NOT_FOUND", "route was not found");
+    return;
+  }
+  const sessionContext = verifySessionCookie(request, runtimeConfig);
+  if (!sessionContext) {
+    writeApiError(response, 401, "UNAUTHORIZED", "no valid session");
+    return;
+  }
+  writeJson(response, 200, { tenantId: sessionContext.tenantId });
+}
+
+/**
+ * POST /session/logout — clear the session cookie.
+ * Always succeeds with 204 (idempotent).
+ */
+function handleSessionLogout(response: ServerResponse): void {
+  response.writeHead(204, {
+    "set-cookie": buildSessionCookieHeader("", 0),
+    "cache-control": "no-store"
+  });
+  response.end();
+}
+
+/**
+ * Serve the minimal token-entry gate page for unauthenticated HTML requests
+ * in hosted mode. Zero product information disclosed. Dark Kontour-ish look.
+ */
+function serveSessionGatePage(response: ServerResponse): void {
+  const html = buildSessionGateHtml();
+  const body = Buffer.from(html, "utf8");
+  response.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "content-length": body.length,
+    "cache-control": "no-store"
+  });
+  response.end(body);
+}
+
+function buildSessionGateHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0a0e13;color:#c9d1d9;font-family:ui-monospace,'Cascadia Code','Fira Mono',monospace;font-size:15px}
+body{display:flex;align-items:center;justify-content:center}
+.gate{width:100%;max-width:360px;padding:2rem}
+h1{font-size:1rem;font-weight:600;letter-spacing:.05em;color:#8b949e;margin-bottom:2rem;text-transform:uppercase}
+label{display:block;font-size:.8rem;color:#8b949e;margin-bottom:.35rem}
+input{display:block;width:100%;padding:.5rem .75rem;background:#161b22;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;font-family:inherit;font-size:.9rem;margin-bottom:1rem;outline:none}
+input:focus{border-color:#58a6ff}
+button{display:block;width:100%;padding:.55rem;background:#238636;border:none;border-radius:4px;color:#fff;font-family:inherit;font-size:.9rem;cursor:pointer;letter-spacing:.02em}
+button:hover{background:#2ea043}
+.error{margin-top:1rem;font-size:.85rem;color:#f85149;min-height:1.2em;text-align:center}
+</style>
+</head>
+<body>
+<div class="gate">
+  <h1>Console</h1>
+  <form id="form">
+    <label for="tenant">Tenant</label>
+    <input id="tenant" name="tenant" autocomplete="off" spellcheck="false" placeholder="tenant-id">
+    <label for="token">Token</label>
+    <input id="token" name="token" type="password" autocomplete="current-password" placeholder="access token">
+    <button type="submit">Sign in</button>
+    <div class="error" id="err" aria-live="polite"></div>
+  </form>
+</div>
+<script>
+document.getElementById('form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var err = document.getElementById('err');
+  err.textContent = '';
+  var token = document.getElementById('token').value.trim();
+  var tenant = document.getElementById('tenant').value.trim();
+  if (!token) { err.textContent = 'Token is required.'; return; }
+  try {
+    var res = await fetch('/session', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: token, tenant: tenant || undefined })
+    });
+    if (res.status === 204) { window.location.reload(); return; }
+    err.textContent = 'Sign in failed. Check your credentials.';
+  } catch (_) {
+    err.textContent = 'Network error. Please try again.';
+  }
+});
+</script>
+</body>
+</html>`;
+}
+
+// ---------------------------------------------------------------------------
+// Session cookie signing and verification
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a per-token signing key from the raw token secret.
+ * key = SHA256("console-session-v1:" + rawToken)
+ */
+function sessionSigningKey(rawToken: string): Buffer {
+  return crypto.createHash("sha256").update(`console-session-v1:${rawToken}`).digest();
+}
+
+/**
+ * Build a signed session cookie value for a given tenant.
+ *
+ * Format: base64url(tenantId) "." timestampMs "." HMAC-SHA256(hex)
+ * HMAC input: "<tenantPart>.<tsPart>"
+ */
+export function signSessionCookie(tenantId: string, rawToken: string): string {
+  const tenantPart = Buffer.from(tenantId, "utf8").toString("base64url");
+  const tsPart = String(Date.now());
+  const sigInput = `${tenantPart}.${tsPart}`;
+  const sig = crypto.createHmac("sha256", sessionSigningKey(rawToken)).update(sigInput).digest("hex");
+  return `${tenantPart}.${tsPart}.${sig}`;
+}
+
+/**
+ * Verify a session cookie value against the current runtime config.
+ *
+ * Returns { tenantId } if valid, null otherwise.
+ * Uses constant-time comparison to avoid timing side channels.
+ */
+export function verifySessionCookieValue(
+  cookieValue: string,
+  runtimeConfig: ConsoleRuntimeConfig
+): { tenantId: string } | null {
+  const parts = cookieValue.split(".");
+  // Expect exactly three dot-separated parts (tenantPart, timestamp, sig).
+  // Note: base64url uses no dots, and hex sig uses no dots, so three is correct.
+  if (parts.length !== 3) return null;
+  const [tenantPart, tsPart, sig] = parts;
+  if (!tenantPart || !tsPart || !sig) return null;
+
+  let tenantId: string;
+  try {
+    tenantId = Buffer.from(tenantPart, "base64url").toString("utf8");
+  } catch {
+    return null;
+  }
+  if (!tenantId) return null;
+
+  // Timestamp sanity — must be a positive integer; no expiry check here since
+  // the cookie itself carries max-age. Revocation is via token removal from config.
+  if (!/^\d+$/.test(tsPart)) return null;
+
+  // Find a token config for this tenant.
+  const tokenConfig = runtimeConfig.hostedAuthTokens.find(
+    (candidate) => candidate.tenantId === tenantId
+  );
+  if (!tokenConfig) return null;
+
+  // Recompute expected signature and compare in constant time.
+  const sigInput = `${tenantPart}.${tsPart}`;
+  const expected = crypto
+    .createHmac("sha256", sessionSigningKey(tokenConfig.token))
+    .update(sigInput)
+    .digest("hex");
+
+  const expectedBuf = Buffer.from(expected, "hex");
+  const actualBuf = Buffer.from(sig.length === expected.length ? sig : expected, "hex");
+  const match =
+    sig.length === expected.length &&
+    crypto.timingSafeEqual(expectedBuf, actualBuf);
+
+  return match ? { tenantId } : null;
+}
+
+/**
+ * Parse the session cookie from the incoming request's Cookie header and
+ * verify it. Returns the session context or null.
+ */
+function verifySessionCookie(
+  request: IncomingMessage,
+  runtimeConfig: ConsoleRuntimeConfig
+): { tenantId: string } | null {
+  const cookieHeader = request.headers.cookie;
+  if (!cookieHeader) return null;
+  const cookieValue = parseCookieValue(cookieHeader, SESSION_COOKIE_NAME);
+  if (!cookieValue) return null;
+  return verifySessionCookieValue(cookieValue, runtimeConfig);
+}
+
+function parseCookieValue(cookieHeader: string, name: string): string | null {
+  for (const part of cookieHeader.split(";")) {
+    const trimmed = part.trim();
+    const eqIndex = trimmed.indexOf("=");
+    if (eqIndex === -1) continue;
+    const cookieName = trimmed.slice(0, eqIndex).trim();
+    if (cookieName === name) {
+      return trimmed.slice(eqIndex + 1).trim();
+    }
+  }
+  return null;
+}
+
+function buildSessionCookieHeader(value: string, maxAge: number): string {
+  const base = `${SESSION_COOKIE_NAME}=${value}; HttpOnly; SameSite=Strict; Path=/`;
+  // Add Secure flag in production (hosted mode always implies HTTPS in practice).
+  // We omit Secure in tests that use plain http — operators must ensure TLS at
+  // the edge in production. Document this requirement in hosted-console.md.
+  const maxAgePart = `; Max-Age=${maxAge}`;
+  return `${base}${maxAgePart}; Secure`;
+}
+
+// ---------------------------------------------------------------------------
 // Static asset serving
 // ---------------------------------------------------------------------------
 
 /**
  * Attempt to serve a static file from the UI dist directory.
  *
+ * In hosted mode, HTML files (index.html fallback) are only reached here
+ * when the caller has already verified a valid session cookie, since the
+ * session gate runs first in routeRequest. Non-HTML assets (JS, CSS,
+ * fonts, images) are served without authentication — they are content-hashed
+ * bundles that disclose no product information.
+ *
+ * In local mode, all assets are served freely as before (gate is inert).
+ *
  * - Resolves the file within the dist directory, rejecting path traversal.
  * - Serves the exact file when it exists.
  * - Falls back to index.html for client-side routes (e.g. /telemetry, /environment).
  * - Returns false when the dist directory is absent (hub-only deploys unaffected).
  */
-async function serveStaticAsset(uiDistDir: string, pathname: string, response: ServerResponse): Promise<boolean> {
+async function serveStaticAsset(uiDistDir: string, pathname: string, response: ServerResponse, runtimeConfig: ConsoleRuntimeConfig): Promise<boolean> {
   if (!fs.existsSync(uiDistDir)) return false;
 
   // Decode and sanitize the path component; strip query string (already stripped by URL parse).
@@ -481,6 +849,15 @@ function authenticateRequest(request: IncomingMessage, runtimeConfig: ConsoleRun
     }
     return { ok: true, context: { tenantId: runtimeConfig.defaultTenantId, runtimeMode: "local" } };
   }
+
+  // Accept session cookie as credential (equivalent to bearer token + tenant).
+  // This supports EventSource (SSE) from the browser, which cannot set headers.
+  const sessionContext = verifySessionCookie(request, runtimeConfig);
+  if (sessionContext) {
+    return { ok: true, context: { tenantId: sessionContext.tenantId, runtimeMode: "hosted" } };
+  }
+
+  // Fall through to bearer token auth (unchanged).
   const token = apiRequestToken(request);
   if (!token) {
     return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "authorization token is required" };
