@@ -249,7 +249,7 @@ test("renders the console operating plane from hub events", async ({ page }) => 
   const consoleErrors = await loadConsole(page);
 
   await expect(page).toHaveTitle("Console");
-  await expect(page.getByRole("main")).toContainText("Local operating plane");
+  await expect(page.getByRole("main")).toContainText("Operating plane");
   await expect(page.getByRole("main")).toContainText("connected");
   await expect(page.getByLabel("Current stage")).toContainText("Survey review ready");
   await expect(page.getByRole("main")).toContainText("Survey claim review");
@@ -265,9 +265,11 @@ test("renders the console operating plane from hub events", async ({ page }) => 
 test("reconnects to a submitted hub URL without leaving the console shell", async ({ page }) => {
   const consoleErrors = await loadConsole(page);
 
+  await page.getByRole("button", { name: "Connection" }).click();
   await page.getByLabel("Hub URL").fill("http://127.0.0.1:4747");
   await page.getByRole("button", { name: "Reconnect" }).click();
 
+  await page.getByRole("button", { name: "Connection" }).click();
   await expect(page.getByLabel("Hub URL")).toHaveValue("http://127.0.0.1:4747");
   await expect(page.getByRole("main")).toContainText("Survey review ready");
   const urls = await page.evaluate(() => window.__kontourConsoleEventSourceUrls ?? []);

@@ -64,7 +64,7 @@ export function EnvironmentSection({ state, telemetry, liveStatus, lastLiveAt }:
       {/* Main grid */}
       <div className="env-main-grid">
         {/* Needs attention */}
-        <Panel title="Needs Attention" count={attention.length}>
+        <Panel title="Needs attention" count={attention.length}>
           <div className="stack">
             {attention.map((item) => (
               <article className="data-row" key={`${item.kind}:${item.id}`}>
@@ -75,7 +75,7 @@ export function EnvironmentSection({ state, telemetry, liveStatus, lastLiveAt }:
                 <p>{item.detail}</p>
               </article>
             ))}
-            {!attention.length ? <Empty label="Nothing needs attention." /> : null}
+            {!attention.length ? <Empty label="All clear for now." /> : null}
           </div>
         </Panel>
 
@@ -91,9 +91,9 @@ export function EnvironmentSection({ state, telemetry, liveStatus, lastLiveAt }:
 
       {/* Top workloads */}
       <div className="env-workloads-grid">
-        <WorkloadPanel title="Top Projects" entries={workloads.projects} emptyLabel="No project data available." />
-        <WorkloadPanel title="Top Tools" entries={workloads.tools} emptyLabel="No tool invocation data available." />
-        <WorkloadPanel title="Top Agents" entries={workloads.agents} emptyLabel="No agent data available." />
+        <WorkloadPanel title="Top projects" entries={workloads.projects} emptyLabel="No project data yet" />
+        <WorkloadPanel title="Top tools" entries={workloads.tools} emptyLabel="No tool data yet" />
+        <WorkloadPanel title="Top agents" entries={workloads.agents} emptyLabel="No agent data yet" />
       </div>
     </section>
   );

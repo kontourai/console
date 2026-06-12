@@ -407,9 +407,24 @@ function serveSessionGatePage(response: ServerResponse): void {
   response.writeHead(200, {
     "content-type": "text/html; charset=utf-8",
     "content-length": body.length,
-    "cache-control": "no-store"
+    "cache-control": "no-store",
+    ...hostedHtmlSecurityHeaders("gate")
   });
   response.end(body);
+}
+
+function hostedHtmlSecurityHeaders(surface: "app" | "gate"): Record<string, string> {
+  const sharedPolicy = "base-uri 'none'; object-src 'none'; frame-ancestors 'none'";
+  if (surface === "gate") {
+    return {
+      "content-security-policy": `default-src 'none'; ${sharedPolicy}; form-action 'self'; connect-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'`,
+      "x-frame-options": "DENY"
+    };
+  }
+  return {
+    "content-security-policy": `default-src 'self'; ${sharedPolicy}; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'`,
+    "x-frame-options": "DENY"
+  };
 }
 
 function buildSessionGateHtml(): string {
@@ -418,30 +433,32 @@ function buildSessionGateHtml(): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign in</title>
+<title>Kontour Console</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;background:#0a0e13;color:#c9d1d9;font-family:ui-monospace,'Cascadia Code','Fira Mono',monospace;font-size:15px}
+html,body{height:100%;background:#0a0e13;color:#eef3f8;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px}
 body{display:flex;align-items:center;justify-content:center}
-.gate{width:100%;max-width:360px;padding:2rem}
-h1{font-size:1rem;font-weight:600;letter-spacing:.05em;color:#8b949e;margin-bottom:2rem;text-transform:uppercase}
-label{display:block;font-size:.8rem;color:#8b949e;margin-bottom:.35rem}
-input{display:block;width:100%;padding:.5rem .75rem;background:#161b22;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;font-family:inherit;font-size:.9rem;margin-bottom:1rem;outline:none}
-input:focus{border-color:#58a6ff}
-button{display:block;width:100%;padding:.55rem;background:#238636;border:none;border-radius:4px;color:#fff;font-family:inherit;font-size:.9rem;cursor:pointer;letter-spacing:.02em}
-button:hover{background:#2ea043}
-.error{margin-top:1rem;font-size:.85rem;color:#f85149;min-height:1.2em;text-align:center}
+.gate{width:100%;max-width:380px;padding:2.5rem 2rem}
+.kicker{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.68rem;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:#72869b;margin-bottom:.75rem}
+h1{font-family:Georgia,"Times New Roman",serif;font-size:2rem;font-weight:600;letter-spacing:-.01em;line-height:1.05;color:#eef3f8;margin-bottom:1.75rem}
+label{display:block;font-size:.78rem;font-weight:500;color:#aebccb;margin-bottom:.3rem}
+input{display:block;width:100%;padding:.5rem .75rem;background:color-mix(in srgb,#0a0e13 86%,black);border:1px solid rgba(150,180,210,.12);border-radius:9px;color:#eef3f8;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem;margin-bottom:1rem;outline:none;transition:border-color .15s}
+input:focus{border-color:#5ce0c6}
+button{display:block;width:100%;padding:.6rem 1rem;background:#5ce0c6;border:none;border-radius:9px;color:#06080b;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:.9rem;font-weight:600;cursor:pointer;transition:opacity .15s}
+button:hover{opacity:.88}
+.error{margin-top:1rem;font-size:.82rem;color:#ff6f6f;min-height:1.2em;text-align:center}
 </style>
 </head>
 <body>
 <div class="gate">
-  <h1>Console</h1>
+  <p class="kicker">Kontour Console</p>
+  <h1>Sign in</h1>
   <form id="form">
     <label for="tenant">Tenant</label>
     <input id="tenant" name="tenant" autocomplete="off" spellcheck="false" placeholder="tenant-id">
     <label for="token">Token</label>
     <input id="token" name="token" type="password" autocomplete="current-password" placeholder="access token">
-    <button type="submit">Sign in</button>
+    <button type="submit">Continue</button>
     <div class="error" id="err" aria-live="polite"></div>
   </form>
 </div>
@@ -644,6 +661,9 @@ async function serveStaticAsset(uiDistDir: string, pathname: string, response: S
   };
   if (isHtml) {
     headers["cache-control"] = "no-store";
+    if (runtimeConfig.mode === "hosted") {
+      Object.assign(headers, hostedHtmlSecurityHeaders("app"));
+    }
   } else {
     // Assets have content-hashed filenames from vite — safe to cache long-term.
     headers["cache-control"] = "public, max-age=31536000, immutable";

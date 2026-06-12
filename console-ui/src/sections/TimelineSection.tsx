@@ -1,6 +1,6 @@
 import type { OperatingState } from "@kontourai/console-core";
-import { Empty } from "@kontourai/console-kit/react";
 import { TimelineRow } from "../components/Rows";
+import { DesignedEmpty } from "../components/DesignedEmpty";
 import type { ConsoleAcceptedRecordSsePayload } from "../serverApiTypes";
 
 export function TimelineSection({ state, lastAccepted }: { state: OperatingState; lastAccepted: ConsoleAcceptedRecordSsePayload | null }) {
@@ -10,7 +10,7 @@ export function TimelineSection({ state, lastAccepted }: { state: OperatingState
     <section className="timeline-section">
       <div className="section-head">
         <div>
-          <p className="section-label">Recent Timeline</p>
+          <p className="section-label">Recent timeline</p>
           <h2>Accepted event replay</h2>
         </div>
         <p className="receipt">
@@ -19,7 +19,13 @@ export function TimelineSection({ state, lastAccepted }: { state: OperatingState
       </div>
       <div className="timeline">
         {recentTimeline.map((item) => <TimelineRow key={item.id} item={item} />)}
-        {!recentTimeline.length ? <Empty label="No timeline events yet." /> : null}
+        {!recentTimeline.length
+          ? <DesignedEmpty
+              headline="Nothing replayed yet"
+              body="Records posted to this hub will appear here live."
+              command="POST /api/accept"
+            />
+          : null}
       </div>
     </section>
   );

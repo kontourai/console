@@ -1467,6 +1467,8 @@ test("hosted hub mode returns session gate page for unauthenticated / when dist 
     // Gate page returned, NOT the app, with no product info.
     assert.equal(index.statusCode, 200);
     assert.equal(index.headers["content-type"], "text/html; charset=utf-8");
+    assert.equal(String(index.headers["x-frame-options"]), "DENY");
+    assert.match(String(index.headers["content-security-policy"]), /frame-ancestors 'none'/);
     assert.equal(index.body.includes("Console UI"), false);
     assert.equal(index.body.includes("<form"), true);
     assert.equal(index.body.includes("Token"), true);
@@ -1594,6 +1596,14 @@ test("POST /session issues a signed cookie and cookie grants access to state and
     const stateWithCookie = await requestJson("GET", `${baseUrl}/state`, undefined, { cookie: `console_session=${cookieValue}` });
     assert.equal(stateWithCookie.statusCode, 200);
     assert.ok("source" in stateWithCookie.body);
+
+    // Cookie grants access to the hosted app shell with HTML hardening headers.
+    const appShell = await rawRequest("GET", `${baseUrl}/`, undefined, { cookie: `console_session=${cookieValue}` });
+    assert.equal(appShell.statusCode, 200);
+    assert.equal(appShell.body.includes("App"), true);
+    assert.equal(String(appShell.headers["x-frame-options"]), "DENY");
+    assert.match(String(appShell.headers["content-security-policy"]), /default-src 'self'/);
+    assert.match(String(appShell.headers["content-security-policy"]), /frame-ancestors 'none'/);
 
     // Cookie grants access to /stream (SSE).
     const eventStream = connectSse(`${baseUrl}/stream`, streamClient, { cookie: `console_session=${cookieValue}` });
