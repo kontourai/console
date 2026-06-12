@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/kontourai/console/compare/v0.2.0...v0.2.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* construct pg client for postgres telemetry storage when none injected ([#44](https://github.com/kontourai/console/issues/44)) ([798d108](https://github.com/kontourai/console/commit/798d108c1835e37be0c3d4d611587a8d815e7ed6))
+
 ## [0.2.0](https://github.com/kontourai/console/compare/v0.1.0...v0.2.0) (2026-06-12)
 
 
