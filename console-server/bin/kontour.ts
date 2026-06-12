@@ -12,6 +12,7 @@ interface ServeOptions {
   host: string;
   port: number;
   kontourRoot?: string;
+  serveUi: boolean;
 }
 
 function main(argv: string[]) {
@@ -30,14 +31,22 @@ function serve(options: ServeOptions): void {
     rootDir: repoRoot(),
     kontourRoot: options.kontourRoot,
     host: options.host,
-    port: options.port
+    port: options.port,
+    serveUi: options.serveUi
   });
   app.listen({}, () => {
     const address = app.server.address();
     const resolved = address as ReturnType<ConsoleHubServer["server"]["address"]>;
     if (!resolved || typeof resolved === "string") return;
-    console.log(`Kontour local hub: http://${resolved.address}:${resolved.port}`);
+    const hubUrl = `http://${resolved.address}:${resolved.port}`;
+    console.log(`Kontour local hub: ${hubUrl}`);
+    if (options.serveUi) {
+      console.log(`Console UI:        ${hubUrl}/`);
+    }
     console.log("POST /records  GET /state  GET /inspect  GET /events  GET /stream SSE");
+    if (!options.serveUi) {
+      console.log("UI serving disabled (--no-ui)");
+    }
   });
 }
 
@@ -50,7 +59,8 @@ function repoRoot() {
 function parseServeOptions(args: string[]): ServeOptions {
   const options: ServeOptions = {
     host: process.env.CONSOLE_HOST || DEFAULT_HOST,
-    port: process.env.CONSOLE_PORT ? Number(process.env.CONSOLE_PORT) : DEFAULT_PORT
+    port: process.env.CONSOLE_PORT ? Number(process.env.CONSOLE_PORT) : DEFAULT_PORT,
+    serveUi: process.env.CONSOLE_SERVE_UI !== "0"
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -64,6 +74,8 @@ function parseServeOptions(args: string[]): ServeOptions {
     } else if (arg === "--kontour-root") {
       options.kontourRoot = requiredValue(args, index, arg);
       index += 1;
+    } else if (arg === "--no-ui") {
+      options.serveUi = false;
     } else if (arg === "--help" || arg === "-h") {
       printUsage();
       process.exit(0);
@@ -92,7 +104,7 @@ function requiredValue(args: string[], index: number, label: string): string {
 }
 
 function printUsage() {
-  console.error("Usage: kontour serve [--host 127.0.0.1] [--port 3737] [--kontour-root .kontour]");
+  console.error("Usage: kontour serve [--host 127.0.0.1] [--port 3737] [--kontour-root .kontour] [--no-ui]");
 }
 
 main(process.argv);

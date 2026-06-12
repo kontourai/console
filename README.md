@@ -38,10 +38,10 @@ kontour-flow-bridge --help # bridge local Flow runs into the hub
 
 ## Published packages
 
-- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and compiled `kontour`, `console-inspect`, and `kontour-flow-bridge` bins.
+- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, and `kontour-flow-bridge` bins.
 - `@kontourai/console-core` — shared record and process-flow shapes.
 
-The React UI (`console-ui`) remains an app in this repo rather than a package.
+The React UI (`console-ui`) is built into the package at `console-ui/dist` and served by `kontour serve` at the hub origin. It is not published as a separate npm package.
 
 ## Bridge a real Flow run
 
@@ -57,10 +57,12 @@ Point the Console UI at the hub and the operating plane follows your actual gate
 
 ## See it locally
 
-Start the hub and the UI, then replay the bundled cross-product example streams into it:
+Start the hub and the UI, then replay the bundled cross-product example streams into it.
+
+When using `npx @kontourai/console kontour serve`, the UI is served automatically at `http://127.0.0.1:3737/` — no separate terminal needed. For development inside this repo, use `npm run dev:local` to run the Vite dev server and hub together:
 
 ```sh
-# terminal 1: loopback hub + UI together
+# terminal 1: loopback hub + UI together (dev mode with HMR)
 npm run dev:local
 
 # terminal 2: replay the example streams into the hub
@@ -188,13 +190,24 @@ Run the local development hub from the repo root:
 npm run serve
 ```
 
-The `kontour serve` command binds to `127.0.0.1:3737` by default and exposes:
+The `kontour serve` command binds to `127.0.0.1:3737` by default and serves the operating-plane UI at the hub URL as well as the API endpoints:
 
+- `GET /` — Console UI (React SPA; index.html fallback for all unknown non-API paths)
 - `POST /records`
 - `GET /state`
 - `GET /inspect`
 - `GET /stream`
 - `GET /events`
+
+Open `http://127.0.0.1:3737/` in a browser after starting the hub to use the operating plane. The UI is bundled in the published package and served directly by the hub — no separate UI server process required.
+
+To serve the hub API only, without the UI (API-only deployments or CI):
+
+```sh
+kontour serve --no-ui
+# or
+CONSOLE_SERVE_UI=0 kontour serve
+```
 
 `GET /stream` is the canonical server-sent event stream. It sends an initial `ready` event, an initial `state` event, and a `record.accepted` event after an accepted `POST /records`. `GET /events` returns local event stream JSON by default and remains an SSE compatibility path for `Accept: text/event-stream` clients. Browser-origin access is limited to loopback origins unless explicitly configured. Non-loopback local requests require the configured console token (`telemetryToken`, `CONSOLE_AUTH_TOKEN`, or `CONSOLE_TELEMETRY_TOKEN`) through `Authorization: Bearer ...` or `x-console-api-token`. The local hub persists through `.kontour` files and does not add a remote execution channel, product API fetcher, or action executor.
 

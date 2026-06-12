@@ -1216,6 +1216,204 @@ test("local hub server rejects malformed requests safely", async () => {
   }
 });
 
+test("hub server serves index.html at / when ui dist directory is present", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist");
+  fs.mkdirSync(path.join(uiDist, "assets"), { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<!DOCTYPE html><html><body>Console UI</body></html>", "utf8");
+  fs.writeFileSync(path.join(uiDist, "assets", "main.abc123.js"), "// bundle", "utf8");
+  fs.writeFileSync(path.join(uiDist, "assets", "main.abc123.css"), "body{}", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const index = await rawRequest("GET", `${baseUrl}/`);
+    const telemetryPage = await rawRequest("GET", `${baseUrl}/telemetry`);
+    const environmentPage = await rawRequest("GET", `${baseUrl}/environment`);
+    const jsAsset = await rawRequest("GET", `${baseUrl}/assets/main.abc123.js`);
+    const cssAsset = await rawRequest("GET", `${baseUrl}/assets/main.abc123.css`);
+
+    assert.equal(index.statusCode, 200);
+    assert.equal(index.headers["content-type"], "text/html; charset=utf-8");
+    assert.equal(index.headers["cache-control"], "no-store");
+    assert.equal(index.body.includes("Console UI"), true);
+    assert.equal(telemetryPage.statusCode, 200);
+    assert.equal(telemetryPage.body.includes("Console UI"), true);
+    assert.equal(environmentPage.statusCode, 200);
+    assert.equal(environmentPage.body.includes("Console UI"), true);
+    assert.equal(jsAsset.statusCode, 200);
+    assert.equal(jsAsset.headers["content-type"], "application/javascript; charset=utf-8");
+    assert.equal(String(jsAsset.headers["cache-control"]).includes("max-age=31536000"), true);
+    assert.equal(cssAsset.statusCode, 200);
+    assert.equal(cssAsset.headers["content-type"], "text/css; charset=utf-8");
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("hub server keeps api error behavior for unknown routes when ui dist is absent", async () => {
+  const rootDir = tempRoot();
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = path.join(rootDir, "nonexistent-ui-dist");
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const missing = await requestJson("GET", `${baseUrl}/missing`);
+    const health = await requestJson("GET", `${baseUrl}/healthz`);
+    const ready = await requestJson("GET", `${baseUrl}/readyz`);
+
+    assert.equal(missing.statusCode, 404);
+    assert.equal(missing.body.error, "NOT_FOUND");
+    assert.equal(health.statusCode, 200);
+    assert.equal(health.body.ok, true);
+    assert.equal(ready.statusCode, 200);
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("hub server keeps healthz and readyz working when ui dist is present", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-health");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<!DOCTYPE html><html><body>UI</body></html>", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const health = await requestJson("GET", `${baseUrl}/healthz`);
+    const ready = await requestJson("GET", `${baseUrl}/readyz`);
+
+    assert.equal(health.statusCode, 200);
+    assert.equal(health.body.ok, true);
+    assert.equal(ready.statusCode, 200);
+    assert.equal(ready.body.ok, true);
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("hub server resolveUiDistDir uses CONSOLE_UI_DIST env override", () => {
+  const { resolveUiDistDir } = require("../src/console-foundation/console-hub-server");
+  const customPath = "/custom/ui/dist";
+  const resolved = resolveUiDistDir({ CONSOLE_UI_DIST: customPath });
+  assert.equal(resolved, customPath);
+});
+
+test("hub server resolveUiDistDir defaults to console-ui/dist relative to __dirname", () => {
+  const { resolveUiDistDir } = require("../src/console-foundation/console-hub-server");
+  const resolved = resolveUiDistDir({});
+  assert.equal(resolved.endsWith(path.join("console-ui", "dist")), true);
+  assert.equal(!resolved.includes(".."), true);
+});
+
+test("hub server rejects path traversal in static asset requests", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-traversal");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<!DOCTYPE html><html><body>UI</body></html>", "utf8");
+  const sensitiveDir = path.join(rootDir, "sensitive");
+  fs.mkdirSync(sensitiveDir, { recursive: true });
+  fs.writeFileSync(path.join(sensitiveDir, "secret.txt"), "secret-content", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    // Traversal attempt should fall back to index.html, not expose files outside dist
+    const traversal = await rawRequest("GET", `${baseUrl}/../sensitive/secret.txt`);
+    assert.equal(traversal.body.includes("secret-content"), false);
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("hub server keeps /state as an API route even when ui dist is present", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-api");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<!DOCTYPE html><html><body>UI</body></html>", "utf8");
+  const originalEnv = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const state = await requestJson("GET", `${baseUrl}/state`);
+
+    assert.equal(state.statusCode, 200);
+    assert.ok("source" in state.body, "/state should return JSON API response");
+  } finally {
+    if (originalEnv === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalEnv;
+    await close(app);
+  }
+});
+
+test("hub server CONSOLE_SERVE_UI=0 disables static file serving", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-noui");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<!DOCTYPE html><html><body>UI</body></html>", "utf8");
+  const originalDist = process.env.CONSOLE_UI_DIST;
+  const originalServeUi = process.env.CONSOLE_SERVE_UI;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  process.env.CONSOLE_SERVE_UI = "0";
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const index = await requestJson("GET", `${baseUrl}/`);
+
+    // Without UI serving the root path should 404 (not found, no index.html fallback).
+    assert.equal(index.statusCode, 404);
+    assert.equal(index.body.error, "NOT_FOUND");
+  } finally {
+    if (originalDist === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalDist;
+    if (originalServeUi === undefined) delete process.env.CONSOLE_SERVE_UI;
+    else process.env.CONSOLE_SERVE_UI = originalServeUi;
+    await close(app);
+  }
+});
+
+test("hub server serveUi: false option disables static file serving", async () => {
+  const rootDir = tempRoot();
+  const uiDist = path.join(rootDir, "ui-dist-noui-opt");
+  fs.mkdirSync(uiDist, { recursive: true });
+  fs.writeFileSync(path.join(uiDist, "index.html"), "<!DOCTYPE html><html><body>UI</body></html>", "utf8");
+  const originalDist = process.env.CONSOLE_UI_DIST;
+  process.env.CONSOLE_UI_DIST = uiDist;
+  const app = createConsoleHubServer({ rootDir, port: 0, serveUi: false });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const index = await requestJson("GET", `${baseUrl}/`);
+
+    assert.equal(index.statusCode, 404);
+    assert.equal(index.body.error, "NOT_FOUND");
+  } finally {
+    if (originalDist === undefined) delete process.env.CONSOLE_UI_DIST;
+    else process.env.CONSOLE_UI_DIST = originalDist;
+    await close(app);
+  }
+});
+
+
 function surfaceFlowHandoffStream() {
   const report = inspectFixtures({ rootDir: process.env.KONTOUR_REPO_ROOT || process.cwd() });
   return report.eventStreams.find((item: any) => item.relativePath.endsWith("surface-flow-handoff.jsonl"));

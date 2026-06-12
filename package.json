@@ -27,10 +27,11 @@
     "console-server/dist",
     "console-core/dist",
     "LICENSE",
-    "README.md"
+    "README.md",
+    "console-ui/dist"
   ],
   "scripts": {
-    "build": "npm --workspace @kontourai/console-core run build && npm --workspace @kontourai/console run build",
+    "build": "npm --workspace @kontourai/console-core run build && npm --workspace @kontourai/console run build && npm --workspace @kontourai/console-ui run build",
     "prepack": "npm run build",
     "inspect:fixtures": "npm --workspace @kontourai/console run inspect:fixtures",
     "prototype:handoff": "node --import tsx scripts/serve-prototype.ts docs/prototypes/handoff-replay",
