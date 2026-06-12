@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/kontourai/console/compare/v1.0.0...v1.1.0) (2026-06-12)
+
+
+### Features
+
+* persist hosted core records in postgres (survives redeploys) ([#50](https://github.com/kontourai/console/issues/50)) ([680fe0a](https://github.com/kontourai/console/commit/680fe0a0329124dc698624870b40a539416bfeb7))
+
 ## [1.0.0](https://github.com/kontourai/console/compare/v0.2.1...v1.0.0) (2026-06-12)
 
 
