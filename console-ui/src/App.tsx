@@ -5,13 +5,14 @@ import { useHubConnection } from "./hooks/useHubConnection";
 import { useTheme } from "./hooks/useTheme";
 import type { ConsoleTelemetryResponse, TelemetryQueryInput } from "./serverApiTypes";
 import { ConnectionBar } from "./sections/ConnectionBar";
+import { EnvironmentSection } from "./sections/EnvironmentSection";
 import { StageBand } from "./sections/StageBand";
 import { TelemetrySection } from "./sections/TelemetrySection";
 import { TimelineSection } from "./sections/TimelineSection";
 import { DEFAULT_TELEMETRY_QUERY, parseTelemetryRoute, serializeTelemetryRoute, withDrilldownFilter, type TelemetryRouteState } from "./utils/telemetryQuery";
 import { WorkGrid } from "./sections/WorkGrid";
 
-type AppView = "operate" | "telemetry";
+type AppView = "operate" | "telemetry" | "environment";
 
 export default function App() {
   const initialRoute = parseTelemetryRoute(window.location.pathname, window.location.search);
@@ -77,7 +78,11 @@ export default function App() {
 
   function selectView(nextView: AppView) {
     setView(nextView);
-    const nextPath = nextView === "telemetry" ? serializeTelemetryRoute(telemetryQuery, telemetryRoute.drilldown) : "/";
+    const nextPath = nextView === "telemetry"
+      ? serializeTelemetryRoute(telemetryQuery, telemetryRoute.drilldown)
+      : nextView === "environment"
+        ? "/environment"
+        : "/";
     if (`${window.location.pathname}${window.location.search}` !== nextPath) {
       window.history.pushState(null, "", nextPath);
     }
@@ -121,6 +126,7 @@ export default function App() {
       <nav className="view-tabs" aria-label="Console views">
         <button type="button" className={view === "operate" ? "active" : ""} onClick={() => selectView("operate")}>Operate</button>
         <button type="button" className={view === "telemetry" ? "active" : ""} onClick={() => selectView("telemetry")}>Telemetry</button>
+        <button type="button" className={view === "environment" ? "active" : ""} onClick={() => selectView("environment")}>Environment</button>
       </nav>
       {view === "operate" ? (
         <>
@@ -133,7 +139,7 @@ export default function App() {
           />
           <TimelineSection state={state} lastAccepted={lastAccepted} />
         </>
-      ) : (
+      ) : view === "telemetry" ? (
         <TelemetrySection
           telemetry={telemetry}
           error={telemetryError}
@@ -144,11 +150,20 @@ export default function App() {
           liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
           lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
         />
+      ) : (
+        <EnvironmentSection
+          state={state}
+          telemetry={telemetry}
+          liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
+          lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
+        />
       )}
     </main>
   );
 }
 
 function viewFromPath(pathname: string): AppView {
-  return pathname === "/telemetry" || pathname.startsWith("/telemetry/") ? "telemetry" : "operate";
+  if (pathname === "/telemetry" || pathname.startsWith("/telemetry/")) return "telemetry";
+  if (pathname === "/environment") return "environment";
+  return "operate";
 }
