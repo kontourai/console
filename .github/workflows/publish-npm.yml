@@ -10,6 +10,12 @@ permissions:
   contents: read
   id-token: write
 
+# Tag-push and the release workflow dispatch can both fire for one tag;
+# serialize so the already-published guard skips cleanly (flow v0.1.20 race).
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   verify:
     runs-on: ubuntu-latest
