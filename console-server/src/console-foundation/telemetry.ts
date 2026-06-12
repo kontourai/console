@@ -103,13 +103,18 @@ export function createTelemetryStore(options: ConsoleHubServerOptions = {}): Tel
   const productRoots = resolveTelemetryProductRoots(rootDir, options);
   const sinkRoot = resolvePath(rootDir, options.telemetrySinkRoot || path.join(options.kontourRoot || options.localRoot || LOCAL_KONTOUR_DIR, "telemetry"));
   const descriptorPaths = options.telemetryDescriptorPaths || parseCsv(process.env.CONSOLE_TELEMETRY_DESCRIPTOR_PATHS);
+  const telemetryDatabaseUrl = options.telemetryDatabaseUrl || process.env.CONSOLE_DATABASE_URL || process.env.CONSOLE_TELEMETRY_DATABASE_URL;
+  const adapterName = resolveTelemetryStorageAdapter(options);
+  // The serve bin passes no SQL client; hosted mode requires a postgres
+  // adapter, so construct one from the configured URL when possible.
+  const needsSqlClient = adapterName === "postgres" || adapterName === "sql";
   const repository = createTelemetryRepository({
     rootDir,
     telemetryRoot,
     sinkRoot,
-    adapterName: resolveTelemetryStorageAdapter(options),
-    databaseUrl: options.telemetryDatabaseUrl || process.env.CONSOLE_DATABASE_URL || process.env.CONSOLE_TELEMETRY_DATABASE_URL,
-    sqlClient: options.telemetrySqlClient
+    adapterName,
+    databaseUrl: telemetryDatabaseUrl,
+    sqlClient: options.telemetrySqlClient ?? createOptionalPgClient(needsSqlClient ? telemetryDatabaseUrl : undefined)
   });
 
   return {
