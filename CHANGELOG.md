@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.0.0](https://github.com/kontourai/console/compare/v0.2.1...v1.0.0) (2026-06-12)
+
+
+### Features
+
+* hosted session gate for the bundled UI ([#49](https://github.com/kontourai/console/issues/49)) ([a08736d](https://github.com/kontourai/console/commit/a08736d7293020e7d2193c0550a0b2f918845dda))
+* serve bundled console-ui from the hub at its origin ([#46](https://github.com/kontourai/console/issues/46)) ([11bf95a](https://github.com/kontourai/console/commit/11bf95a9af320cff46c807d57ef5386ed6cc12a7))
+
+
+### Miscellaneous Chores
+
+* cut v1.0.0 ([52e044e](https://github.com/kontourai/console/commit/52e044ec24e438d4d1b4ffe557e42eebedb0cf03))
+
 ## [0.2.1](https://github.com/kontourai/console/compare/v0.2.0...v0.2.1) (2026-06-12)
 
 
