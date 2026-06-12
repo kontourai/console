@@ -96,6 +96,7 @@ input {
 .timeline-section,
 .telemetry-section,
 .telemetry-panel,
+.environment-section,
 .notice {
   border: 1px solid var(--line);
   background: var(--panel-shell);
@@ -252,7 +253,7 @@ h2 {
 /* ── View tabs ──────────────────────────────────────────────────────────── */
 .view-tabs {
   display: inline-grid;
-  grid-template-columns: repeat(2, minmax(110px, 1fr));
+  grid-template-columns: repeat(3, minmax(110px, 1fr));
   gap: 1px;
   margin-top: 14px;
   overflow: hidden;
@@ -1285,13 +1286,149 @@ dd {
   border: 1px solid var(--line);
 }
 
+/* ── Environment section ─────────────────────────────────────────────────── */
+.environment-section {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.env-health-band {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 1px;
+  margin-top: 14px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+.env-health-group {
+  min-width: 0;
+  padding: 12px;
+  background: var(--panel-2);
+}
+
+.env-health-group > .section-label {
+  margin-bottom: 8px;
+}
+
+.env-health-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.env-main-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.env-sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 64px;
+  margin-top: 10px;
+  padding: 4px 0;
+}
+
+.env-sparkline-bar {
+  flex: 1 1 0;
+  min-width: 4px;
+  block-size: var(--bar-h, 2%);
+  background: var(--accent);
+  opacity: 0.7;
+  border-radius: 2px 2px 0 0;
+  transition: opacity 0.15s;
+}
+
+.env-sparkline-bar:hover {
+  opacity: 1;
+}
+
+.env-activity-legend {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  gap: 8px;
+}
+
+.env-activity-no-data {
+  color: var(--dim);
+  font-style: italic;
+}
+
+.env-workloads-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.env-workload-row {
+  padding: 6px 0;
+}
+
+.env-workload-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 0.88rem;
+  min-width: 0;
+}
+
+.env-workload-label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.env-workload-label strong {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.env-workload-bar-track {
+  height: 3px;
+  background: var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.env-workload-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.6;
+  border-radius: 2px;
+}
+
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .topbar,
   .stage-band,
   .work-grid,
-  .telemetry-grid {
+  .telemetry-grid,
+  .env-health-band,
+  .env-workloads-grid {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .env-main-grid {
+    grid-template-columns: 1fr;
   }
 
   .telemetry-query-controls {
@@ -1335,7 +1472,10 @@ dd {
   .telemetry-query-controls,
   .telemetry-grid,
   .telemetry-metrics,
-  .details {
+  .details,
+  .env-health-band,
+  .env-main-grid,
+  .env-workloads-grid {
     grid-template-columns: 1fr;
   }
 
