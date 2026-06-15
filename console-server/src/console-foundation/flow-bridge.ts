@@ -5,7 +5,7 @@
 // re-bridging is state-safe; the bin also tracks sent ids across watch passes.
 const fs = require("node:fs");
 const path = require("node:path");
-import { buildPipeline } from "../../../console-core/src/pipeline";
+import { buildPipeline } from "@kontourai/console-core";
 
 export interface FlowBridgeEvent {
   schema: "kontour.console.event";
