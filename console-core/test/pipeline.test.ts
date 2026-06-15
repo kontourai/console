@@ -184,3 +184,123 @@ test("buildPipeline: deduplicated route-back edges", () => {
   const routeBack = pipeline.edges.filter((e) => e.kind === "route-back");
   assert.equal(routeBack.length, 1);
 });
+
+// ── DAG tests ────────────────────────────────────────────────────────────────
+
+// Definition: plan + shape (parallel roots) → implement (needs both) → verify → publish
+const dagDefinition = {
+  spec: {
+    steps: [
+      { id: "plan", next: "implement" },
+      { id: "shape", next: "implement" },
+      { id: "implement", next: "verify", needs: ["plan", "shape"] },
+      { id: "verify", next: "publish" },
+      { id: "publish", next: null },
+    ],
+    gates: {
+      "plan-gate": { step: "plan", expects: [{ id: "plan-done", kind: "surface.claim", required: true, description: "Plan ready" }] },
+      "shape-gate": { step: "shape", expects: [{ id: "shape-done", kind: "surface.claim", required: true, description: "Shape ready" }] },
+      "implement-gate": { step: "implement", expects: [{ id: "impl-done", kind: "surface.claim", required: true, description: "Implementation done" }] },
+      "verify-gate": { step: "verify", expects: [{ id: "tests-passed", kind: "surface.claim", required: true, description: "Tests passed" }] },
+      "publish-gate": { step: "publish", expects: [{ id: "publish-ready", kind: "surface.claim", required: false, description: "Publish readiness" }] },
+    },
+  },
+};
+
+// State: plan passed, shape passed, implement is current
+const dagState = {
+  run_id: "dag-run-1",
+  subject: "dag-feature",
+  status: "running",
+  current_step: "implement",
+  gate_outcomes: [
+    { gate_id: "plan-gate", status: "passed" },
+    { gate_id: "shape-gate", status: "passed" },
+    { gate_id: "implement-gate", status: "pending" },
+  ],
+  transitions: [
+    { type: "step", from_step: "plan", to_step: "implement", at: "2026-06-10T10:00:00Z" },
+    { type: "step", from_step: "shape", to_step: "implement", at: "2026-06-10T10:01:00Z" },
+  ],
+};
+
+test("buildPipeline DAG: isDag is true when any step has needs", () => {
+  const pipeline = buildPipeline(dagDefinition, dagState);
+  assert.equal(pipeline.isDag, true);
+});
+
+test("buildPipeline DAG: isDag is undefined for pure linear definitions", () => {
+  const pipeline = buildPipeline(sampleDefinition, sampleState);
+  assert.equal(pipeline.isDag, undefined);
+});
+
+test("buildPipeline DAG: stage sequence matches spec.steps order", () => {
+  const pipeline = buildPipeline(dagDefinition, dagState);
+  assert.deepEqual(pipeline.stages.map((s) => s.id), ["plan", "shape", "implement", "verify", "publish"]);
+});
+
+test("buildPipeline DAG: fan-in edges from needs predecessors", () => {
+  const pipeline = buildPipeline(dagDefinition, dagState);
+  const nextEdges = pipeline.edges.filter((e) => e.kind === "next");
+  // implement needs [plan, shape] → two fan-in edges: plan→implement, shape→implement
+  const planToImpl = nextEdges.find((e) => e.from === "plan" && e.to === "implement");
+  const shapeToImpl = nextEdges.find((e) => e.from === "shape" && e.to === "implement");
+  assert.ok(planToImpl, "should have plan→implement edge");
+  assert.ok(shapeToImpl, "should have shape→implement edge");
+});
+
+test("buildPipeline DAG: next edges still present for non-needs steps", () => {
+  const pipeline = buildPipeline(dagDefinition, dagState);
+  const nextEdges = pipeline.edges.filter((e) => e.kind === "next");
+  const verifyToPublish = nextEdges.find((e) => e.from === "verify" && e.to === "publish");
+  assert.ok(verifyToPublish, "should have verify→publish edge");
+});
+
+test("buildPipeline DAG: plan=passed, shape=passed, implement=current", () => {
+  const pipeline = buildPipeline(dagDefinition, dagState);
+  const byId = Object.fromEntries(pipeline.stages.map((s) => [s.id, s.status]));
+  assert.equal(byId["plan"], "passed");
+  assert.equal(byId["shape"], "passed");
+  assert.equal(byId["implement"], "current");
+});
+
+test("buildPipeline DAG: verify is ready when predecessors passed (but not started)", () => {
+  // Make implement also passed, so verify should be ready
+  const state = {
+    ...dagState,
+    current_step: "verify",
+    gate_outcomes: [
+      { gate_id: "plan-gate", status: "passed" },
+      { gate_id: "shape-gate", status: "passed" },
+      { gate_id: "implement-gate", status: "passed" },
+    ],
+  };
+  const pipeline = buildPipeline(dagDefinition, state);
+  const byId = Object.fromEntries(pipeline.stages.map((s) => [s.id, s.status]));
+  assert.equal(byId["implement"], "passed");
+  assert.equal(byId["verify"], "current");
+  assert.equal(byId["publish"], "blocked");
+});
+
+test("buildPipeline DAG: publish is blocked when verify not yet passed", () => {
+  const pipeline = buildPipeline(dagDefinition, dagState);
+  const byId = Object.fromEntries(pipeline.stages.map((s) => [s.id, s.status]));
+  assert.equal(byId["verify"], "blocked");
+  assert.equal(byId["publish"], "blocked");
+});
+
+test("buildPipeline DAG: root steps (plan, shape) with no predecessors", () => {
+  // At start, before any step runs
+  const state = {
+    ...dagState,
+    current_step: "plan",
+    gate_outcomes: [],
+    transitions: [],
+  };
+  const pipeline = buildPipeline(dagDefinition, state);
+  const byId = Object.fromEntries(pipeline.stages.map((s) => [s.id, s.status]));
+  assert.equal(byId["plan"], "current");
+  // shape is a root too, so it would be pending (no predecessors and not current)
+  // implement is blocked (predecessors not passed)
+  assert.equal(byId["implement"], "blocked");
+});
