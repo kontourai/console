@@ -146,6 +146,7 @@ export interface OperatingState {
   actions?: ConsoleAction[];
   links?: ConsoleLink[];
   timeline?: TimelineItem[];
+  pipeline?: import("./pipeline").Pipeline;
 }
 
 export interface RecordAcceptedEvent {

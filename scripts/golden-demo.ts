@@ -9,9 +9,10 @@
 // Prereqs: `npm run dev:local` in another terminal (hub on 127.0.0.1:3737).
 // Run: node --import tsx scripts/golden-demo.ts
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildPipeline } from "../console-core/src/pipeline";
 
 const hubUrl = process.env.KONTOUR_HUB_URL ?? "http://127.0.0.1:3737";
 const runId = "golden-1";

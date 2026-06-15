@@ -31,6 +31,7 @@ type MutableReplayState = {
   actions: Map<string, ConsoleActionRecord>;
   links: Map<string, ConsoleLink>;
   timeline: JsonObject[];
+  pipeline?: Record<string, unknown>;
 };
 
 function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | ConsoleEventRecord[] | null | undefined, options: CurrentOperatingStateOptions = {}): OperatingState {
@@ -69,7 +70,8 @@ function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | C
     inquiries: new Map<string, ReplayObject>(),
     actions: new Map<string, ConsoleActionRecord>(),
     links: new Map<string, ConsoleLink>(),
-    timeline: []
+    timeline: [],
+    pipeline: undefined
   };
 
   prepared.acceptedEvents.forEach((entry: ReplayEventEntry) => applyEvent(working, entry.event, entry.streamId));
@@ -89,6 +91,9 @@ function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | C
   }));
   state.links = [...working.links.values()].sort(compareLinks);
   state.timeline = working.timeline;
+  if (working.pipeline !== undefined) {
+    state.pipeline = working.pipeline;
+  }
   state.currentStage = describeCurrentStage({
     processes,
     gates,
@@ -183,6 +188,11 @@ function applyEvent(state: MutableReplayState, event: ConsoleEventRecord, stream
       break;
     case "claim.dispute.resolved":
       upsertClaimDisputeResolved(state, event, subject, refs, after);
+      break;
+    case "flow.pipeline.snapshot":
+      if (isPlainObject(after.pipeline)) {
+        state.pipeline = clone(after.pipeline as Record<string, unknown>);
+      }
       break;
     default:
       if (typeof event.type === "string" && event.type.startsWith("learning.")) {

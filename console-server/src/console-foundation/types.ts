@@ -69,6 +69,7 @@ export interface OperatingState {
   inquiries?: Record<string, unknown>[];
   actions?: Record<string, unknown>[];
   links?: ConsoleLink[];
+  pipeline?: Record<string, unknown>;
   timeline?: Record<string, unknown>[];
 }
 

@@ -5,6 +5,7 @@
 // re-bridging is state-safe; the bin also tracks sent ids across watch passes.
 const fs = require("node:fs");
 const path = require("node:path");
+import { buildPipeline } from "../../../console-core/src/pipeline";
 
 export interface FlowBridgeEvent {
   schema: "kontour.console.event";
@@ -114,6 +115,35 @@ export function deriveFlowRunEvents(runDir: string, options: FlowBridgeScopeOpti
       status: consoleStatus(state),
       currentStep: state.current_step,
     }));
+
+  // Pipeline snapshot: sequence 0 sorts first; only emitted when definition.json exists
+  const definitionPath = path.join(runDir, "definition.json");
+  if (fs.existsSync(definitionPath)) {
+    try {
+      const definition = JSON.parse(fs.readFileSync(definitionPath, "utf8"));
+      const pipeline = buildPipeline(definition, state);
+      const pipelineEvent: FlowBridgeEvent = {
+        schema: "kontour.console.event",
+        version: "0.1",
+        id: `evt-flowbridge-${runId}-pipeline`,
+        type: "flow.pipeline.snapshot",
+        occurredAt: state.updated_at ?? startedAt,
+        producer: { id: "flow-bridge", product: "flow", name: "Flow run bridge", runId: `run-${runId}` },
+        scope: { kind: "project", id: scopeId, label: scopeLabel },
+        subject: { product: "flow", kind: "run", id: `run-${runId}`, label: `${subject} (${runId})` },
+        actor: { kind: "agent", id: "flow-bridge", product: "flow", label: "Flow run bridge" },
+        correlationId: `corr-flow-${runId}`,
+        sequence: 0,
+        payload: {
+          after: { pipeline },
+          summary: `Pipeline snapshot for ${runId}: ${pipeline.stages.length} stages, current=${pipeline.currentStageId ?? "none"}.`,
+        },
+      };
+      events.unshift(pipelineEvent);
+    } catch {
+      // Graceful: if definition.json is malformed, skip pipeline snapshot
+    }
+  }
 
   return events;
 }
