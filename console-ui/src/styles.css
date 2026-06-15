@@ -2385,3 +2385,69 @@ dd {
   color: var(--muted);
   font-size: 0.84rem;
 }
+
+/* ── Surface trust panel embed ─────────────────────────────────────────────── */
+
+/* Toggle affordance */
+.trust-panel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 3px 8px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.trust-panel-toggle:hover,
+.trust-panel-toggle--open {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.trust-panel-toggle-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.trust-panel-toggle-label {
+  font-family: var(--k-font-ui);
+}
+
+/* Embed wrapper: thin inset border, slight padding */
+.trust-panel-embed {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  /* Pass console tokens through to the shadow DOM via inherited --k-* vars */
+}
+
+/* The custom element itself: constrain height so it doesn't explode the drawer */
+surface-trust-panel {
+  display: block;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+/* "No trust data yet" fallback */
+.trust-panel-no-data {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  color: var(--dim);
+}
+
+/* The trust-panel-row sits as the 4th child inside a 3-col grid (.pipeline-expect-item).
+   Span all columns so it doesn't squeeze into the first column. */
+.pipeline-expect-item .trust-panel-row {
+  grid-column: 1 / -1;
+}
+
+.pipeline-expect-item .trust-panel-no-data {
+  grid-column: 1 / -1;
+}

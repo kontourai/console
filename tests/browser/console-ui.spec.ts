@@ -67,6 +67,88 @@ const hubState = {
       producer: { product: "survey" },
     },
   ],
+  // Pipeline with a surface.claim expect that carries a trustReport
+  pipeline: {
+    runId: "run-dag-demo-1",
+    runLabel: "checkout-retry-banner (dag-demo-1)",
+    runStatus: "running",
+    isDag: true,
+    currentStageId: "implement",
+    stages: [
+      { id: "implement", label: "implement", order: 2, status: "current", gates: [
+        {
+          id: "implement-gate",
+          label: "implement-gate",
+          status: "waiting",
+          expects: [
+            {
+              id: "impl-diff",
+              label: "Implementation scoped diff",
+              required: true,
+              kind: "surface.claim",
+              trustReport: {
+                schemaVersion: 3,
+                id: "surface-test-report",
+                generatedAt: "2026-06-08T15:00:00.000Z",
+                source: "ci/main",
+                claims: [
+                  {
+                    id: "impl-diff",
+                    subjectType: "artifact",
+                    subjectId: "checkout-retry-banner",
+                    surface: "ci/main",
+                    claimType: "implementation.scoped-diff",
+                    fieldOrBehavior: "implementation.scoped-diff",
+                    value: true,
+                    status: "verified",
+                    createdAt: "2026-06-08T15:00:00.000Z",
+                    updatedAt: "2026-06-08T15:00:00.000Z",
+                    impactLevel: "high",
+                  },
+                ],
+                evidence: [
+                  {
+                    id: "ev-impl-diff-1",
+                    claimId: "impl-diff",
+                    evidenceType: "test_output",
+                    method: "validation",
+                    sourceRef: "ci/main",
+                    excerptOrSummary: "Scoped diff: 14 files changed, all within the checkout module.",
+                    observedAt: "2026-06-08T15:00:00.000Z",
+                    collectedBy: "ci/main",
+                    passing: true,
+                    supportStrength: "entails",
+                  },
+                ],
+                policies: [],
+                events: [],
+                identityLinks: [],
+                claimGroups: [],
+                authorityTrace: [],
+                evidenceRequirementsByClaimId: {},
+                transparencyGaps: [],
+                changeRecords: [],
+                subjectGroups: [],
+                claimGroupRollups: [],
+                summary: {
+                  totalClaims: 1,
+                  byStatus: { unknown: 0, proposed: 0, assumed: 0, verified: 1, stale: 0, disputed: 0, superseded: 0, rejected: 0 },
+                  bySurface: { "ci/main": 1 },
+                  confidenceBasis: { sourceQuality: {}, reviewerAuthority: {}, evidenceStrength: {}, corroboratedClaims: 0, averageExtractionConfidence: null, freshnessAtRisk: [], conflictedClaims: [] },
+                  transparencyGapsByType: { contradiction: 0, provenance_gap: 0, policy_violation: 0, freshness_breach: 0, corroboration_absent: 0, unsupported_inference: 0 },
+                  highImpactUnsupported: [],
+                  staleClaims: [],
+                  disputedClaims: [],
+                  recomputeNeededClaims: [],
+                },
+              },
+            },
+          ],
+        },
+      ], reason: "Awaiting evidence for implement-gate" },
+    ],
+    edges: [],
+  },
 };
 
 const telemetryState = {
@@ -655,6 +737,48 @@ async function lastTelemetryRequest(page: Page): Promise<Window["__kontourTeleme
 function localDateTimeToIso(value: string): string {
   return new Date(value).toISOString();
 }
+
+test("renders embedded surface-trust-panel in the gate drill-in for a surface.claim expect with trustReport", async ({ page }) => {
+  const consoleErrors = await loadConsole(page);
+
+  // The default view is "operate" which shows the pipeline.
+  // The implement stage card is in the visual pipeline DAG (aria-hidden for screen readers,
+  // since the accessible <ol> list duplicates the info). Use CSS selectors to click it.
+  await expect(page.getByRole("main")).toContainText("implement");
+
+  // Click the implement stage card via its CSS class (the visual card is aria-hidden)
+  const implementCard = page.locator(".pipeline-stage--current").first();
+  await expect(implementCard).toBeVisible();
+  await implementCard.click();
+  await expect(page.locator(".node-detail-drawer")).toBeVisible();
+
+  // The expect item for impl-diff should be present (data-claim-id attribute).
+  // It appears in both the "needs" section and the gate detail section; .first() is fine.
+  await expect(page.locator("[data-claim-id='impl-diff']").first()).toBeVisible();
+
+  // The "view trust panel" toggle button should be present for surface.claim expects with trustReport
+  const trustToggle = page.locator(".trust-panel-toggle").first();
+  await expect(trustToggle).toBeVisible();
+
+  // Expand the trust panel
+  await trustToggle.click();
+
+  // The <surface-trust-panel> custom element should be present and have the report set
+  const panelEl = page.locator("surface-trust-panel").first();
+  await expect(panelEl).toBeVisible();
+
+  // Verify the element is the right custom element
+  const tagName = await panelEl.evaluate((el) => el.tagName.toLowerCase());
+  expect(tagName).toBe("surface-trust-panel");
+
+  // Verify the .report property was set (the TrustPanelRow sets it via useEffect)
+  const hasReport = await panelEl.evaluate((el) => {
+    return (el as HTMLElement & { report?: unknown }).report !== undefined;
+  });
+  expect(hasReport).toBe(true);
+
+  expect(consoleErrors).toEqual([]);
+});
 
 async function assertTokenStylesResolved(page: Page): Promise<void> {
   const styles = await page.locator("body").evaluate((body) => {

@@ -50,6 +50,7 @@
     "access": "public"
   },
   "devDependencies": {
+    "@kontourai/surface": "^1.0.1",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.1",
     "tsx": "^4.22.4",

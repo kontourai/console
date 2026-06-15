@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildPipeline } from "../console-core/src/pipeline";
 
+
 const hubUrl = process.env.KONTOUR_HUB_URL ?? "http://127.0.0.1:3737";
 const runId = "golden-1";
 const subject = "checkout-retry-banner";
@@ -69,6 +70,61 @@ async function stage(title: string) {
   say("");
   say(`[36m== ${title} ==[0m`);
   await sleep(slow);
+}
+
+/** Builds a small but valid Surface TrustReport for a claim. Uses dynamic import
+ * to avoid CJS/ESM interop issues in the root tsconfig (module: Node16). */
+async function buildSampleTrustReport(opts: {
+  claimId: string;
+  claimType: string;
+  subject: string;
+  status: "verified" | "assumed" | "stale" | "proposed";
+  evidenceSummary: string;
+  producer: string;
+}): Promise<unknown> {
+  // Dynamic import avoids the CJS-requires-ESM error in the root tsconfig.
+  const { buildTrustReport } = await import("@kontourai/surface");
+  const now = new Date();
+  const bundle = {
+    schemaVersion: 3 as const,
+    source: opts.producer,
+    claims: [
+      {
+        id: opts.claimId,
+        subjectType: "artifact",
+        subjectId: opts.subject,
+        surface: opts.producer,
+        claimType: opts.claimType,
+        fieldOrBehavior: opts.claimType,
+        value: true,
+        status: opts.status,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        impactLevel: "high" as const,
+        confidenceBasis: {
+          evidenceStrength: "strong" as const,
+          reviewerAuthority: "domain_expert" as const,
+        },
+      },
+    ],
+    evidence: [
+      {
+        id: `ev-${opts.claimId}-1`,
+        claimId: opts.claimId,
+        evidenceType: "test_output" as const,
+        method: "validation" as const,
+        sourceRef: opts.producer,
+        excerptOrSummary: opts.evidenceSummary,
+        observedAt: now.toISOString(),
+        collectedBy: opts.producer,
+        passing: true,
+        supportStrength: "entails" as const,
+      },
+    ],
+    policies: [],
+    events: [],
+  };
+  return buildTrustReport(bundle);
 }
 
 async function emitDagPipelineSnapshot() {
@@ -135,11 +191,40 @@ async function emitDagPipelineSnapshot() {
   };
 
   const dagPipeline = buildPipeline(dagDefinition, dagState);
+
+  // Attach a realistic Surface TrustReport to the impl-diff gate-expect so the
+  // embedded trust panel renders with content in the Console operate view.
+  for (const stage of dagPipeline.stages) {
+    for (const gate of stage.gates) {
+      for (const expect of gate.expects) {
+        if (expect.id === "impl-diff") {
+          (expect as typeof expect & { trustReport?: unknown }).trustReport = await buildSampleTrustReport({
+            claimId: "impl-diff",
+            claimType: "implementation.scoped-diff",
+            subject: "checkout-retry-banner",
+            status: "verified",
+            evidenceSummary: "Scoped diff analysis: 14 files changed, all within the checkout module. No cross-cutting side effects detected. Coverage held at 87%.",
+            producer: "ci/main",
+          });
+        } else if (expect.id === "plan-done") {
+          (expect as typeof expect & { trustReport?: unknown }).trustReport = await buildSampleTrustReport({
+            claimId: "plan-done",
+            claimType: "builder.acceptance",
+            subject: "checkout-retry-banner",
+            status: "verified",
+            evidenceSummary: "Plan and acceptance criteria reviewed and approved by the team lead. All edge cases documented.",
+            producer: "team/reviewer",
+          });
+        }
+      }
+    }
+  }
+
   sequence += 1;
   const dagPipelineEvent = {
     schema: "kontour.console.event",
     version: "0.1",
-    id: "evt-golden-dag-pipeline",
+    id: `evt-golden-dag-pipeline-${Date.now()}`,
     type: "flow.pipeline.snapshot",
     occurredAt: new Date().toISOString(),
     producer: { id: "golden-demo", product: "flow", name: "Golden demo runner", runId: `run-${dagRunId}` },
@@ -147,7 +232,9 @@ async function emitDagPipelineSnapshot() {
     subject: { product: "flow", kind: "run", id: `run-${dagRunId}`, label: `checkout-retry-banner (${dagRunId})` },
     actor: { kind: "agent", id: "demo-agent", product: "flow", label: "Demo agent" },
     correlationId: `corr-${dagRunId}`,
-    sequence: 0,
+    // Use sequence 2 so this event sorts after any earlier clarity-demo seq:1 events
+    // and ensures the trust-report-carrying pipeline is the final state.
+    sequence: 2,
     payload: {
       after: { pipeline: dagPipeline },
       summary: `DAG pipeline snapshot: ${dagPipeline.stages.length} stages, isDag=${String(dagPipeline.isDag)}, current=${dagPipeline.currentStageId ?? "none"}.`,

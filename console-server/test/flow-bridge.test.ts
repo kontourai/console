@@ -27,11 +27,11 @@ const sampleState = {
   ],
 };
 
-test("derives deterministic console events from a Flow run state", () => {
+test("derives deterministic console events from a Flow run state", async () => {
   const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-"));
   const runDir = writeRun(flowRoot, "dev-7", sampleState);
 
-  const events = deriveFlowRunEvents(runDir);
+  const events = await deriveFlowRunEvents(runDir);
   assert.equal(events.length, 5);
   assert.equal(events[0].type, "process.started");
   assert.equal(events[0].id, "evt-flowbridge-dev-7-1");
@@ -42,7 +42,7 @@ test("derives deterministic console events from a Flow run state", () => {
   assert.match(String(events[4].payload.summary), /replace failing evidence/);
 
   // deterministic across invocations
-  assert.deepEqual(deriveFlowRunEvents(runDir).map((e: { id: string }) => e.id), events.map((e: { id: string }) => e.id));
+  assert.deepEqual((await deriveFlowRunEvents(runDir)).map((e: { id: string }) => e.id), events.map((e: { id: string }) => e.id));
 });
 
 test("lists only run directories that carry state.json", () => {

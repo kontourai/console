@@ -6,6 +6,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 import { buildPipeline } from "@kontourai/console-core";
+import type { Pipeline, PipelineGateExpect } from "@kontourai/console-core";
 
 export interface FlowBridgeEvent {
   schema: "kontour.console.event";
@@ -56,7 +57,7 @@ function consoleStatus(state: FlowRunState): string {
  * Event ids are stable across invocations so hub-side deduplication makes
  * re-bridging safe.
  */
-export function deriveFlowRunEvents(runDir: string, options: FlowBridgeScopeOptions = {}): FlowBridgeEvent[] {
+export async function deriveFlowRunEvents(runDir: string, options: FlowBridgeScopeOptions = {}): Promise<FlowBridgeEvent[]> {
   const statePath = path.join(runDir, "state.json");
   const state: FlowRunState = JSON.parse(fs.readFileSync(statePath, "utf8"));
   const runId = state.run_id;
@@ -122,6 +123,8 @@ export function deriveFlowRunEvents(runDir: string, options: FlowBridgeScopeOpti
     try {
       const definition = JSON.parse(fs.readFileSync(definitionPath, "utf8"));
       const pipeline = buildPipeline(definition, state);
+      // Attach Surface TrustReports to gate-expects whose evidence files carry TrustBundles.
+      await attachTrustReports(runDir, pipeline);
       const pipelineEvent: FlowBridgeEvent = {
         schema: "kontour.console.event",
         version: "0.1",
@@ -146,6 +149,96 @@ export function deriveFlowRunEvents(runDir: string, options: FlowBridgeScopeOpti
   }
 
   return events;
+}
+
+// ── Trust report attachment ───────────────────────────────────────────────────
+
+/**
+ * Loads Surface TrustBundles from evidence files in the run directory and
+ * attaches derived TrustReports to matching gate-expects. Graceful: any parse
+ * or derivation error is silently skipped — the pipeline still renders.
+ */
+async function attachTrustReports(runDir: string, pipeline: Pipeline): Promise<void> {
+  // Load candidate files: evidence/ subdir and any .json trust-artifact at top level
+  const candidateFiles: string[] = [];
+  const evidenceDir = path.join(runDir, "evidence");
+  if (fs.existsSync(evidenceDir)) {
+    try {
+      const entries: string[] = fs.readdirSync(evidenceDir).filter((f: string) => f.endsWith(".json"));
+      for (const entry of entries) candidateFiles.push(path.join(evidenceDir, entry));
+    } catch { /* skip unreadable dirs */ }
+  }
+  // Also check run-dir top-level for trust artifacts (Flow CLI typically writes them here)
+  try {
+    const entries: string[] = fs.readdirSync(runDir).filter((f: string) => f.endsWith(".json") && f !== "state.json" && f !== "definition.json");
+    for (const entry of entries) candidateFiles.push(path.join(runDir, entry));
+  } catch { /* skip */ }
+
+  if (candidateFiles.length === 0) return;
+
+  // Parse candidates and identify Surface TrustBundles (schemaVersion 2 or 3)
+  const bundles: Array<{ file: string; bundle: Record<string, unknown>; verifyUrl?: string }> = [];
+  for (const file of candidateFiles) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+      const sv = raw["schemaVersion"];
+      if ((sv === 2 || sv === 3) && Array.isArray(raw["claims"]) && Array.isArray(raw["evidence"])) {
+        const verifyUrl = typeof raw["verifyUrl"] === "string" ? raw["verifyUrl"] :
+          typeof raw["verification_url"] === "string" ? raw["verification_url"] : undefined;
+        bundles.push({ file, bundle: raw, verifyUrl });
+      } else if (typeof raw["verifyUrl"] === "string" || typeof raw["verification_url"] === "string") {
+        // Evidence file with only a verification URL (no bundle present yet)
+        const verifyUrl = (typeof raw["verifyUrl"] === "string" ? raw["verifyUrl"] : raw["verification_url"]) as string;
+        bundles.push({ file, bundle: raw, verifyUrl });
+      }
+    } catch { /* skip malformed files */ }
+  }
+
+  if (bundles.length === 0) return;
+
+  // Lazily import buildTrustReport — keep the require dynamic so the CJS build
+  // can tree-shake if surface is absent, and to avoid top-level async.
+  type BuildTrustReportFn = (bundle: Record<string, unknown>) => unknown;
+  let buildTrustReport: BuildTrustReportFn | null = null;
+  try {
+    const surfaceMod = await import("@kontourai/surface");
+    const fn = (surfaceMod as unknown as Record<string, unknown>)["buildTrustReport"];
+    if (typeof fn === "function") {
+      buildTrustReport = fn as BuildTrustReportFn;
+    }
+  } catch { /* @kontourai/surface not available; skip trust reports */ }
+
+  // For each gate-expect of kind surface.claim, try to match a bundle and attach the report
+  for (const stage of pipeline.stages) {
+    for (const gate of stage.gates) {
+      for (const expect of gate.expects as PipelineGateExpect[]) {
+        if (expect.kind !== "surface.claim") continue;
+        if (expect.trustReport !== undefined || expect.verifyUrl !== undefined) continue;
+
+        // Match: prefer a bundle whose source or claims subject matches the expect id/label
+        const matched = bundles.find((b) => {
+          const source = typeof b.bundle["source"] === "string" ? b.bundle["source"] as string : "";
+          const claims = Array.isArray(b.bundle["claims"]) ? b.bundle["claims"] as Array<Record<string, unknown>> : [];
+          return source.includes(expect.id) ||
+            source.includes(expect.label) ||
+            claims.some((c) => String(c["subjectId"] ?? "").includes(expect.id) ||
+              String(c["claimType"] ?? "").includes(expect.id) ||
+              String(c["subjectId"] ?? "").includes(expect.label));
+        }) ?? bundles[0]; // fall back to first bundle if only one available
+
+        if (!matched) continue;
+
+        if (matched.verifyUrl) {
+          (expect as PipelineGateExpect).verifyUrl = matched.verifyUrl;
+        }
+        if (buildTrustReport && Array.isArray(matched.bundle["claims"]) && Array.isArray(matched.bundle["evidence"])) {
+          try {
+            (expect as PipelineGateExpect).trustReport = buildTrustReport(matched.bundle);
+          } catch { /* derivation error — skip */ }
+        }
+      }
+    }
+  }
 }
 
 /** Lists run directories under a Flow root (.flow) that carry state.json. */
@@ -178,7 +271,7 @@ export async function bridgeFlowRun(
   options: FlowBridgeScopeOptions = {},
   sentIds?: Set<string>,
 ): Promise<FlowBridgeDelivery> {
-  const events = deriveFlowRunEvents(runDir, options);
+  const events = await deriveFlowRunEvents(runDir, options);
   const delivery: FlowBridgeDelivery = {
     runId: events[0]?.producer.runId ?? path.basename(runDir),
     events: events.length,

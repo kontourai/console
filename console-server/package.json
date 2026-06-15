@@ -44,6 +44,7 @@
     "access": "public"
   },
   "dependencies": {
-    "@kontourai/console-core": "^0.1.0"
+    "@kontourai/console-core": "^0.1.0",
+    "@kontourai/surface": "^1.0.1"
   }
 }
