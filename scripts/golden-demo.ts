@@ -72,15 +72,18 @@ async function stage(title: string) {
 }
 
 async function emitDagPipelineSnapshot() {
-  // Fan-in DAG: plan + shape (parallel roots) → implement (needs both) → verify → publish
-  // Realistic state: plan passed, shape passed, implement current, verify/publish pending/blocked.
+  // Fan-in DAG: plan + shape (parallel roots) → integrate (gateless, config-warning)
+  //   → implement (needs plan+shape, current, awaiting gate) → verify (blocked) → publish
+  // Demonstrates: blocked stage, current awaiting gate, configWarning on integrate.
   const dagRunId = "dag-demo-1";
   const dagDefinition = {
     spec: {
       steps: [
-        { id: "plan", next: "implement" },
-        { id: "shape", next: "implement" },
-        { id: "implement", next: "verify", needs: ["plan", "shape"] },
+        { id: "plan", next: "integrate" },
+        { id: "shape", next: "integrate" },
+        // integrate has NO gate (configWarning will fire since it has a successor)
+        { id: "integrate", next: "implement", needs: ["plan", "shape"] },
+        { id: "implement", next: "verify" },
         { id: "verify", next: "publish" },
         { id: "publish", next: null },
       ],
@@ -93,9 +96,13 @@ async function emitDagPipelineSnapshot() {
           step: "shape",
           expects: [{ id: "shape-done", kind: "surface.claim", required: true, description: "API shape & contract ready" }],
         },
+        // Note: no gate for "integrate" — intentional for config-warning demo
         "implement-gate": {
           step: "implement",
-          expects: [{ id: "impl-diff", kind: "surface.claim", required: true, description: "Implementation scoped diff" }],
+          expects: [
+            { id: "impl-diff", kind: "surface.claim", required: true, description: "Implementation scoped diff" },
+            { id: "test-coverage", kind: "surface.claim", required: false, description: "Test coverage report" },
+          ],
         },
         "verify-gate": {
           step: "verify",
@@ -113,15 +120,17 @@ async function emitDagPipelineSnapshot() {
     run_id: dagRunId,
     subject: "checkout-retry-banner",
     status: "running",
+    // implement is the current step; plan+shape passed; integrate passed (no gate, position-based)
     current_step: "implement",
     gate_outcomes: [
       { gate_id: "plan-gate", status: "passed" },
       { gate_id: "shape-gate", status: "passed" },
-      { gate_id: "implement-gate", status: "pending" },
+      { gate_id: "implement-gate", status: "waiting" },
     ],
     transitions: [
-      { type: "step", from_step: "plan", to_step: "implement", at: new Date(now - 3600000).toISOString() },
-      { type: "step", from_step: "shape", to_step: "implement", at: new Date(now - 3540000).toISOString() },
+      { type: "step", from_step: "plan", to_step: "integrate", at: new Date(now - 3600000).toISOString() },
+      { type: "step", from_step: "shape", to_step: "integrate", at: new Date(now - 3540000).toISOString() },
+      { type: "step", from_step: "integrate", to_step: "implement", at: new Date(now - 3000000).toISOString() },
     ],
   };
 

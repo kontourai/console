@@ -36,6 +36,21 @@ function GateChip({ gate }: { gate: PipelineGate }) {
   );
 }
 
+// ── Gate pill (drawer — auto-width, labeled) ────────────────────────────────
+
+function GatePill({ gate }: { gate: PipelineGate }) {
+  return (
+    <span
+      className={`pipeline-gate-pill pipeline-gate-pill--${gate.status}`}
+      aria-label={`Gate ${gate.id}: ${gate.status}`}
+    >
+      <span className="pipeline-gate-pill-icon" aria-hidden="true">{gateStatusIcon(gate.status)}</span>
+      <span className="pipeline-gate-pill-text">{gate.id}</span>
+      <span className="pipeline-gate-pill-status">{gate.status}</span>
+    </span>
+  );
+}
+
 // ── Stage card ───────────────────────────────────────────────────────────────
 
 interface StageCardProps {
@@ -52,12 +67,18 @@ function StageCard({ stage, isSelected, onSelect }: StageCardProps) {
         "pipeline-stage",
         `pipeline-stage--${stage.status}`,
         isSelected ? "pipeline-stage--selected" : "",
+        stage.configWarning ? "pipeline-stage--has-warning" : "",
       ].filter(Boolean).join(" ")}
       onClick={() => onSelect(stage.id)}
       aria-pressed={isSelected}
-      aria-label={`Stage ${stage.label}, status: ${stage.status}`}
+      aria-label={`Stage ${stage.label}, status: ${stage.status}${stage.configWarning ? " (config warning)" : ""}`}
     >
-      <span className="pipeline-stage-icon">{stageStatusIcon(stage.status)}</span>
+      <span className="pipeline-stage-icon-row">
+        <span className="pipeline-stage-icon">{stageStatusIcon(stage.status)}</span>
+        {stage.configWarning && (
+          <span className="pipeline-stage-warn-dot" title={stage.configWarning} aria-label="Configuration warning">⚠</span>
+        )}
+      </span>
       <span className="pipeline-stage-label">{stage.label}</span>
       {stage.gates.length > 0 && (
         <span className="pipeline-stage-gates">
@@ -89,6 +110,27 @@ interface PipelineStageDrawerProps {
 function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
   if (!stage) return null;
 
+  // Determine what "what's needed" section should show
+  const isBlocked = stage.status === "blocked";
+  const isCurrent = stage.status === "current";
+  const isFailed = stage.status === "failed";
+  const needsSomeAction = isBlocked || isCurrent || isFailed;
+
+  // For blocked: unmet predecessor stages listed in reason (parsed from "Waiting on: ...")
+  const unmetPredecessors: string[] = [];
+  if (isBlocked && stage.reason) {
+    const match = stage.reason.match(/^Waiting on: (.+)$/);
+    if (match) {
+      unmetPredecessors.push(...match[1].split(", ").map((s) => s.trim()));
+    }
+  }
+
+  // For current: gates waiting for evidence
+  const waitingGates = stage.gates.filter((g) => g.status === "waiting" || g.status === "pending");
+
+  // For failed: find failed gates
+  const failedGates = stage.gates.filter((g) => g.status === "failed");
+
   return (
     <>
       <div className="node-detail-backdrop" aria-hidden="true" onClick={onClose} />
@@ -108,14 +150,77 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
         </button>
       </div>
       <div className="node-detail-body">
-        <div className="node-detail-status">
+
+        {/* ── Status pill + reason ───────────────────────────── */}
+        <div className="pipeline-drawer-status-row">
           <span className={`pipeline-status-badge pipeline-status-badge--${stage.status}`}>
             {stage.status}
           </span>
+          {stage.reason && (
+            <p className="pipeline-drawer-reason">{stage.reason}</p>
+          )}
         </div>
+
         <code className="eyebrow" style={{ display: "block", marginBottom: 12 }}>{stage.id}</code>
 
-        {stage.gates.length === 0 && (
+        {/* ── Config warning callout ─────────────────────────── */}
+        {stage.configWarning && (
+          <div className="pipeline-config-warning" role="alert">
+            <span className="pipeline-config-warning-icon" aria-hidden="true">⚠</span>
+            <span className="pipeline-config-warning-text">{stage.configWarning}</span>
+          </div>
+        )}
+
+        {/* ── What's needed to proceed ───────────────────────── */}
+        {needsSomeAction && (
+          <div className="pipeline-drawer-needs">
+            <span className="eyebrow" style={{ display: "block", marginBottom: 8 }}>What's needed to proceed</span>
+            {isBlocked && unmetPredecessors.length > 0 && (
+              <ul className="pipeline-needs-list">
+                {unmetPredecessors.map((pred) => (
+                  <li key={pred} className="pipeline-needs-item pipeline-needs-item--predecessor">
+                    <span className="pipeline-needs-item-icon" aria-hidden="true">⊙</span>
+                    <span className="pipeline-needs-item-label">{pred}</span>
+                    <span className="pipeline-needs-item-tag">waiting on</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {isCurrent && waitingGates.map((gate) => (
+              <div key={gate.id} className="pipeline-needs-gate-section">
+                {gate.expects.length > 0 ? (
+                  <ul className="pipeline-expects-list">
+                    {gate.expects.map((expect) => (
+                      /* data-claim-id preserved for future trust-panel embed per claim */
+                      <li key={expect.id} className="pipeline-expect-item" data-claim-id={expect.id} data-claim-kind={expect.kind}>
+                        <code className="eyebrow">{expect.kind}</code>
+                        <span className="pipeline-expect-label">{expect.label}</span>
+                        <span className={`pipeline-expect-required ${expect.required ? "pipeline-expect-required--yes" : ""}`}>
+                          {expect.required ? "required" : "optional"}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="pipeline-needs-no-expects">Gate {gate.id} has no declared evidence requirements.</p>
+                )}
+              </div>
+            ))}
+            {isFailed && failedGates.length > 0 && (
+              <div className="pipeline-needs-failed">
+                <p className="pipeline-needs-failed-text">
+                  {stage.reason ?? `Gate failed — new evidence or a route-back is needed.`}
+                </p>
+                <p className="pipeline-needs-failed-hint">
+                  Attach superseding evidence or trigger a route-back to an earlier stage.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Gate detail(s) ─────────────────────────────────── */}
+        {stage.gates.length === 0 && !stage.configWarning && (
           <p style={{ color: "var(--muted)", fontSize: "0.88rem" }}>No gates defined for this stage.</p>
         )}
 
@@ -123,15 +228,15 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
           <div key={gate.id} className="pipeline-gate-detail">
             <div className="pipeline-gate-detail-header">
               <code className="eyebrow">{gate.id}</code>
-              <span className={`pipeline-gate-chip pipeline-gate-chip--${gate.status}`}>
-                {gateStatusIcon(gate.status)} {gate.status}
-              </span>
+              {/* Use GatePill (auto-width labeled) in the drawer — not the fixed-size chip */}
+              <GatePill gate={gate} />
             </div>
 
             {gate.expects.length > 0 && (
               <ul className="pipeline-expects-list">
                 {gate.expects.map((expect) => (
-                  <li key={expect.id} className="pipeline-expect-item">
+                  /* data-claim-id preserved for future trust-panel embed per claim */
+                  <li key={expect.id} className="pipeline-expect-item" data-claim-id={expect.id} data-claim-kind={expect.kind}>
                     <code className="eyebrow">{expect.kind}</code>
                     <span className="pipeline-expect-label">{expect.label}</span>
                     <span className={`pipeline-expect-required ${expect.required ? "pipeline-expect-required--yes" : ""}`}>
