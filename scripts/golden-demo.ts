@@ -9,9 +9,10 @@
 // Prereqs: `npm run dev:local` in another terminal (hub on 127.0.0.1:3737).
 // Run: node --import tsx scripts/golden-demo.ts
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildPipeline } from "../console-core/src/pipeline";
 
 const hubUrl = process.env.KONTOUR_HUB_URL ?? "http://127.0.0.1:3737";
 const runId = "golden-1";
@@ -156,6 +157,99 @@ async function main() {
   await emit("process.progressed", "Run is at publish with a complete evidence trail.", {
     status: "running", currentStep: state.current_step,
   });
+
+  // Emit pipeline snapshot
+  await stage("Pipeline snapshot: emit CI-style pipeline to Console");
+  const runDir = join(dir, ".flow", "runs", runId);
+  const definitionPath = join(runDir, "definition.json");
+  let pipelineEmitted = false;
+  if (existsSync(definitionPath)) {
+    try {
+      const definition = JSON.parse(readFileSync(definitionPath, "utf8"));
+      const finalState = runState(dir);
+      const pipeline = buildPipeline(definition, { ...finalState, run_id: runId });
+      sequence += 1;
+      const pipelineEvent = {
+        schema: "kontour.console.event",
+        version: "0.1",
+        id: `evt-golden-pipeline`,
+        type: "flow.pipeline.snapshot",
+        occurredAt: new Date().toISOString(),
+        producer: { id: "golden-demo", product: "flow", name: "Golden demo runner", runId: `run-${runId}` },
+        scope: { kind: "project", id: "golden-demo", label: "Golden demo" },
+        subject: { product: "flow", kind: "run", id: `run-${runId}`, label: `Agent dev run ${runId}` },
+        actor: { kind: "agent", id: "demo-agent", product: "flow", label: "Demo agent" },
+        correlationId: `corr-${runId}`,
+        sequence: 0,
+        payload: {
+          after: { pipeline },
+          summary: `Pipeline snapshot: ${pipeline.stages.length} stages, currentStageId=${pipeline.currentStageId ?? "none"}.`,
+        },
+      };
+      const pipelineResp = await fetch(`${hubUrl}/records`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(pipelineEvent),
+      });
+      if (pipelineResp.ok) {
+        say(`pipeline snapshot emitted: ${pipeline.stages.length} stages, current=${pipeline.currentStageId}`);
+        pipelineEmitted = true;
+      } else {
+        say(`pipeline snapshot delivery failed: HTTP ${pipelineResp.status}`);
+      }
+    } catch (pipelineError) {
+      say(`pipeline snapshot skipped: ${pipelineError instanceof Error ? pipelineError.message : String(pipelineError)}`);
+    }
+  } else {
+    // Construct minimal honest pipeline from the steps exercised
+    say("definition.json not found; constructing minimal pipeline from exercised steps");
+    const finalState = runState(dir);
+    const minimalDefinition = {
+      spec: {
+        steps: [
+          { id: "plan", next: "implement" },
+          { id: "implement", next: "verify" },
+          { id: "verify", next: "publish" },
+          { id: "publish", next: null },
+        ],
+        gates: {
+          "plan-gate": { step: "plan", expects: [{ id: "acceptance-criteria", kind: "surface.claim", required: true, description: "Acceptance criteria ready" }] },
+          "implement-gate": { step: "implement", expects: [{ id: "scoped-diff", kind: "surface.claim", required: true, description: "Implementation scoped diff" }] },
+          "verify-gate": { step: "verify", expects: [{ id: "tests-passed", kind: "surface.claim", required: true, description: "Tests passed" }] },
+          "publish-gate": { step: "publish", expects: [{ id: "publish-ready", kind: "surface.claim", required: false, description: "Publish readiness" }] },
+        }
+      }
+    };
+    const pipeline = buildPipeline(minimalDefinition, { ...finalState, run_id: runId });
+    sequence += 1;
+    const pipelineEvent = {
+      schema: "kontour.console.event",
+      version: "0.1",
+      id: `evt-golden-pipeline`,
+      type: "flow.pipeline.snapshot",
+      occurredAt: new Date().toISOString(),
+      producer: { id: "golden-demo", product: "flow", name: "Golden demo runner", runId: `run-${runId}` },
+      scope: { kind: "project", id: "golden-demo", label: "Golden demo" },
+      subject: { product: "flow", kind: "run", id: `run-${runId}`, label: `Agent dev run ${runId}` },
+      actor: { kind: "agent", id: "demo-agent", product: "flow", label: "Demo agent" },
+      correlationId: `corr-${runId}`,
+      sequence: 0,
+      payload: {
+        after: { pipeline },
+        summary: `Pipeline snapshot: ${pipeline.stages.length} stages (minimal fallback), currentStageId=${pipeline.currentStageId ?? "none"}.`,
+      },
+    };
+    const pipelineResp = await fetch(`${hubUrl}/records`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(pipelineEvent),
+    });
+    if (pipelineResp.ok) {
+      say(`pipeline snapshot emitted (minimal fallback): ${pipeline.stages.length} stages, current=${pipeline.currentStageId}`);
+      pipelineEmitted = true;
+    }
+  }
+  say(pipelineEmitted ? "pipeline snapshot ready in the Console operate view" : "pipeline snapshot skipped");
 
   say("");
   say(`[32mGolden demo complete: ${sequence} events streamed to the Console hub.[0m`);

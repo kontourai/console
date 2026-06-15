@@ -26,7 +26,7 @@
   --active-glow-mid: color-mix(in srgb, var(--k-brand) 32%, transparent);
   --active-glow-pulse: color-mix(in srgb, var(--k-brand) 20%, transparent);
   --active-glow-ring: color-mix(in srgb, var(--k-brand) 8%, transparent);
-  --flow-lane-stroke: color-mix(in srgb, var(--k-text-muted) 24%, transparent);
+  --flow-edge-idle: color-mix(in srgb, var(--k-active) 55%, transparent);
   /* Flow node dimensions as CSS vars for responsive override */
   --flow-node-w: 184px;
   --flow-node-h: 82px;
@@ -678,30 +678,17 @@ dd {
   height: 100%;
 }
 
-.flow-lane-headers {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 26px;
-  z-index: 10;
+/* Edge anchor handles — present so relationship lines attach cleanly to nodes,
+   but visually muted (no interactive dots cluttering the canvas). */
+.flow-handle.react-flow__handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
   pointer-events: none;
-  background: linear-gradient(to bottom, var(--panel) 70%, transparent);
-  border-bottom: 1px solid var(--flow-lane-stroke);
-}
-
-.flow-lane-header {
-  position: absolute;
-  top: 4px;
-  color: var(--dim);
-  font-family: var(--k-font-mono);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Controls styling */
@@ -1791,5 +1778,298 @@ dd {
     right: auto;
     left: 0;
     min-width: min(320px, calc(100vw - 32px));
+  }
+}
+
+/* ── Pipeline stepper ───────────────────────────────────────────────────── */
+
+.pipeline-stepper-wrap {
+  position: relative;
+  margin-top: 12px;
+  padding: 16px;
+  background: var(--dark-field);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  min-height: 120px;
+}
+
+.pipeline-stepper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.pipeline-stage-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+/* Stage card */
+.pipeline-stage {
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  gap: 4px;
+  min-width: 120px;
+  max-width: 180px;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--dim);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.pipeline-stage:hover {
+  border-color: var(--line-hot);
+}
+
+.pipeline-stage--selected {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Status variants */
+.pipeline-stage--passed {
+  border-top-color: var(--good);
+  opacity: 0.75;
+}
+
+.pipeline-stage--current {
+  border-top-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.pipeline-stage--blocked {
+  border-top-color: var(--warn);
+}
+
+.pipeline-stage--failed {
+  border-top-color: var(--bad);
+}
+
+.pipeline-stage--pending {
+  border-top-color: var(--dim);
+  opacity: 0.55;
+}
+
+.pipeline-stage-icon {
+  font-size: 1rem;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.pipeline-stage--passed .pipeline-stage-icon { color: var(--good); }
+.pipeline-stage--blocked .pipeline-stage-icon { color: var(--warn); }
+.pipeline-stage--failed .pipeline-stage-icon { color: var(--bad); }
+.pipeline-stage--pending .pipeline-stage-icon { color: var(--dim); }
+
+.pipeline-stage-label {
+  font-family: var(--k-font-ui);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
+
+.pipeline-stage-gates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.pipeline-stage-status {
+  font-family: var(--k-font-mono);
+  font-size: 0.65rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Connector arrow between stages */
+.pipeline-connector {
+  flex-shrink: 0;
+  padding: 0 8px;
+  color: var(--dim);
+  font-size: 1.1rem;
+  user-select: none;
+}
+
+/* Gate chips */
+.pipeline-gate-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.72rem;
+  border-radius: 3px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.pipeline-gate-chip--passed {
+  background: color-mix(in srgb, var(--good) 12%, var(--panel-2));
+  border-color: var(--good);
+  color: var(--good);
+}
+
+.pipeline-gate-chip--waiting {
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel-2));
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.pipeline-gate-chip--failed {
+  background: color-mix(in srgb, var(--bad) 12%, var(--panel-2));
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+/* Route-back arcs */
+.pipeline-route-backs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.pipeline-route-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--bad) 8%, var(--panel-2));
+  border: 1px dashed var(--bad);
+  border-radius: var(--radius);
+}
+
+.pipeline-route-back-label {
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  color: var(--bad);
+}
+
+/* Pipeline meta */
+.pipeline-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.pipeline-meta-status {
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  color: var(--muted);
+  padding: 2px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* Pipeline status badge (in drawer) */
+.pipeline-status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.pipeline-status-badge--passed { background: color-mix(in srgb, var(--good) 12%, var(--panel-2)); border-color: var(--good); color: var(--good); }
+.pipeline-status-badge--current { background: color-mix(in srgb, var(--accent) 12%, var(--panel-2)); border-color: var(--accent); color: var(--accent); }
+.pipeline-status-badge--blocked { background: color-mix(in srgb, var(--warn) 12%, var(--panel-2)); border-color: var(--warn); color: var(--warn); }
+.pipeline-status-badge--failed { background: color-mix(in srgb, var(--bad) 12%, var(--panel-2)); border-color: var(--bad); color: var(--bad); }
+.pipeline-status-badge--pending { background: var(--panel-2); border-color: var(--line); color: var(--dim); }
+
+/* Gate detail in drawer */
+.pipeline-gate-detail {
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  background: var(--dark-row);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.pipeline-gate-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/* Expects list */
+.pipeline-expects-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.pipeline-expect-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.pipeline-expect-label {
+  font-size: 0.84rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.pipeline-expect-required {
+  font-family: var(--k-font-mono);
+  font-size: 0.65rem;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.pipeline-expect-required--yes {
+  color: var(--warn);
+}
+
+/* Responsive: on small screens stack vertically */
+@media (max-width: 720px) {
+  .pipeline-stepper {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pipeline-stage-wrap {
+    flex-direction: column;
+  }
+
+  .pipeline-connector {
+    transform: rotate(90deg);
+  }
+
+  .pipeline-stage {
+    max-width: 100%;
   }
 }

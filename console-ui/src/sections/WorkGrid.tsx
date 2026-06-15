@@ -1,11 +1,10 @@
 import { useState } from "react";
-import { Empty, Panel } from "@kontourai/console-kit/react";
-import { FlowCanvas } from "../components/FlowCanvas";
-import { NodeDetailDrawer } from "../components/NodeDetailDrawer";
+import { Panel } from "@kontourai/console-kit/react";
+import { PipelineStepper } from "../components/PipelineStepper";
 import { ProcessView } from "../components/ProcessView";
 import { ActionRow, ClaimRow, GateRow, LearningRow } from "../components/Rows";
 import { DesignedEmpty } from "../components/DesignedEmpty";
-import { buildProcessFlow, selectLearningsBySubjectRef, type ConsoleRef, type OperatingState } from "@kontourai/console-core";
+import { buildProcessFlow, selectLearningsBySubjectRef, type ConsoleRef, type OperatingState, type Pipeline } from "@kontourai/console-core";
 
 interface WorkGridProps {
   state: OperatingState;
@@ -19,27 +18,20 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
     ? selectLearningsBySubjectRef(state, processRef(flow.activeProcess))
     : [];
 
-  // panToNodeId is set only when selection originates from a side-panel row.
-  // Canvas-click selections leave panToNodeId unchanged so the view does not
-  // re-pan to a node that is already visible.
+  // panToNodeId preserved for potential future canvas re-introduction
   const [panToNodeId, setPanToNodeId] = useState<string | null>(null);
+  void panToNodeId;
+  void setPanToNodeId;
 
-  // Called by side-panel buttons only.
+  // Build a safe Pipeline from state.pipeline if present
+  const pipeline = statePipeline(state);
+
   function selectByEntityId(kind: string, id: string) {
     const nodeId = `${kind}:${id}`;
     const node = flow.nodes.find((n) => n.id === nodeId);
     if (node) {
-      const next = selectedNodeId === nodeId ? null : nodeId;
-      onNodeSelect(next);
-      // Only request a pan when we are actually selecting (not deselecting).
-      setPanToNodeId(next);
+      onNodeSelect(selectedNodeId === nodeId ? null : nodeId);
     }
-  }
-
-  // Called by the canvas when a node is clicked directly.
-  // We deliberately do NOT update panToNodeId here.
-  function handleCanvasSelect(id: string | null) {
-    onNodeSelect(id);
   }
 
   return (
@@ -47,24 +39,25 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
       <section className="flow-panel" aria-label="Primary process flow">
         <div className="section-head">
           <div>
-            <p className="section-label">Process flow</p>
+            <p className="section-label">Pipeline</p>
             <h2>{state.currentStage || "Awaiting stage"}</h2>
           </div>
-          <p className="receipt">{flow.nodes.length} nodes · {flow.edges.length} links</p>
+          <p className="receipt">
+            {pipeline
+              ? `${pipeline.stages.length} stages · ${pipeline.edges.length} edges`
+              : `${flow.nodes.length} nodes · ${flow.edges.length} links`}
+          </p>
         </div>
-        <FlowCanvas
-          nodes={flow.nodes}
-          edges={flow.edges}
-          selectedNodeId={selectedNodeId}
-          panToNodeId={panToNodeId}
-          onNodeSelect={handleCanvasSelect}
-        />
-        <NodeDetailDrawer
-          nodeId={selectedNodeId}
-          nodes={flow.nodes}
-          state={state}
-          onClose={() => onNodeSelect(null)}
-        />
+
+        {pipeline ? (
+          <PipelineStepper pipeline={pipeline} />
+        ) : (
+          <DesignedEmpty
+            headline="No pipeline data yet"
+            body="A flow.pipeline.snapshot event from the Flow run bridge will populate this view."
+            command="flow start <definition.json> && kontour-flow-bridge"
+          />
+        )}
       </section>
 
       <div className="side-stack">
@@ -163,4 +156,12 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
 
 function processRef(process: { id: string; sourceRef?: ConsoleRef }): ConsoleRef {
   return process.sourceRef || { product: "flow", kind: "run", id: process.id };
+}
+
+function statePipeline(state: OperatingState): Pipeline | null {
+  const raw = state.pipeline;
+  if (!raw || typeof raw !== "object") return null;
+  // Minimal shape check
+  if (!Array.isArray((raw as Pipeline).stages)) return null;
+  return raw as Pipeline;
 }

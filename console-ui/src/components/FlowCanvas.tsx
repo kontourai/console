@@ -5,6 +5,9 @@ import {
   Background,
   Controls,
   MiniMap,
+  Handle,
+  Position,
+  MarkerType,
   useNodesState,
   useEdgesState,
   useReactFlow,
@@ -23,9 +26,7 @@ const NODE_HEIGHT = 82;
 const LANE_WIDTH = 218;
 const ROW_HEIGHT = 112;
 const PADDING_X = 28;
-const PADDING_Y = 48; // extra top for lane header overlay
-
-const LANE_LABELS = ["stage", "process", "step", "gates", "claims", "actions", "timeline"];
+const PADDING_Y = 24;
 
 function xFor(lane: number) {
   return PADDING_X + lane * LANE_WIDTH;
@@ -62,30 +63,17 @@ function FlowNodeCard({ data, selected }: { data: FlowNodeData; selected?: boole
 
   return (
     <article className={cls} style={{ width: NODE_WIDTH, height: NODE_HEIGHT }}>
+      {/* Edge anchors — invisible, non-interactive; they only give relationship
+          lines a point to attach to so node-to-node links render cleanly. */}
+      <Handle type="target" position={Position.Left} className="flow-handle" isConnectable={false} />
       <div className="flow-node-top">
         <span>{data.kind}</span>
         <b>{data.status}</b>
       </div>
       <strong>{data.label}</strong>
       <p>{data.meta}</p>
+      <Handle type="source" position={Position.Right} className="flow-handle" isConnectable={false} />
     </article>
-  );
-}
-
-// ── Lane header overlay (positioned above flow area) ─────────────────────────
-function LaneHeaders() {
-  return (
-    <div className="flow-lane-headers" aria-hidden="true">
-      {LANE_LABELS.map((label, lane) => (
-        <div
-          key={label}
-          className="flow-lane-header"
-          style={{ left: xFor(lane), width: NODE_WIDTH }}
-        >
-          {label}
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -124,7 +112,14 @@ function toRFEdges(edges: FlowEdge[], highlightedEdgeIds: Set<string>): Edge[] {
     id: e.id,
     source: e.from,
     target: e.to,
+    type: "smoothstep",
     animated: e.active,
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      width: 16,
+      height: 16,
+      color: e.active ? "var(--accent)" : "var(--flow-edge-idle)",
+    },
     className: [
       e.active ? "flow-edge-active" : "flow-edge-inactive",
       hasHighlight && !highlightedEdgeIds.has(e.id) ? "flow-edge-dimmed" : "",
@@ -132,8 +127,8 @@ function toRFEdges(edges: FlowEdge[], highlightedEdgeIds: Set<string>): Edge[] {
       .filter(Boolean)
       .join(" "),
     style: {
-      stroke: e.active ? "var(--accent)" : "var(--line-hot)",
-      strokeWidth: 2,
+      stroke: e.active ? "var(--accent)" : "var(--flow-edge-idle)",
+      strokeWidth: e.active ? 2 : 1.5,
       strokeDasharray: e.active ? "8 8" : undefined,
     },
   }));
@@ -276,7 +271,6 @@ function FlowInner({
       proOptions={{ hideAttribution: true }}
       className="flow-rf"
     >
-      <LaneHeaders />
       <Background
         variant={BackgroundVariant.Lines}
         gap={28}

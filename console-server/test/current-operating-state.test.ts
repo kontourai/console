@@ -373,3 +373,57 @@ test("replay ignores unsafe learning id and sourceRef payload fields", () => {
   assert.equal(state.learnings[0].id, "workflow-learning-safe-fallback");
   assert.equal(state.learnings[0].sourceRef, undefined);
 });
+
+test("flow.pipeline.snapshot event populates operatingState.pipeline", () => {
+  const pipelineSnapshot = {
+    runId: "run-dev-7",
+    runLabel: "checkout-banner (dev-7)",
+    runStatus: "running",
+    currentStageId: "verify",
+    stages: [
+      { id: "plan", label: "plan", order: 0, status: "passed", gates: [] },
+      { id: "implement", label: "implement", order: 1, status: "passed", gates: [] },
+      { id: "verify", label: "verify", order: 2, status: "current", gates: [] },
+    ],
+    edges: [
+      { from: "plan", to: "implement", kind: "next" },
+      { from: "implement", to: "verify", kind: "next" },
+    ],
+  };
+
+  const pipelineEvent = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-pipeline-snapshot-1",
+    type: "flow.pipeline.snapshot",
+    occurredAt: "2026-06-10T12:00:00Z",
+    sequence: 0,
+    producer: { id: "flow-bridge", product: "flow", name: "Flow run bridge", runId: "run-dev-7" },
+    scope: { kind: "project", id: "flow-local", label: "Flow local runs" },
+    subject: { product: "flow", kind: "run", id: "run-dev-7", label: "checkout-banner (dev-7)" },
+    actor: { kind: "agent", id: "flow-bridge", product: "flow", label: "Flow run bridge" },
+    correlationId: "corr-flow-dev-7",
+    payload: {
+      after: { pipeline: pipelineSnapshot },
+      summary: "Pipeline snapshot for dev-7.",
+    },
+  };
+
+  const state = buildCurrentOperatingState([pipelineEvent]);
+
+  assert.ok(state.pipeline, "pipeline should be set on operating state");
+  assert.equal(state.pipeline.runId, "run-dev-7");
+  assert.equal(state.pipeline.runStatus, "running");
+  assert.equal(state.pipeline.currentStageId, "verify");
+  assert.equal(state.pipeline.stages.length, 3);
+  assert.equal(state.pipeline.stages[0].id, "plan");
+  assert.equal(state.pipeline.stages[0].status, "passed");
+  assert.equal(state.pipeline.stages[2].status, "current");
+  assert.equal(state.pipeline.edges.length, 2);
+  assert.equal(state.pipeline.edges[0].kind, "next");
+});
+
+test("flow.pipeline.snapshot absent leaves operatingState.pipeline undefined", () => {
+  const state = buildCurrentOperatingState([]);
+  assert.equal(state.pipeline, undefined);
+});
