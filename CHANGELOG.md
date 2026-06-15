@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/kontourai/console/compare/v1.3.0...v1.3.1) (2026-06-15)
+
+
+### Bug Fixes
+
+* **console-ui:** stage detail as a full-height slide-over, not bounded by the pipeline card ([#59](https://github.com/kontourai/console/issues/59)) ([b3ff8d6](https://github.com/kontourai/console/commit/b3ff8d6e3aa64e3a61a7f3df7f934b0f6ace10ac))
+
 ## [1.3.0](https://github.com/kontourai/console/compare/v1.2.1...v1.3.0) (2026-06-15)
 
 
