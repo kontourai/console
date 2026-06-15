@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0](https://github.com/kontourai/console/compare/v1.4.0...v1.5.0) (2026-06-15)
+
+
+### Features
+
+* embed Surface trust panel in the pipeline gate drill-in ([#65](https://github.com/kontourai/console/issues/65)) ([a54dd67](https://github.com/kontourai/console/commit/a54dd67684ef6b3576320a2f716312b525dc63df))
+
+
+### Bug Fixes
+
+* **console-ui:** de-duplicate claim/expects in the stage drawer ([#67](https://github.com/kontourai/console/issues/67)) ([ac81301](https://github.com/kontourai/console/commit/ac81301a7d3b859c38fa735c3d9d8597e7f5233e))
+
 ## [1.4.0](https://github.com/kontourai/console/compare/v1.3.1...v1.4.0) (2026-06-15)
 
 
