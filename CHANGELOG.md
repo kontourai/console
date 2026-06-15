@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/kontourai/console/compare/v1.2.1...v1.3.0) (2026-06-15)
+
+
+### Features
+
+* render dependency-DAG pipelines in the operate view ([#57](https://github.com/kontourai/console/issues/57)) ([390e8fa](https://github.com/kontourai/console/commit/390e8fab4e64b7c05926ab93fa697e98920d9fd9))
+
 ## [1.2.1](https://github.com/kontourai/console/compare/v1.2.0...v1.2.1) (2026-06-15)
 
 
