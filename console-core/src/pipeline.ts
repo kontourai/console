@@ -64,10 +64,14 @@ interface FlowDefinitionGate {
 }
 
 interface FlowDefinition {
+  // Resource contract envelope (spec.steps / spec.gates)
   spec?: {
     steps?: FlowDefinitionStep[];
     gates?: Record<string, FlowDefinitionGate>;
   };
+  // Flat envelope used by the Flow CLI run dir definition.json
+  steps?: FlowDefinitionStep[];
+  gates?: Record<string, FlowDefinitionGate>;
 }
 
 interface GateOutcome {
@@ -111,7 +115,9 @@ export function buildPipeline(
 ): Pipeline {
   // Defensive: if missing definition or steps, return empty
   const def = definition as FlowDefinition | undefined;
-  const steps: FlowDefinitionStep[] = def?.spec?.steps ?? [];
+  // Support both the resource-contract envelope (spec.steps) and the flat
+  // CLI envelope (steps at top level, as written by "flow start" run dirs).
+  const steps: FlowDefinitionStep[] = def?.spec?.steps ?? def?.steps ?? [];
   if (!Array.isArray(steps) || steps.length === 0) {
     return { ...EMPTY_PIPELINE };
   }
@@ -128,8 +134,8 @@ export function buildPipeline(
     ? (state!.transitions as FlowTransition[])
     : [];
 
-  // Gate definitions indexed by gateId
-  const gateDefs: Record<string, FlowDefinitionGate> = def?.spec?.gates ?? {};
+  // Gate definitions indexed by gateId (handles both spec.gates and top-level gates)
+  const gateDefs: Record<string, FlowDefinitionGate> = def?.spec?.gates ?? def?.gates ?? {};
 
   // Map gateId → outcome status
   const outcomeByGateId = new Map<string, string>();
