@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/kontourai/console/compare/v1.3.1...v1.4.0) (2026-06-15)
+
+
+### Features
+
+* stage-status reasons, config warnings, and fixed gate chips ([#61](https://github.com/kontourai/console/issues/61)) ([0bfbd2b](https://github.com/kontourai/console/commit/0bfbd2bab7f4b0d61d958c7b8e0583ff4fd12abe))
+
 ## [1.3.1](https://github.com/kontourai/console/compare/v1.3.0...v1.3.1) (2026-06-15)
 
 
