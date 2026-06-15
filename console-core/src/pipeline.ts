@@ -18,7 +18,7 @@ export interface PipelineGate {
   expects: PipelineGateExpect[];
 }
 
-export type PipelineStageStatus = "passed" | "current" | "blocked" | "pending" | "failed";
+export type PipelineStageStatus = "passed" | "current" | "blocked" | "ready" | "pending" | "failed";
 
 export interface PipelineStage {
   id: string;
@@ -41,6 +41,7 @@ export interface Pipeline {
   stages: PipelineStage[];
   edges: PipelineEdge[];
   currentStageId: string | null;
+  isDag?: boolean;
 }
 
 // ── Input types (from definition.json / state.json) ────────────────────────
@@ -48,6 +49,7 @@ export interface Pipeline {
 interface FlowDefinitionStep {
   id: string;
   next: string | null;
+  needs?: string[];
 }
 
 interface FlowDefinitionGateExpect {
@@ -159,12 +161,66 @@ export function buildPipeline(
     }
   }
 
-  // Current step index
+  // Detect if any step has `needs` (DAG mode)
+  const isDag = steps.some((s) => Array.isArray(s.needs) && s.needs.length > 0);
+
+  // Build a map from step id to step
+  const stepById = new Map<string, FlowDefinitionStep>();
+  for (const step of steps) {
+    stepById.set(step.id, step);
+  }
+
+  // Build effective predecessors map per step:
+  // If a step has `needs`, use those; otherwise derive from which step has `next` pointing to it.
+  const predecessorsOf = new Map<string, string[]>();
+
+  if (isDag) {
+    // Build next-pointer map: stepId → predecessor via next chain
+    const nextPredecessor = new Map<string, string>();
+    for (const step of steps) {
+      if (step.next) {
+        nextPredecessor.set(step.next, step.id);
+      }
+    }
+
+    for (const step of steps) {
+      if (Array.isArray(step.needs) && step.needs.length > 0) {
+        predecessorsOf.set(step.id, [...step.needs]);
+      } else {
+        // Fall back to next-chain derived predecessor
+        const pred = nextPredecessor.get(step.id);
+        predecessorsOf.set(step.id, pred ? [pred] : []);
+      }
+    }
+  }
+
+  // Determine which stages are "passed" for readiness computation:
+  // A stage is passed if index < currentStepIndex in linear mode,
+  // or if all its gates have passed outcomes (DAG mode).
   const currentStepIndex = steps.findIndex((s) => s.id === currentStep);
 
-  // Build stages
-  const stages: PipelineStage[] = steps.map((step, index) => {
-    // Gates belonging to this step
+  // For DAG: compute which steps have all gates passed (or are before cursor in linear)
+  const isStepPassed = (stepId: string, stepIndex: number, stepGates: PipelineGate[]): boolean => {
+    if (!isDag) {
+      return currentStepIndex >= 0 && stepIndex < currentStepIndex;
+    }
+    // DAG mode: a step is "passed" if:
+    // - it has gates and all have "passed" outcome, OR
+    // - it's before the current step index AND no route-back gate
+    const hasRouteBackGate = stepGates.some((g) => routeBackGateIds.has(g.id));
+    if (hasRouteBackGate) return false;
+    if (stepGates.length > 0) {
+      return stepGates.every((g) => g.status === "passed");
+    }
+    // No gates: rely on position
+    return currentStepIndex >= 0 && stepIndex < currentStepIndex;
+  };
+
+  // Build stages first pass to get gate info
+  const stageGatesMap = new Map<string, PipelineGate[]>();
+  const stageIndexMap = new Map<string, number>();
+
+  for (const [index, step] of steps.entries()) {
     const stepGates: PipelineGate[] = Object.entries(gateDefs)
       .filter(([, gate]) => gate.step === step.id)
       .map(([gateId, gate]) => {
@@ -182,30 +238,70 @@ export function buildPipeline(
           expects,
         };
       });
+    stageGatesMap.set(step.id, stepGates);
+    stageIndexMap.set(step.id, index);
+  }
 
-    // Stage status derivation
-    // A stage whose gate caused a route-back is "failed" regardless of its
-    // position relative to the current step. This models the CI case where
-    // verify routed back to implement: verify = failed, implement = current.
+  // Compute passed set for all steps
+  const passedStepIds = new Set<string>();
+  for (const step of steps) {
+    const idx = stageIndexMap.get(step.id)!;
+    const gates = stageGatesMap.get(step.id)!;
+    if (isStepPassed(step.id, idx, gates)) {
+      passedStepIds.add(step.id);
+    }
+  }
+
+  // Build stages with correct statuses
+  const stages: PipelineStage[] = steps.map((step, index) => {
+    const stepGates = stageGatesMap.get(step.id)!;
+
     const hasRouteBackGate = stepGates.some((g) => routeBackGateIds.has(g.id));
 
     let stageStatus: PipelineStageStatus;
+
     if (hasRouteBackGate) {
       stageStatus = "failed";
-    } else if (currentStepIndex < 0) {
-      // No current step match — treat all as pending
-      stageStatus = "pending";
-    } else if (index < currentStepIndex) {
-      stageStatus = "passed";
-    } else if (index === currentStepIndex) {
-      // blocked if run status is blocked OR any gate for this stage is in a failing/waiting state
-      const hasBlockingGate = stepGates.some((g) =>
-        g.status === "failed" || g.status === "waiting"
-      );
-      stageStatus =
-        runStatus === "blocked" || hasBlockingGate ? "blocked" : "current";
+    } else if (isDag) {
+      // DAG status derivation (spec canonical order: failed > current > passed > ready > blocked > pending)
+      const preds = predecessorsOf.get(step.id) ?? [];
+      const allPredsPassed = preds.every((predId) => passedStepIds.has(predId));
+
+      if (step.id === currentStep) {
+        stageStatus = "current";
+      } else if (passedStepIds.has(step.id)) {
+        stageStatus = "passed";
+      } else if (allPredsPassed && preds.length > 0) {
+        // All predecessors passed but this step hasn't started yet
+        stageStatus = "ready";
+      } else if (preds.length === 0) {
+        // Root step (no predecessors): if not current and not passed, check position
+        if (currentStepIndex >= 0 && index < currentStepIndex) {
+          stageStatus = "passed";
+        } else if (index === currentStepIndex) {
+          stageStatus = "current";
+        } else {
+          stageStatus = "pending";
+        }
+      } else {
+        // Some predecessor not yet passed
+        stageStatus = "blocked";
+      }
     } else {
-      stageStatus = "pending";
+      // Linear mode (original behavior)
+      if (currentStepIndex < 0) {
+        stageStatus = "pending";
+      } else if (index < currentStepIndex) {
+        stageStatus = "passed";
+      } else if (index === currentStepIndex) {
+        const hasBlockingGate = stepGates.some((g) =>
+          g.status === "failed" || g.status === "waiting"
+        );
+        stageStatus =
+          runStatus === "blocked" || hasBlockingGate ? "blocked" : "current";
+      } else {
+        stageStatus = "pending";
+      }
     }
 
     return {
@@ -222,6 +318,23 @@ export function buildPipeline(
     .filter((s) => s.next)
     .map((s) => ({ from: s.id, to: s.next as string, kind: "next" as const }));
 
+  // Build fan-in edges for steps that have `needs`:
+  // each needs entry creates a "next" kind edge from predecessor → step
+  const fanInEdges: PipelineEdge[] = [];
+  if (isDag) {
+    for (const step of steps) {
+      if (Array.isArray(step.needs) && step.needs.length > 0) {
+        for (const needId of step.needs) {
+          // Only add if not already in nextEdges (avoid duplicate when next also points here)
+          const alreadyInNext = nextEdges.some((e) => e.from === needId && e.to === step.id);
+          if (!alreadyInNext) {
+            fanInEdges.push({ from: needId, to: step.id, kind: "next" });
+          }
+        }
+      }
+    }
+  }
+
   // Deduplicate route-back edges by from+to pair
   const seenEdgeKeys = new Set<string>();
   const uniqueRouteBackEdges = routeBackEdges.filter((e) => {
@@ -231,13 +344,27 @@ export function buildPipeline(
     return true;
   });
 
+  // In DAG mode, replace next edges with fan-in edges (which represent the actual DAG structure)
+  // For linear mode, use next edges as before.
+  const structuralEdges = isDag ? [...nextEdges, ...fanInEdges] : nextEdges;
+
+  // Deduplicate structural edges
+  const seenStructural = new Set<string>();
+  const uniqueStructuralEdges = structuralEdges.filter((e) => {
+    const key = `${e.from}→${e.to}`;
+    if (seenStructural.has(key)) return false;
+    seenStructural.add(key);
+    return true;
+  });
+
   return {
     runId: `run-${runId}`,
     runLabel: subject ? `${subject} (${runId})` : runId,
     runStatus,
     stages,
-    edges: [...nextEdges, ...uniqueRouteBackEdges],
+    edges: [...uniqueStructuralEdges, ...uniqueRouteBackEdges],
     currentStageId: currentStep ?? null,
+    isDag: isDag || undefined,
   };
 }
 

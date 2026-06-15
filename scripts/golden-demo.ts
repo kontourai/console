@@ -6,6 +6,9 @@
 // the local Console hub as it happens — derived from the real run files,
 // never invented.
 //
+// Also emits a fan-in DAG pipeline snapshot (plan + shape → implement →
+// verify → publish) so the operate view shows the DAG renderer.
+//
 // Prereqs: `npm run dev:local` in another terminal (hub on 127.0.0.1:3737).
 // Run: node --import tsx scripts/golden-demo.ts
 import { execFileSync } from "node:child_process";
@@ -64,8 +67,93 @@ async function emit(type: string, summary: string, after: Record<string, unknown
 
 async function stage(title: string) {
   say("");
-  say(`[36m== ${title} ==[0m`);
+  say(`[36m== ${title} ==[0m`);
   await sleep(slow);
+}
+
+async function emitDagPipelineSnapshot() {
+  // Fan-in DAG: plan + shape (parallel roots) → implement (needs both) → verify → publish
+  // Realistic state: plan passed, shape passed, implement current, verify/publish pending/blocked.
+  const dagRunId = "dag-demo-1";
+  const dagDefinition = {
+    spec: {
+      steps: [
+        { id: "plan", next: "implement" },
+        { id: "shape", next: "implement" },
+        { id: "implement", next: "verify", needs: ["plan", "shape"] },
+        { id: "verify", next: "publish" },
+        { id: "publish", next: null },
+      ],
+      gates: {
+        "plan-gate": {
+          step: "plan",
+          expects: [{ id: "plan-done", kind: "surface.claim", required: true, description: "Plan & acceptance criteria ready" }],
+        },
+        "shape-gate": {
+          step: "shape",
+          expects: [{ id: "shape-done", kind: "surface.claim", required: true, description: "API shape & contract ready" }],
+        },
+        "implement-gate": {
+          step: "implement",
+          expects: [{ id: "impl-diff", kind: "surface.claim", required: true, description: "Implementation scoped diff" }],
+        },
+        "verify-gate": {
+          step: "verify",
+          expects: [{ id: "tests-pass", kind: "surface.claim", required: true, description: "Tests passing" }],
+        },
+        "publish-gate": {
+          step: "publish",
+          expects: [{ id: "release-ready", kind: "surface.claim", required: false, description: "Release readiness confirmed" }],
+        },
+      },
+    },
+  };
+  const now = Date.now();
+  const dagState = {
+    run_id: dagRunId,
+    subject: "checkout-retry-banner",
+    status: "running",
+    current_step: "implement",
+    gate_outcomes: [
+      { gate_id: "plan-gate", status: "passed" },
+      { gate_id: "shape-gate", status: "passed" },
+      { gate_id: "implement-gate", status: "pending" },
+    ],
+    transitions: [
+      { type: "step", from_step: "plan", to_step: "implement", at: new Date(now - 3600000).toISOString() },
+      { type: "step", from_step: "shape", to_step: "implement", at: new Date(now - 3540000).toISOString() },
+    ],
+  };
+
+  const dagPipeline = buildPipeline(dagDefinition, dagState);
+  sequence += 1;
+  const dagPipelineEvent = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-golden-dag-pipeline",
+    type: "flow.pipeline.snapshot",
+    occurredAt: new Date().toISOString(),
+    producer: { id: "golden-demo", product: "flow", name: "Golden demo runner", runId: `run-${dagRunId}` },
+    scope: { kind: "project", id: "golden-demo", label: "Golden demo" },
+    subject: { product: "flow", kind: "run", id: `run-${dagRunId}`, label: `checkout-retry-banner (${dagRunId})` },
+    actor: { kind: "agent", id: "demo-agent", product: "flow", label: "Demo agent" },
+    correlationId: `corr-${dagRunId}`,
+    sequence: 0,
+    payload: {
+      after: { pipeline: dagPipeline },
+      summary: `DAG pipeline snapshot: ${dagPipeline.stages.length} stages, isDag=${String(dagPipeline.isDag)}, current=${dagPipeline.currentStageId ?? "none"}.`,
+    },
+  };
+  const dagResp = await fetch(`${hubUrl}/records`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(dagPipelineEvent),
+  });
+  if (dagResp.ok) {
+    say(`DAG pipeline snapshot emitted: ${dagPipeline.stages.length} stages, isDag=${String(dagPipeline.isDag)}, current=${dagPipeline.currentStageId}`);
+  } else {
+    say(`DAG pipeline snapshot delivery failed: HTTP ${dagResp.status}`);
+  }
 }
 
 async function main() {
@@ -158,7 +246,7 @@ async function main() {
     status: "running", currentStep: state.current_step,
   });
 
-  // Emit pipeline snapshot
+  // Emit linear pipeline snapshot (from real Flow run files)
   await stage("Pipeline snapshot: emit CI-style pipeline to Console");
   const runDir = join(dir, ".flow", "runs", runId);
   const definitionPath = join(runDir, "definition.json");
@@ -251,8 +339,12 @@ async function main() {
   }
   say(pipelineEmitted ? "pipeline snapshot ready in the Console operate view" : "pipeline snapshot skipped");
 
+  // Emit DAG pipeline snapshot (fan-in: plan + shape → implement → verify → publish)
+  await stage("DAG pipeline snapshot: fan-in DAG pipeline to Console operate view");
+  await emitDagPipelineSnapshot();
+
   say("");
-  say(`[32mGolden demo complete: ${sequence} events streamed to the Console hub.[0m`);
+  say(`[32mGolden demo complete: ${sequence} events streamed to the Console hub.[0m`);
   say(`run directory: ${join(dir, ".flow", "runs", runId)}`);
 }
 

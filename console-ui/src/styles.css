@@ -2073,3 +2073,82 @@ dd {
     max-width: 100%;
   }
 }
+
+/* ── Pipeline DAG renderer ──────────────────────────────────────────────── */
+
+/* Outer scroll wrapper so wide DAGs don't break layout */
+.pipeline-dag-wrap {
+  overflow-x: auto;
+  overflow-y: visible;
+  margin-top: 12px;
+  margin-bottom: 4px;
+  /* Fade edges at the right when overflowing */
+  -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+  mask-image: linear-gradient(to right, black 85%, transparent 100%);
+}
+
+/* When not overflowing, disable the mask */
+.pipeline-dag-wrap:not(:has(.pipeline-dag:where([style*="overflow"]))) {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.pipeline-dag {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* DAG SVG connector layer */
+.pipeline-dag-svg {
+  overflow: visible;
+}
+
+/* DAG node: same Kontour card style as linear cards */
+.pipeline-dag-node {
+  /* Position set inline; just ensure the card inside fills it */
+}
+
+.pipeline-dag-node .pipeline-stage {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* "ready" state — subtle accent, slightly elevated from pending */
+.pipeline-stage--ready {
+  border-top-color: var(--cyan);
+  opacity: 0.85;
+}
+
+.pipeline-stage--ready .pipeline-stage-icon {
+  color: var(--cyan);
+}
+
+/* DAG badge in meta row */
+.pipeline-dag-badge {
+  font-family: var(--k-font-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--cyan);
+  padding: 2px 7px;
+  border: 1px solid var(--cyan);
+  border-radius: var(--radius);
+  opacity: 0.75;
+}
+
+/* Status badge for "ready" in drawer */
+.pipeline-status-badge--ready {
+  background: color-mix(in srgb, var(--cyan) 12%, var(--panel-2));
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+/* Responsive: on narrow viewports, scroll the DAG horizontally */
+@media (max-width: 720px) {
+  .pipeline-dag-wrap {
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
