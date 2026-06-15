@@ -12,7 +12,8 @@
     "test": "node --import tsx --test test/*.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "prepare": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
