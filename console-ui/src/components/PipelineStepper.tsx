@@ -90,6 +90,8 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
   if (!stage) return null;
 
   return (
+    <>
+      <div className="node-detail-backdrop" aria-hidden="true" onClick={onClose} />
     <aside className="node-detail-drawer" aria-label={`Stage details: ${stage.label}`}>
       <div className="node-detail-header">
         <div>
@@ -148,6 +150,7 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
         </details>
       </div>
     </aside>
+    </>
   );
 }
 
