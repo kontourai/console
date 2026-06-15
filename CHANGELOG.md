@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/kontourai/console/compare/v1.1.0...v1.2.0) (2026-06-15)
+
+
+### Features
+
+* **console-ui:** editorial Kontour visual overhaul ([305d380](https://github.com/kontourai/console/commit/305d3802692cc42c9b02758c2e6720a80ac05cf3))
+* honest Flow pipeline view in the operate tab ([#54](https://github.com/kontourai/console/issues/54)) ([57e9c30](https://github.com/kontourai/console/commit/57e9c3099dce848e00bc5e303267c18ebc2cad07))
+
 ## [1.1.0](https://github.com/kontourai/console/compare/v1.0.0...v1.1.0) (2026-06-12)
 
 
