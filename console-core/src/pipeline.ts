@@ -26,6 +26,10 @@ export interface PipelineStage {
   order: number;
   status: PipelineStageStatus;
   gates: PipelineGate[];
+  /** Human sentence explaining why the stage is in its current status. */
+  reason?: string;
+  /** Set when a non-terminal stage has zero gates — nothing verifies this stage. */
+  configWarning?: string;
 }
 
 export interface PipelineEdge {
@@ -304,12 +308,25 @@ export function buildPipeline(
       }
     }
 
+    // Compute reason sentence
+    const reason = computeStageReason(stageStatus, step.id, stepGates, predecessorsOf, passedStepIds, transitions);
+
+    // Compute configWarning: non-terminal stage with zero gates
+    const isTerminal = step.next === null || step.next === undefined;
+    const hasSuccessor = !isTerminal;
+    const configWarning =
+      hasSuccessor && stepGates.length === 0
+        ? "No gate defined — nothing verifies this stage."
+        : undefined;
+
     return {
       id: step.id,
       label: step.id,
       order: index,
       status: stageStatus,
       gates: stepGates,
+      reason,
+      configWarning,
     };
   });
 
@@ -366,6 +383,64 @@ export function buildPipeline(
     currentStageId: currentStep ?? null,
     isDag: isDag || undefined,
   };
+}
+
+
+// ── Reason computation ───────────────────────────────────────────────────────
+
+function computeStageReason(
+  status: PipelineStageStatus,
+  stepId: string,
+  gates: PipelineGate[],
+  predecessorsOf: Map<string, string[]>,
+  passedStepIds: Set<string>,
+  transitions: Array<{ type?: string; gate_id?: string; route_reason?: string; from_step?: string }>,
+): string {
+  switch (status) {
+    case "passed":
+      return "Complete";
+    case "pending":
+      return "Not yet reachable";
+    case "ready":
+      return "Dependencies met — ready to run";
+    case "blocked": {
+      const preds = predecessorsOf.get(stepId) ?? [];
+      const unmetPreds = preds.filter((p) => !passedStepIds.has(p));
+      if (unmetPreds.length > 0) {
+        return `Waiting on: ${unmetPreds.join(", ")}`;
+      }
+      return "Waiting on predecessor stages";
+    }
+    case "current": {
+      if (gates.length === 0) {
+        return "In progress";
+      }
+      // Find first non-passed gate
+      const waitingGate = gates.find((g) => g.status === "waiting" || g.status === "pending");
+      if (waitingGate) {
+        return `Awaiting evidence for ${waitingGate.id}`;
+      }
+      return "In progress";
+    }
+    case "failed": {
+      // Find the gate that triggered a route-back for this step
+      const failedTransition = transitions.find(
+        (t) => t.type === "route_back" && t.from_step === stepId && t.gate_id,
+      );
+      if (failedTransition?.gate_id) {
+        const routeReason = failedTransition.route_reason;
+        return routeReason
+          ? `Gate ${failedTransition.gate_id} failed: ${routeReason}`
+          : `Gate ${failedTransition.gate_id} failed`;
+      }
+      // Fallback: find any failed gate
+      const failedGate = gates.find((g) => g.status === "failed");
+      if (failedGate) {
+        return `Gate ${failedGate.id} failed`;
+      }
+      return "Stage failed";
+    }
+  }
 }
 
 function gateOutcomeStatus(

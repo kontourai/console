@@ -2170,3 +2170,218 @@ dd {
     mask-image: none;
   }
 }
+
+/* ── Pipeline stage warn dot (card) ─────────────────────────────────────── */
+
+.pipeline-stage-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pipeline-stage-warn-dot {
+  font-size: 0.7rem;
+  color: var(--warn);
+  line-height: 1;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+/* ── Gate pill (drawer — auto-width, labeled, NOT fixed-size chip) ──────── */
+
+.pipeline-gate-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border-radius: var(--radius);
+  white-space: nowrap;
+  /* default neutral tone */
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.pipeline-gate-pill-icon {
+  flex-shrink: 0;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.pipeline-gate-pill-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.pipeline-gate-pill-status {
+  opacity: 0.75;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Status tones */
+.pipeline-gate-pill--passed {
+  background: color-mix(in srgb, var(--good) 12%, var(--panel-2));
+  border-color: var(--good);
+  color: var(--good);
+}
+
+.pipeline-gate-pill--waiting {
+  background: color-mix(in srgb, var(--warn) 12%, var(--panel-2));
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.pipeline-gate-pill--failed {
+  background: color-mix(in srgb, var(--bad) 12%, var(--panel-2));
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.pipeline-gate-pill--pending {
+  background: var(--panel-2);
+  border-color: var(--line);
+  color: var(--dim);
+}
+
+/* ── Drawer: status row + reason ────────────────────────────────────────── */
+
+.pipeline-drawer-status-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.pipeline-drawer-reason {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+/* ── Drawer: config warning callout ─────────────────────────────────────── */
+
+.pipeline-config-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--warn) 8%, var(--dark-row));
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.pipeline-config-warning-icon {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  color: var(--warn);
+  margin-top: 1px;
+}
+
+.pipeline-config-warning-text {
+  color: var(--warn);
+}
+
+/* ── Drawer: "what's needed" section ────────────────────────────────────── */
+
+.pipeline-drawer-needs {
+  margin: 0 0 14px;
+  padding: 12px;
+  background: var(--dark-row);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* Unmet predecessor list */
+.pipeline-needs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.pipeline-needs-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 0.84rem;
+}
+
+.pipeline-needs-item--predecessor {
+  border-left: 3px solid var(--warn);
+}
+
+.pipeline-needs-item-icon {
+  color: var(--warn);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.pipeline-needs-item-label {
+  font-weight: 500;
+  color: var(--text);
+  font-family: var(--k-font-mono);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.pipeline-needs-item-tag {
+  font-family: var(--k-font-mono);
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 10%, var(--panel-2));
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, var(--line));
+  border-radius: var(--radius);
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+/* Failed state in needs section */
+.pipeline-needs-failed {
+  display: grid;
+  gap: 6px;
+}
+
+.pipeline-needs-failed-text {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--bad);
+  line-height: 1.4;
+}
+
+.pipeline-needs-failed-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* Needs gate section */
+.pipeline-needs-gate-section {
+  margin-top: 4px;
+}
+
+.pipeline-needs-no-expects {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
