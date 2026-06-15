@@ -168,9 +168,12 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
 
   // Determine what "what's needed" section should show
   const isBlocked = stage.status === "blocked";
-  const isCurrent = stage.status === "current";
   const isFailed = stage.status === "failed";
-  const needsSomeAction = isBlocked || isCurrent || isFailed;
+  // "What's needed" only adds context the gate-detail section below doesn't already
+  // show: blocked → unmet predecessors; failed → remediation. For a current/waiting
+  // stage the gate detail (with its WAITING pill, expects, and trust panels) IS what's
+  // needed, so we don't duplicate it here.
+  const needsSomeAction = isBlocked || isFailed;
 
   // For blocked: unmet predecessor stages listed in reason (parsed from "Waiting on: ...")
   const unmetPredecessors: string[] = [];
@@ -180,9 +183,6 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
       unmetPredecessors.push(...match[1].split(", ").map((s) => s.trim()));
     }
   }
-
-  // For current: gates waiting for evidence
-  const waitingGates = stage.gates.filter((g) => g.status === "waiting" || g.status === "pending");
 
   // For failed: find failed gates
   const failedGates = stage.gates.filter((g) => g.status === "failed");
@@ -242,27 +242,6 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
                 ))}
               </ul>
             )}
-            {isCurrent && waitingGates.map((gate) => (
-              <div key={gate.id} className="pipeline-needs-gate-section">
-                {gate.expects.length > 0 ? (
-                  <ul className="pipeline-expects-list">
-                    {gate.expects.map((expect) => (
-                      /* data-claim-id preserved for future trust-panel embed per claim */
-                      <li key={expect.id} className="pipeline-expect-item" data-claim-id={expect.id} data-claim-kind={expect.kind}>
-                        <code className="eyebrow">{expect.kind}</code>
-                        <span className="pipeline-expect-label">{expect.label}</span>
-                        <span className={`pipeline-expect-required ${expect.required ? "pipeline-expect-required--yes" : ""}`}>
-                          {expect.required ? "required" : "optional"}
-                        </span>
-                        {expect.kind === "surface.claim" && <TrustPanelRow expect={expect} />}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="pipeline-needs-no-expects">Gate {gate.id} has no declared evidence requirements.</p>
-                )}
-              </div>
-            ))}
             {isFailed && failedGates.length > 0 && (
               <div className="pipeline-needs-failed">
                 <p className="pipeline-needs-failed-text">
