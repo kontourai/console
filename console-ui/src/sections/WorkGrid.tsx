@@ -4,6 +4,7 @@ import { FlowCanvas } from "../components/FlowCanvas";
 import { NodeDetailDrawer } from "../components/NodeDetailDrawer";
 import { ProcessView } from "../components/ProcessView";
 import { ActionRow, ClaimRow, GateRow, LearningRow } from "../components/Rows";
+import { DesignedEmpty } from "../components/DesignedEmpty";
 import { buildProcessFlow, selectLearningsBySubjectRef, type ConsoleRef, type OperatingState } from "@kontourai/console-core";
 
 interface WorkGridProps {
@@ -46,7 +47,7 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
       <section className="flow-panel" aria-label="Primary process flow">
         <div className="section-head">
           <div>
-            <p className="section-label">Process Flow</p>
+            <p className="section-label">Process flow</p>
             <h2>{state.currentStage || "Awaiting stage"}</h2>
           </div>
           <p className="receipt">{flow.nodes.length} nodes · {flow.edges.length} links</p>
@@ -67,10 +68,13 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
       </section>
 
       <div className="side-stack">
-        <Panel title="Active Process" count={flow.activeProcess ? 1 : 0}>
+        <Panel title="Active process" count={flow.activeProcess ? 1 : 0}>
           {flow.activeProcess
             ? <ProcessView process={flow.activeProcess} advisoryLearnings={activeProcessLearnings} />
-            : <Empty label="No active process." />}
+            : <DesignedEmpty
+                headline="Nothing running yet"
+                body="An active process will appear here once records are replayed."
+              />}
         </Panel>
 
         <Panel title="Gates" count={state.gates?.length || 0}>
@@ -85,7 +89,12 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
                 <GateRow gate={gate} />
               </button>
             ))}
-            {!state.gates?.length ? <Empty label="No gates replayed." /> : null}
+            {!state.gates?.length
+              ? <DesignedEmpty
+                  headline="No gates replayed."
+                  body="Gate records posted to this hub will appear here."
+                />
+              : null}
           </div>
         </Panel>
       </div>
@@ -106,11 +115,16 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
                 />
               </button>
             ))}
-            {!state.claims?.length ? <Empty label="No claims replayed." /> : null}
+            {!state.claims?.length
+              ? <DesignedEmpty
+                  headline="Nothing replayed yet"
+                  body="Records posted to this hub will appear here live."
+                />
+              : null}
           </div>
         </Panel>
 
-        <Panel title="Read-Only Actions" count={state.actions?.length || 0}>
+        <Panel title="Read-only actions" count={state.actions?.length || 0}>
           <div className="stack">
             {(state.actions || []).map((action) => (
               <button
@@ -122,14 +136,24 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
                 <ActionRow action={action} />
               </button>
             ))}
-            {!state.actions?.length ? <Empty label="No inert actions available." /> : null}
+            {!state.actions?.length
+              ? <DesignedEmpty
+                  headline="No actions available"
+                  body="Read-only actions from replayed records will appear here."
+                />
+              : null}
           </div>
         </Panel>
 
-        <Panel title="Advisory Learnings" count={state.learnings?.length || 0}>
+        <Panel title="Advisory learnings" count={state.learnings?.length || 0}>
           <div className="stack">
             {(state.learnings || []).map((learning) => <LearningRow key={learning.id} learning={learning} />)}
-            {!state.learnings?.length ? <Empty label="No advisory learning context." /> : null}
+            {!state.learnings?.length
+              ? <DesignedEmpty
+                  headline="No learning context"
+                  body="Advisory learnings from replayed records will appear here."
+                />
+              : null}
           </div>
         </Panel>
       </div>

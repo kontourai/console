@@ -97,7 +97,7 @@ function TelemetryFlowPanel({
           </div>
         ))}
         <button type="button" className="telemetry-open-drilldown" onClick={() => openDrilldown(onOpenRoute, query, "flows", flow.id)}>Open flow</button>
-        {!items.length ? <Empty label="No flow items returned." /> : null}
+        {!items.length ? <Empty label="No items in this window." /> : null}
       </div>
     </TelemetryPanel>
   );
@@ -130,7 +130,7 @@ function TelemetrySources({ sources }: { sources: ConsoleTelemetryResponse["sour
             <p>{source.path || "no path reported"}</p>
           </div>
         ))}
-        {!sources.length ? <Empty label="No telemetry sources found." /> : null}
+        {!sources.length ? <Empty label="No telemetry sources observed." /> : null}
       </div>
     </TelemetryPanel>
   );
@@ -172,7 +172,7 @@ function BarList({
           ) : null}
         </div>
       ))}
-      {!entries.length ? <Empty label="No counts available." /> : null}
+      {!entries.length ? <Empty label="No data in this window." /> : null}
     </div>
   );
 }

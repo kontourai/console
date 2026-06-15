@@ -15,9 +15,10 @@
   --accent: var(--k-brand);
   --cyan: var(--k-active);
   --shadow: var(--k-shadow);
-  --grid-accent: color-mix(in srgb, var(--k-brand) 6%, transparent);
-  --grid-line: color-mix(in srgb, var(--k-text) 4%, transparent);
-  --aura: color-mix(in srgb, var(--k-active) 16%, transparent);
+  --radius: var(--k-radius-sm);
+  /* Whisper of grid — barely visible, not instrument-panel dominant */
+  --grid-line: color-mix(in srgb, var(--k-text) 3%, transparent);
+  --aura: color-mix(in srgb, var(--k-active) 12%, transparent);
   --panel-shell: color-mix(in srgb, var(--k-panel) 92%, transparent);
   --dark-field: color-mix(in srgb, var(--k-bg) 86%, black);
   --dark-row: color-mix(in srgb, var(--k-bg) 88%, black);
@@ -38,9 +39,8 @@
   color-scheme: light;
   --dark-field: color-mix(in srgb, var(--k-bg) 90%, white);
   --dark-row: color-mix(in srgb, var(--k-bg) 88%, white);
-  --grid-accent: color-mix(in srgb, var(--k-brand) 8%, transparent);
-  --grid-line: color-mix(in srgb, var(--k-text) 6%, transparent);
-  --aura: color-mix(in srgb, var(--k-active) 10%, transparent);
+  --grid-line: color-mix(in srgb, var(--k-text) 4%, transparent);
+  --aura: color-mix(in srgb, var(--k-active) 8%, transparent);
   --panel-shell: color-mix(in srgb, var(--k-panel) 95%, transparent);
 }
 
@@ -48,7 +48,7 @@
 .flow-rf.react-flow {
   --xy-background-color: var(--dark-field);
   --xy-edge-stroke: var(--line-hot);
-  --xy-edge-stroke-width: 2;
+  --xy-edge-stroke-width: 1;
   --xy-edge-stroke-selected: var(--accent);
   --xy-node-border: 1px solid var(--line);
   --xy-node-border-selected: 1px solid var(--accent);
@@ -71,10 +71,10 @@ body {
   min-width: 320px;
   min-height: 100vh;
   color: var(--text);
+  /* Whisper of grid — subtle dots pattern, not dominant */
   background:
-    linear-gradient(90deg, var(--grid-accent) 1px, transparent 1px) 0 0 / 44px 44px,
-    linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0 / 100% 22px,
-    radial-gradient(circle at 15% 0%, var(--aura), transparent 32rem),
+    linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0 / 100% 36px,
+    radial-gradient(circle at 18% 0%, var(--aura), transparent 36rem),
     var(--bg);
 }
 
@@ -85,11 +85,12 @@ input {
 
 /* ── Shell ──────────────────────────────────────────────────────────────── */
 .shell {
-  width: min(1480px, calc(100vw - 32px));
+  width: min(1480px, calc(100vw - 48px));
   margin: 0 auto;
-  padding: 24px 0 32px;
+  padding: 28px 0 48px;
 }
 
+/* ── Panel borders (calm, consistent) ──────────────────────────────────── */
 .topbar,
 .stage-band,
 .flow-panel,
@@ -100,46 +101,53 @@ input {
 .notice {
   border: 1px solid var(--line);
   background: var(--panel-shell);
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 
-/* ── Topbar ─────────────────────────────────────────────────────────────── */
+/* ── Topbar: one calm row ───────────────────────────────────────────────── */
 .topbar {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(320px, 560px) auto;
-  gap: 16px;
-  align-items: end;
-  padding: 16px;
-  border-left: 6px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 20px;
+  border-left: none;
+}
+
+.topbar-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .topbar-actions {
-  grid-column: 2 / 4;
-  display: grid;
-  grid-template-columns: minmax(320px, 560px) auto;
-  gap: 16px;
-  align-items: end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .topbar-status-row {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
 }
 
 /* ── Theme toggle ───────────────────────────────────────────────────────── */
 .theme-toggle {
-  min-height: 32px;
-  min-width: 32px;
+  min-height: 34px;
+  min-width: 34px;
   padding: 0 8px;
   color: var(--muted);
   font-size: 1rem;
-  font-weight: 900;
-  background: var(--dark-row);
+  background: transparent;
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   cursor: pointer;
   line-height: 1;
+  transition: border-color 0.15s, color 0.15s;
 }
 
 .theme-toggle:hover,
@@ -151,13 +159,32 @@ input {
 /* ── Typography ─────────────────────────────────────────────────────────── */
 .eyebrow,
 .section-label,
+.mono-kicker {
+  margin: 0;
+  color: var(--dim);
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Override kit eyebrow color to dim (not accent) in topbar */
+.topbar .eyebrow {
+  color: var(--dim);
+}
+
+/* Section labels stay accent */
+.section-label {
+  color: var(--accent);
+}
+
+/* Override labels (form) to Hanken style, not mono */
 label {
   margin: 0;
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
 }
 
 h1,
@@ -166,74 +193,218 @@ p {
   margin: 0;
 }
 
+/* Display headings: Fraunces, sentence case */
 h1 {
-  margin-top: 4px;
-  font-size: clamp(1.8rem, 4vw, 3.8rem);
-  line-height: 0.92;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  margin-top: 2px;
+  font-family: var(--k-font-display);
+  font-size: clamp(1.4rem, 2.8vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  text-transform: none;
 }
 
 .topbar h1 {
-  font-size: clamp(1.8rem, 4vw, 3.8rem);
+  font-family: var(--k-font-display);
+  font-size: clamp(1.1rem, 2vw, 1.5rem);
+  font-weight: 600;
+  text-transform: none;
+  line-height: 1.1;
 }
 
 h2 {
-  font-size: 1rem;
+  font-size: var(--k-text-md);
+  font-weight: 600;
   letter-spacing: 0;
+  text-transform: none;
+}
+
+/* section-head h2 with display face */
+.section-head h2 {
+  font-family: var(--k-font-display);
+  font-size: clamp(1rem, 1.6vw, 1.35rem);
+  font-weight: 600;
+  text-transform: none;
+}
+
+/* ── Tenant badge in topbar ─────────────────────────────────────────────── */
+.topbar-tenant-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+/* ── Connection dot ─────────────────────────────────────────────────────── */
+.conn-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+  flex-shrink: 0;
+}
+.conn-dot[data-status="connected"] {
+  background: var(--good);
+}
+.conn-dot[data-status="connecting"] {
+  background: var(--warn);
+}
+.conn-dot[data-status="disconnected"],
+.conn-dot[data-status="error"] {
+  background: var(--bad);
+}
+
+/* ── Connection disclosure / popover ────────────────────────────────────── */
+.connection-disclosure {
+  position: relative;
+}
+
+.connection-disclosure-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.connection-disclosure-trigger:hover {
+  border-color: var(--line-hot);
+  color: var(--text);
+}
+
+.connection-disclosure-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.connection-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 100;
+  min-width: 320px;
+  max-width: 440px;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line-hot);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow), 0 8px 32px -8px rgba(0, 0, 0, 0.5);
+}
+
+.connection-popover-title {
+  margin: 0 0 14px;
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim);
 }
 
 /* ── Hub form ───────────────────────────────────────────────────────────── */
 .hub-form {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 8px;
+  gap: 10px;
 }
 
 .hub-form label {
   grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
 }
 
 .hub-form input {
   width: 100%;
   min-width: 0;
-  height: 38px;
+  height: 36px;
   padding: 0 10px;
   color: var(--text);
   background: var(--dark-field);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   outline: none;
+  font-family: var(--k-font-mono);
+  font-size: 0.8rem;
+  transition: border-color 0.15s;
 }
 
 .hub-form input:focus {
   border-color: var(--accent);
 }
 
-.hub-form button {
-  height: 38px;
-  padding: 0 14px;
+.hub-form--session {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hub-session-tenant {
+  font-family: var(--k-font-mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+  padding: 4px 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* Primary button overrides to match brand */
+.btn-primary,
+.hub-form button[type="submit"],
+.connection-popover .hub-form button[type="submit"] {
+  height: 36px;
+  padding: 0 16px;
   color: var(--k-brand-contrast);
-  font-weight: 900;
-  text-transform: uppercase;
+  font-weight: 600;
+  font-size: 0.82rem;
   background: var(--accent);
   border: 0;
+  border-radius: var(--radius);
   cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-primary:hover,
+.hub-form button[type="submit"]:hover {
+  opacity: 0.88;
 }
 
 /* ── Stage band ─────────────────────────────────────────────────────────── */
 .stage-band {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
-  margin-top: 14px;
-  padding: 18px;
+  gap: 20px;
+  margin-top: 16px;
+  padding: 20px;
 }
 
 .stage-band h2 {
-  margin-top: 8px;
-  font-size: clamp(1.4rem, 3vw, 2.6rem);
-  line-height: 1;
-  text-transform: uppercase;
+  margin-top: 6px;
+  font-family: var(--k-font-display);
+  font-size: clamp(1.2rem, 2.4vw, 2rem);
+  font-weight: 600;
+  line-height: 1.05;
+  text-transform: none;
 }
 
 .stage-metrics {
@@ -242,59 +413,70 @@ h2 {
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .notice {
-  margin-top: 14px;
-  padding: 10px 14px;
+  margin-top: 16px;
+  padding: 12px 16px;
   color: var(--bad);
+  border-radius: var(--radius);
 }
 
-/* ── View tabs ──────────────────────────────────────────────────────────── */
+/* ── View tabs: quiet underline style ──────────────────────────────────── */
 .view-tabs {
-  display: inline-grid;
-  grid-template-columns: repeat(3, minmax(110px, 1fr));
-  gap: 1px;
-  margin-top: 14px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  background: var(--line);
+  display: flex;
+  gap: 0;
+  margin-top: 18px;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
 }
 
 .view-tabs button {
-  min-height: 38px;
-  padding: 0 16px;
+  position: relative;
+  min-height: 40px;
+  padding: 0 20px;
   color: var(--muted);
-  font-weight: 900;
-  text-transform: uppercase;
-  background: var(--dark-row);
+  font-size: var(--k-text-md);
+  font-weight: 500;
+  text-transform: none;
+  background: transparent;
   border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
   cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.view-tabs button:hover {
+  color: var(--text);
 }
 
 .view-tabs button.active {
-  color: var(--k-brand-contrast);
-  background: var(--accent);
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  background: transparent;
 }
 
 /* ── Work grid ──────────────────────────────────────────────────────────── */
 .work-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 14px;
-  margin-top: 14px;
+  gap: 16px;
+  margin-top: 16px;
   align-items: start;
 }
 
 .flow-panel {
   position: relative;
   min-width: 0;
-  padding: 14px;
+  padding: 16px;
 }
 
 .side-stack {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
 }
 
@@ -302,13 +484,13 @@ h2 {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
 }
 
 .timeline-section {
   min-width: 0;
-  padding: 14px;
+  padding: 16px;
 }
 
 /* ── Section utilities ──────────────────────────────────────────────────── */
@@ -322,20 +504,21 @@ h2 {
 }
 
 .section-head h2 {
-  text-transform: uppercase;
+  text-transform: none;
 }
 
 .stack {
   display: grid;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 12px;
 }
 
 .process-block,
 .data-row {
-  padding: 10px;
+  padding: 12px;
   background: var(--dark-row);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 /* Side-panel row buttons that wrap data rows */
@@ -347,6 +530,7 @@ h2 {
   background: transparent;
   border: 0;
   cursor: pointer;
+  border-radius: var(--radius);
 }
 
 .data-row-btn:hover .data-row {
@@ -359,7 +543,7 @@ h2 {
 }
 
 .learning-row {
-  border-left: 4px solid var(--cyan);
+  border-left: 3px solid var(--cyan);
 }
 
 .learning-notes {
@@ -389,8 +573,8 @@ h2 {
 .empty,
 .receipt {
   color: var(--muted);
-  font-size: 0.9rem;
-  line-height: 1.35;
+  font-size: 0.88rem;
+  line-height: 1.4;
 }
 
 .data-row p {
@@ -409,45 +593,91 @@ h2 {
   margin: 12px 0;
   background: var(--line);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .details div {
   min-width: 0;
-  padding: 8px;
+  padding: 10px;
   background: var(--panel-2);
 }
 
 dt {
   color: var(--dim);
+  font-family: var(--k-font-mono);
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 500;
   text-transform: uppercase;
 }
 
 dd {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
+  font-family: var(--k-font-mono);
+  font-size: 0.82rem;
+}
+
+/* ── Designed empty states ──────────────────────────────────────────────── */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 20px 0;
+}
+
+.empty-state-headline {
+  font-family: var(--k-font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.empty-state-body {
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.empty-state-command {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 4px 10px;
+  font-family: var(--k-font-mono);
+  font-size: 0.75rem;
+  color: var(--dim);
+  background: var(--dark-row);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+/* Fallback .empty (from kit) */
+.empty {
+  padding: 20px 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
 }
 
 /* ── Flow Canvas (React Flow) ───────────────────────────────────────────── */
-
-/* Wrapper: gives the canvas a responsive fixed height so it fills panel */
 .flow-canvas-wrap {
   position: relative;
   margin-top: 12px;
   height: var(--flow-canvas-h);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--dark-field);
   overflow: hidden;
 }
 
-/* The ReactFlow root itself fills the wrapper */
 .flow-rf {
   width: 100%;
   height: 100%;
 }
 
-/* Lane header bar that sits at the top of the canvas */
 .flow-lane-headers {
   position: absolute;
   top: 0;
@@ -456,7 +686,6 @@ dd {
   height: 26px;
   z-index: 10;
   pointer-events: none;
-  /* subtle gradient to separate from canvas */
   background: linear-gradient(to bottom, var(--panel) 70%, transparent);
   border-bottom: 1px solid var(--flow-lane-stroke);
 }
@@ -465,8 +694,9 @@ dd {
   position: absolute;
   top: 4px;
   color: var(--dim);
+  font-family: var(--k-font-mono);
   font-size: 10px;
-  font-weight: 900;
+  font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   overflow: hidden;
@@ -478,6 +708,7 @@ dd {
 .flow-controls.react-flow__controls {
   background: var(--panel-2);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 .flow-controls .react-flow__controls-button {
@@ -495,9 +726,9 @@ dd {
 /* MiniMap */
 .flow-minimap.react-flow__minimap {
   border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
-/* Hide minimap and controls on narrow screens */
 @media (max-width: 720px) {
   .flow-minimap {
     display: none;
@@ -513,7 +744,8 @@ dd {
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-left: 5px solid var(--dim);
+  border-left: 3px solid var(--dim);
+  border-radius: var(--radius);
   transition: opacity 0.15s, box-shadow 0.15s;
   cursor: pointer;
 }
@@ -539,38 +771,22 @@ dd {
   opacity: 1;
 }
 
-.flow-node-stage {
-  border-left-color: var(--accent);
-}
-
+.flow-node-stage { border-left-color: var(--accent); }
 .flow-node-process,
-.flow-node-step {
-  border-left-color: var(--cyan);
-}
-
-.flow-node-gate {
-  border-left-color: var(--warn);
-}
-
-.flow-node-claim {
-  border-left-color: var(--good);
-}
-
-.flow-node-action {
-  border-left-color: var(--muted);
-}
-
-.flow-node-timeline {
-  border-left-color: var(--bad);
-}
+.flow-node-step { border-left-color: var(--cyan); }
+.flow-node-gate { border-left-color: var(--warn); }
+.flow-node-claim { border-left-color: var(--good); }
+.flow-node-action { border-left-color: var(--muted); }
+.flow-node-timeline { border-left-color: var(--bad); }
 
 .flow-node-top {
   display: flex;
   justify-content: space-between;
   gap: 8px;
   color: var(--dim);
+  font-family: var(--k-font-mono);
   font-size: 0.62rem;
-  font-weight: 900;
+  font-weight: 500;
   text-transform: uppercase;
 }
 
@@ -587,18 +803,19 @@ dd {
   margin-top: 7px;
   overflow: hidden;
   color: var(--text);
-  font-size: 0.9rem;
-  line-height: 1.1;
+  font-size: 0.88rem;
+  font-weight: 500;
+  line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .flow-node p {
   display: -webkit-box;
-  margin-top: 6px;
+  margin-top: 5px;
   overflow: hidden;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   line-height: 1.2;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -630,8 +847,7 @@ dd {
 
 /* ── Flow animations ────────────────────────────────────────────────────── */
 @keyframes flow-node-pulse {
-  0%,
-  100% {
+  0%, 100% {
     box-shadow: inset 0 0 0 1px var(--active-glow-soft), 0 0 0 0 var(--active-glow-pulse);
   }
   50% {
@@ -675,7 +891,7 @@ dd {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
-  padding: 12px 14px 10px;
+  padding: 14px 16px 12px;
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
@@ -684,10 +900,11 @@ dd {
 }
 
 .node-detail-header h2 {
-  margin-top: 4px;
+  margin-top: 2px;
   font-size: 0.95rem;
-  text-transform: uppercase;
-  line-height: 1.2;
+  font-weight: 600;
+  text-transform: none;
+  line-height: 1.25;
   overflow-wrap: anywhere;
 }
 
@@ -699,6 +916,7 @@ dd {
   color: var(--muted);
   background: transparent;
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   cursor: pointer;
 }
 
@@ -709,7 +927,7 @@ dd {
 
 .node-detail-body {
   flex: 1;
-  padding: 12px 14px;
+  padding: 14px 16px;
   overflow-y: auto;
 }
 
@@ -732,10 +950,12 @@ dd {
   margin: 0 0 12px;
   background: var(--line);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .node-detail-fields div {
-  padding: 7px 9px;
+  padding: 8px 10px;
   background: var(--panel-2);
 }
 
@@ -759,9 +979,10 @@ dd {
 }
 
 .node-detail-raw summary {
-  color: var(--accent);
-  font-size: 0.72rem;
-  font-weight: 900;
+  color: var(--dim);
+  font-family: var(--k-font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
   text-transform: uppercase;
   cursor: pointer;
   margin-bottom: 6px;
@@ -770,20 +991,22 @@ dd {
 .node-detail-raw pre {
   max-height: 240px;
   margin: 0;
-  padding: 8px;
+  padding: 10px;
   overflow: auto;
   color: var(--muted);
+  font-family: var(--k-font-mono);
   font-size: 0.72rem;
-  line-height: 1.45;
+  line-height: 1.5;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   background: var(--dark-row);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 /* ── Timeline ───────────────────────────────────────────────────────────── */
 .timeline-section {
-  margin-top: 14px;
+  margin-top: 16px;
 }
 
 .timeline {
@@ -795,17 +1018,18 @@ dd {
 .timeline-row {
   min-width: 0;
   max-width: 100%;
-  min-height: 56px;
-  padding: 8px 0;
+  min-height: 54px;
+  padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
 
 .timeline-row time,
 .timeline-row span {
   color: var(--dim);
-  font-size: 0.78rem;
-  font-weight: 900;
-  text-transform: uppercase;
+  font-family: var(--k-font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  text-transform: none;
 }
 
 .timeline-row div {
@@ -813,17 +1037,13 @@ dd {
   min-width: 0;
 }
 
-.empty {
-  padding: 14px 0;
-}
-
 /* ── Telemetry ──────────────────────────────────────────────────────────── */
 .telemetry-section {
   min-width: 0;
   max-width: 100%;
   overflow-x: clip;
-  margin-top: 14px;
-  padding: 14px;
+  margin-top: 16px;
+  padding: 16px;
 }
 
 .telemetry-notice {
@@ -838,6 +1058,8 @@ dd {
   margin-top: 14px;
   background: var(--line);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .telemetry-metrics div {
@@ -847,14 +1069,15 @@ dd {
 }
 
 .telemetry-metrics dd {
-  font-size: 1.6rem;
-  font-weight: 900;
+  font-family: var(--k-font-mono);
+  font-size: 1.5rem;
+  font-weight: 500;
 }
 
 .telemetry-query-controls {
   display: grid;
   grid-template-columns: minmax(280px, 1.1fr) minmax(360px, 1.4fr) minmax(260px, 1fr);
-  gap: 10px;
+  gap: 12px;
   margin-top: 14px;
   align-items: end;
 }
@@ -873,6 +1096,7 @@ dd {
 .telemetry-page-actions {
   overflow: hidden;
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--line);
 }
 
@@ -898,6 +1122,7 @@ dd {
   color: var(--text);
   background: var(--dark-field);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   outline: none;
 }
 
@@ -935,6 +1160,7 @@ dd {
   color: var(--text);
   background: var(--dark-field);
   border: 1px solid var(--line);
+  border-radius: var(--radius) 0 0 var(--radius);
 }
 
 .telemetry-preset-list {
@@ -952,9 +1178,10 @@ dd {
 
 .telemetry-drilldown {
   justify-content: space-between;
-  padding: 8px 10px;
+  padding: 10px 12px;
   background: var(--dark-row);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 .telemetry-drilldown div {
@@ -965,8 +1192,9 @@ dd {
 
 .telemetry-drilldown span {
   color: var(--dim);
+  font-family: var(--k-font-mono);
   font-size: 0.68rem;
-  font-weight: 900;
+  font-weight: 500;
   text-transform: uppercase;
 }
 
@@ -987,16 +1215,18 @@ dd {
   padding: 0 10px;
   color: var(--muted);
   font-size: 0.78rem;
-  font-weight: 900;
-  text-transform: uppercase;
+  font-weight: 500;
   background: var(--dark-row);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
 }
 
 .segmented-control button {
   flex: 1 1 72px;
   border: 0;
+  border-radius: 0;
 }
 
 .segmented-control button.active,
@@ -1031,23 +1261,25 @@ dd {
   margin: 8px 0 0;
   background: var(--line);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .telemetry-flow-details div {
   min-width: 0;
-  padding: 6px;
+  padding: 8px;
   background: var(--panel-2);
 }
 
 .telemetry-page-actions {
   width: fit-content;
-  margin: 10px 0;
+  margin: 12px 0;
 }
 
 .telemetry-page-actions button:disabled {
   color: var(--dim);
   cursor: not-allowed;
-  opacity: 0.58;
+  opacity: 0.5;
 }
 
 .telemetry-filter-bar {
@@ -1056,15 +1288,16 @@ dd {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 12px;
-  min-height: 46px;
+  min-height: 48px;
   margin-top: 14px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   background: var(--panel-2);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 .telemetry-filter-bar strong {
-  font-size: 1rem;
+  font-size: 0.95rem;
 }
 
 .telemetry-filter-bar span {
@@ -1095,14 +1328,16 @@ dd {
   color: var(--text);
   font: inherit;
   font-size: 0.76rem;
-  font-weight: 900;
+  font-weight: 500;
   text-align: left;
   overflow-wrap: anywhere;
   white-space: normal;
   word-break: break-word;
   background: var(--dark-row);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
   cursor: pointer;
+  transition: border-color 0.12s;
 }
 
 .telemetry-filter-actions button:hover,
@@ -1114,8 +1349,8 @@ dd {
 .telemetry-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 14px;
+  gap: 16px;
+  margin-top: 16px;
 }
 
 .telemetry-panel {
@@ -1123,18 +1358,21 @@ dd {
   max-width: 100%;
   overflow-x: clip;
   min-height: 242px;
-  padding: 12px;
+  padding: 14px;
   box-shadow: none;
+  border-radius: var(--radius);
 }
 
 .telemetry-panel h2 {
-  margin-top: 5px;
-  text-transform: uppercase;
+  margin-top: 4px;
+  font-size: var(--k-text-md);
+  font-weight: 600;
+  text-transform: none;
 }
 
 .telemetry-source .row-title span {
   color: var(--accent);
-  font-weight: 900;
+  font-weight: 600;
 }
 
 .dimension-stack {
@@ -1152,7 +1390,8 @@ dd {
 
 .dimension-row strong {
   font-size: 0.82rem;
-  text-transform: uppercase;
+  font-weight: 600;
+  text-transform: none;
 }
 
 .dimension-row span {
@@ -1161,7 +1400,7 @@ dd {
   gap: 6px;
   color: var(--muted);
   font-size: 0.85rem;
-  line-height: 1.35;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
@@ -1173,9 +1412,10 @@ dd {
 
 .telemetry-details summary {
   width: fit-content;
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 900;
+  color: var(--dim);
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  font-weight: 500;
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -1187,6 +1427,8 @@ dd {
   margin: 8px 0 0;
   background: var(--line);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .telemetry-details dl div {
@@ -1203,12 +1445,14 @@ dd {
   padding: 10px;
   overflow: auto;
   color: var(--muted);
+  font-family: var(--k-font-mono);
   font-size: 0.76rem;
-  line-height: 1.45;
+  line-height: 1.5;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   background: var(--dark-row);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 .bar-list {
@@ -1263,13 +1507,15 @@ dd {
 .bar-row strong {
   flex: 0 0 auto;
   color: var(--text);
-  font-size: 0.85rem;
+  font-family: var(--k-font-mono);
+  font-size: 0.82rem;
 }
 
 .bar-row i {
   display: block;
-  block-size: 8px;
+  block-size: 6px;
   background: var(--accent);
+  border-radius: 2px;
 }
 
 .telemetry-recent {
@@ -1280,10 +1526,11 @@ dd {
   display: grid;
   gap: 8px;
   margin-top: 14px;
-  padding: 10px;
+  padding: 12px;
   color: var(--warn);
   background: var(--dark-row);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
 }
 
 /* ── Environment section ─────────────────────────────────────────────────── */
@@ -1291,8 +1538,8 @@ dd {
   min-width: 0;
   max-width: 100%;
   overflow-x: clip;
-  margin-top: 14px;
-  padding: 14px;
+  margin-top: 16px;
+  padding: 16px;
 }
 
 .env-health-band {
@@ -1302,11 +1549,13 @@ dd {
   margin-top: 14px;
   background: var(--line);
   border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .env-health-group {
   min-width: 0;
-  padding: 12px;
+  padding: 14px;
   background: var(--panel-2);
 }
 
@@ -1323,8 +1572,8 @@ dd {
 .env-main-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-top: 14px;
+  gap: 16px;
+  margin-top: 16px;
   align-items: start;
 }
 
@@ -1342,7 +1591,7 @@ dd {
   min-width: 4px;
   block-size: var(--bar-h, 2%);
   background: var(--accent);
-  opacity: 0.7;
+  opacity: 0.65;
   border-radius: 2px 2px 0 0;
   transition: opacity 0.15s;
 }
@@ -1369,8 +1618,8 @@ dd {
 .env-workloads-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-top: 14px;
+  gap: 16px;
+  margin-top: 16px;
   align-items: start;
 }
 
@@ -1400,6 +1649,7 @@ dd {
   flex-shrink: 0;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  font-family: var(--k-font-mono);
 }
 
 .env-workload-bar-track {
@@ -1412,8 +1662,46 @@ dd {
 .env-workload-bar-fill {
   height: 100%;
   background: var(--accent);
-  opacity: 0.6;
+  opacity: 0.55;
   border-radius: 2px;
+}
+
+/* ── Kit component overrides ─────────────────────────────────────────────── */
+
+/* Panel heading: remove uppercase from kit */
+.panel-head h2 {
+  text-transform: none;
+  font-weight: 600;
+}
+
+/* Panel radius */
+.panel {
+  border-radius: var(--radius);
+}
+
+/* Status badge: mono font, smaller */
+.status {
+  font-family: var(--k-font-mono);
+  font-size: 0.68rem;
+  border-radius: var(--radius);
+}
+
+/* Topbar kit overrides */
+.topbar h1 {
+  text-transform: none;
+  font-family: var(--k-font-display);
+}
+
+/* Badge kit override */
+.badge {
+  border-radius: var(--radius);
+}
+
+/* Button kit override */
+.btn {
+  border-radius: var(--radius);
+  text-transform: none;
+  font-weight: 500;
 }
 
 /* ── Responsive ─────────────────────────────────────────────────────────── */
@@ -1435,9 +1723,8 @@ dd {
     grid-template-columns: 1fr;
   }
 
-  .topbar-actions {
-    grid-column: auto;
-    grid-template-columns: minmax(0, 1fr) auto;
+  .topbar {
+    flex-wrap: wrap;
   }
 
   .status {
@@ -1458,7 +1745,7 @@ dd {
 @media (max-width: 720px) {
   .shell {
     width: min(100vw - 20px, 680px);
-    padding-top: 10px;
+    padding-top: 12px;
   }
 
   .topbar,
@@ -1467,7 +1754,6 @@ dd {
   .side-stack,
   .bottom-grid,
   .hub-form,
-  .topbar-actions,
   .stage-metrics,
   .telemetry-query-controls,
   .telemetry-grid,
@@ -1479,10 +1765,6 @@ dd {
     grid-template-columns: 1fr;
   }
 
-  .hub-form label {
-    grid-column: auto;
-  }
-
   .hub-form button,
   .telemetry-custom-range button,
   .telemetry-search button,
@@ -1490,7 +1772,6 @@ dd {
     width: 100%;
   }
 
-  /* On mobile, canvas uses touch pan/zoom and is slightly shorter */
   :root {
     --flow-canvas-h: clamp(280px, 44vh, 420px);
   }
@@ -1504,5 +1785,11 @@ dd {
     height: 60%;
     border-left: none;
     border-top: 2px solid var(--accent);
+  }
+
+  .connection-popover {
+    right: auto;
+    left: 0;
+    min-width: min(320px, calc(100vw - 32px));
   }
 }
