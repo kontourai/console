@@ -1,2 +1,2 @@
-export { Badge } from "@kontourai/console-kit/react";
-export type { BadgeProps } from "@kontourai/console-kit/react";
+export { Badge } from "@kontourai/ui/react";
+export type { BadgeProps } from "@kontourai/ui/react";

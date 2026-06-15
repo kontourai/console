@@ -1,4 +1,4 @@
-import { Empty } from "@kontourai/console-kit/react";
+import { Empty } from "@kontourai/ui/react";
 import type { ConsoleTelemetryResponse } from "../../serverApiTypes";
 import { formatTime } from "../../utils/format";
 import { isSensitiveTelemetryKey, redactTelemetryValue } from "./redaction";

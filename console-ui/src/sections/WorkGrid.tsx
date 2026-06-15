@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Panel } from "@kontourai/console-kit/react";
+import { Panel } from "@kontourai/ui/react";
 import { PipelineStepper } from "../components/PipelineStepper";
 import { ProcessView } from "../components/ProcessView";
 import { ActionRow, ClaimRow, GateRow, LearningRow } from "../components/Rows";

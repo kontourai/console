@@ -1,9 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
-import "@kontourai/console-kit/tokens.css";
-import "@kontourai/console-kit/themes.css";
-import "@kontourai/console-kit/react/styles.css";
+import "@kontourai/ui/tokens.css";
+import "@kontourai/ui/themes.css";
+import "@kontourai/ui/react/styles.css";
 import "@xyflow/react/dist/base.css";
 import "./styles.css";
 

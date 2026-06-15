@@ -1,5 +1,5 @@
 import type { OperatingState } from "@kontourai/console-core";
-import { Metric } from "@kontourai/console-kit/react";
+import { Metric } from "@kontourai/ui/react";
 import { formatTime } from "../utils/format";
 
 export function StageBand({ state }: { state: OperatingState }) {
