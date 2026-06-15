@@ -856,21 +856,39 @@ dd {
 }
 
 /* ── Node detail drawer ─────────────────────────────────────────────────── */
+/* Backdrop scrim — dims the operate view, click to dismiss the detail drawer. */
+.node-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 39;
+  background: color-mix(in srgb, var(--k-bg) 55%, transparent);
+  backdrop-filter: blur(1px);
+}
+
+/* Stage detail: a full-height slide-over anchored to the viewport, NOT bounded
+   by the (short) pipeline card. Gives gates/claims room to breathe. */
 .node-detail-drawer {
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 280px;
-  max-width: 90%;
+  width: 420px;
+  max-width: 94vw;
   overflow-y: auto;
-  z-index: 20;
+  z-index: 40;
   background: var(--panel);
-  border-left: 1px solid var(--line);
-  border-left-color: var(--accent);
-  box-shadow: -4px 0 24px -8px color-mix(in srgb, var(--k-bg) 60%, transparent);
+  border-left: 1px solid var(--accent);
+  box-shadow: -12px 0 48px -16px color-mix(in srgb, var(--k-bg) 85%, transparent);
   display: flex;
   flex-direction: column;
+}
+
+.node-detail-body {
+  padding: 16px 18px 28px;
+}
+
+.node-detail-drawer .pipeline-gate-detail {
+  margin-top: 14px;
 }
 
 .node-detail-header {
