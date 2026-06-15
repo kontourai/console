@@ -2,8 +2,10 @@
 // Renders spec.steps in order with per-stage status, gate chips, route-back
 // arcs, and drill-in via PipelineStageDrawer.
 // When pipeline.isDag is true, renders a layered DAG with fan-in connectors.
-import { useState, useCallback, useMemo } from "react";
-import type { Pipeline, PipelineStage, PipelineGate } from "@kontourai/console-core";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import type { Pipeline, PipelineStage, PipelineGate, PipelineGateExpect } from "@kontourai/console-core";
+import { ensureSurfaceTrustPanel } from "../surface-trust-panel-loader";
+
 
 // ── Status icon helpers ──────────────────────────────────────────────────────
 
@@ -97,6 +99,60 @@ function RouteBackArc({ from, to }: { from: string; to: string }) {
     <span className="pipeline-route-back" title={`Route-back: ${from} → ${to}`}>
       <span className="pipeline-route-back-label">↺ {from} → {to}</span>
     </span>
+  );
+}
+
+
+// ── Surface trust panel row ───────────────────────────────────────────────────
+
+interface TrustPanelRowProps {
+  expect: PipelineGateExpect;
+}
+
+function TrustPanelRow({ expect }: TrustPanelRowProps) {
+  const [expanded, setExpanded] = useState(false);
+  const panelRef = useRef<HTMLElement & { report?: unknown }>(null);
+
+  // Ensure the <surface-trust-panel> custom element is defined when this row mounts.
+  useEffect(() => {
+    ensureSurfaceTrustPanel();
+  }, []);
+
+  // Set .report property imperatively when the element mounts or report changes
+  useEffect(() => {
+    if (expanded && panelRef.current && expect.trustReport !== undefined) {
+      panelRef.current.report = expect.trustReport;
+    }
+  }, [expanded, expect.trustReport]);
+
+  const hasTrustData = expect.trustReport !== undefined || expect.verifyUrl !== undefined;
+  if (!hasTrustData) {
+    return (
+      <p className="trust-panel-no-data">No trust data yet for this claim.</p>
+    );
+  }
+
+  return (
+    <div className="trust-panel-row">
+      <button
+        type="button"
+        className={`trust-panel-toggle ${expanded ? "trust-panel-toggle--open" : ""}`}
+        aria-expanded={expanded}
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span className="trust-panel-toggle-icon" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+        <span className="trust-panel-toggle-label">View trust panel</span>
+      </button>
+      {expanded && (
+        <div className="trust-panel-embed">
+          {expect.verifyUrl && !expect.trustReport ? (
+            <surface-trust-panel src={expect.verifyUrl} />
+          ) : (
+            <surface-trust-panel ref={panelRef} />
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -198,6 +254,7 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
                         <span className={`pipeline-expect-required ${expect.required ? "pipeline-expect-required--yes" : ""}`}>
                           {expect.required ? "required" : "optional"}
                         </span>
+                        {expect.kind === "surface.claim" && <TrustPanelRow expect={expect} />}
                       </li>
                     ))}
                   </ul>
@@ -242,6 +299,7 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
                     <span className={`pipeline-expect-required ${expect.required ? "pipeline-expect-required--yes" : ""}`}>
                       {expect.required ? "required" : "optional"}
                     </span>
+                    {expect.kind === "surface.claim" && <TrustPanelRow expect={expect} />}
                   </li>
                 ))}
               </ul>

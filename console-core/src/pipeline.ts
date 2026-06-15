@@ -9,6 +9,10 @@ export interface PipelineGateExpect {
   label: string;
   required: boolean;
   kind: string;
+  /** Derived Surface TrustReport for this claim (attached by the flow-bridge when evidence bundles are present). */
+  trustReport?: unknown;
+  /** Surface verification endpoint URL for live-fetch of the trust report. */
+  verifyUrl?: string;
 }
 
 export interface PipelineGate {
