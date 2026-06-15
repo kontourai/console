@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { FormEvent } from "react";
-import { StatusBadge, Topbar } from "@kontourai/console-kit/react";
+import { ConsoleIcon, StatusBadge, Topbar } from "@kontourai/ui/react";
 import type { ConnectionStatus } from "../types";
 
 interface ConnectionBarProps {
@@ -72,6 +72,9 @@ export function ConnectionBar({
       ariaLabel="Hub connection"
       actions={
         <div className="topbar-actions">
+          {/* Console product mark — sits at the leading edge beside the title */}
+          <ConsoleIcon size={24} title="Kontour Console" className="topbar-brand-mark" />
+
           {/* Tenant badge when cookie auth */}
           {cookieAuth && sessionTenantId ? (
             <span className="topbar-tenant-badge" aria-label="Signed-in tenant">

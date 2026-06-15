@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { OperatingState } from "@kontourai/console-core";
-import { Badge, Empty, Metric, Panel } from "@kontourai/console-kit/react";
+import { Badge, Empty, Metric, Panel } from "@kontourai/ui/react";
 import type { ConsoleTelemetryResponse } from "../serverApiTypes";
 import { formatTime } from "../utils/format";
 import {

@@ -135,6 +135,17 @@ input {
   gap: 8px;
 }
 
+/* ── Console product mark ───────────────────────────────────────────────── */
+/* Anchor the Console mark at the leading edge of the topbar, beside the
+   "KONTOUR CONSOLE / Operating plane" product copy. `order` + auto margin
+   pull it ahead of the action controls within the actions cluster. */
+.topbar-brand-mark {
+  order: -1;
+  margin-right: auto;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
 /* ── Theme toggle ───────────────────────────────────────────────────────── */
 .theme-toggle {
   min-height: 34px;

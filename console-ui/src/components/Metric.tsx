@@ -1,2 +1,2 @@
-export { Metric } from "@kontourai/console-kit/react";
-export type { MetricProps } from "@kontourai/console-kit/react";
+export { Metric } from "@kontourai/ui/react";
+export type { MetricProps } from "@kontourai/ui/react";

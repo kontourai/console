@@ -1,4 +1,4 @@
-import { Empty } from "@kontourai/console-kit/react";
+import { Empty } from "@kontourai/ui/react";
 import type { ConsoleTelemetryResponse, TelemetryQueryInput } from "../../serverApiTypes";
 import { drilldownDimension, isFilterActive, openDrilldown } from "./queryModel";
 import { TelemetryPanel } from "./Panel";

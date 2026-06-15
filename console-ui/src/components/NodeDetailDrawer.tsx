@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { FlowNode } from "@kontourai/console-core";
 import type { OperatingState } from "@kontourai/console-core";
-import { Badge } from "@kontourai/console-kit/react";
+import { Badge } from "@kontourai/ui/react";
 import { formatTime } from "../utils/format";
 
 interface NodeDetailDrawerProps {

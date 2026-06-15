@@ -1,2 +1,2 @@
-export { StatusBadge } from "@kontourai/console-kit/react";
-export type { StatusBadgeProps } from "@kontourai/console-kit/react";
+export { StatusBadge } from "@kontourai/ui/react";
+export type { StatusBadgeProps } from "@kontourai/ui/react";
