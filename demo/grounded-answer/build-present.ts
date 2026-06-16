@@ -29,7 +29,7 @@ import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAll } from "./harness.js";
-import { SCENARIOS, WIN_SCENARIOS, TRAP_SCENARIOS } from "./scenarios.js";
+import { SCENARIOS, WIN_SCENARIOS, TRAP_SCENARIOS, OKF_WIN, OKF_TRAP } from "./scenarios.js";
 import type { LaneResults } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -356,6 +356,71 @@ remainingTraps.forEach((r, i) => {
       ${kontourLane(r)}
     </div>`);
 });
+
+// 6 — OKF INTEROP: "and it's not just our data." Ground against a REAL Google OKF bundle.
+//     Win (grounded against the real public source, provenance visible) + the freshness trap.
+const okfWin = byId(OKF_WIN.id);
+const okfTrap = byId(OKF_TRAP.id);
+const okfMeta = OKF_WIN.okf!;
+const shortHash = (h: string) => `${h.slice(0, 12)}…${h.slice(-8)}`;
+
+// (6a) OKF framing + the win — grounded against Google's real public OKF file
+{
+  const k = okfWin.kontour;
+  const value = k.outcome === "pass" ? k.value : 0;
+  addStep("okf-win", "step-center", `
+    <div class="okf-wrap">
+      <div class="kicker mint">Not just our data &middot; real Google source</div>
+      <h2 class="okf-h">&ldquo;You wrote the data.&rdquo; So here&rsquo;s <em>Google&rsquo;s.</em></h2>
+      <p class="okf-lead">This is a real <strong>Open Knowledge Format</strong> concept file &mdash;
+        Google Cloud&rsquo;s vendor-neutral spec &mdash; vendored <strong>byte-for-byte</strong> from
+        their public repo. Kontour grounds an answer against it, and adds the
+        <strong>content-hash + freshness</strong> OKF deliberately has no field for.</p>
+      <div class="okf-card">
+        <div class="okf-q">${esc(okfWin.scenario.query)}</div>
+        <div class="okf-answer">
+          <div class="okf-amount">${value}</div>
+          <div class="okf-amount-unit">schema fields</div>
+          <div class="okf-verified">&#10003; Grounded against the real OKF source</div>
+        </div>
+        <div class="okf-prov">
+          <div class="okf-prov-row"><span class="okf-prov-k">OKF resource &rarr; sourceLocator</span>
+            <span class="okf-prov-v">${esc(okfMeta.resourceUri)}</span></div>
+          <div class="okf-prov-row"><span class="okf-prov-k">OKF timestamp &rarr; freshness anchor</span>
+            <span class="okf-prov-v">${esc(okfMeta.okfTimestamp)}</span></div>
+          <div class="okf-prov-row added"><span class="okf-prov-k">+ Hachure integrity-ref (sha256)</span>
+            <span class="okf-prov-v mono">${esc(shortHash(okfMeta.integrityRef))}</span></div>
+          <div class="okf-prov-row src"><span class="okf-prov-k">Provenance &mdash; diff it yourself</span>
+            <span class="okf-prov-v small">github.com/GoogleCloudPlatform/knowledge-catalog @
+              <code>${esc(okfMeta.repoCommitSha.slice(0, 10))}</code></span></div>
+        </div>
+        <div class="okf-panel">
+          <div class="panel-label">Real Surface trust panel &mdash; grounded at the OKF resource</div>
+          <surface-trust-panel id="panel-${okfWin.scenario.id}"></surface-trust-panel>
+        </div>
+      </div>
+      <p class="okf-foot">OKF tells the agent <em>what it knows</em>;
+        Hachure proves <strong>what the answer stood on</strong> &mdash; recomputable against Google&rsquo;s
+        own bytes by a skeptic who doesn&rsquo;t trust us.</p>
+    </div>`);
+}
+
+// (6b) OKF freshness trap — the gap OKF itself cannot cover
+addStep("okf-trap-reveal", "step-reveal", `
+  <div class="reveal-head">
+    <div class="kicker cobalt">${okfTrap.scenario.id.toUpperCase()} &middot; ${esc(okfTrap.scenario.title)}</div>
+    <p class="reveal-query">${esc(okfTrap.scenario.query)}</p>
+    <p class="reveal-truth"><strong>Truth:</strong> ${esc(okfTrap.scenario.correctAnswer)}</p>
+  </div>
+  <div class="lanes">
+    ${rawLane(okfTrap)}
+    ${ragLane(okfTrap)}
+    ${kontourLane(okfTrap)}
+  </div>
+  <p class="pair-bridge accent">OKF&rsquo;s only temporal field is <code>timestamp</code> &mdash; last
+    <em>changed</em>, not a content hash. When the source drifts past the grounding snapshot, an
+    OKF-trusting consumer can&rsquo;t notice and ships the stale fact. <strong>Hachure&rsquo;s
+    integrity-ref does notice &mdash; and refuses.</strong></p>`);
 
 // Insight
 addStep("insight", "step-dark step-center", `
@@ -736,6 +801,50 @@ const html = `<!DOCTYPE html>
     .winopen-foot { font-size: clamp(15px, 1.8vw, 19px); color: var(--muted); max-width: 64ch;
       margin: 26px auto 0; line-height: 1.5; }
     .winopen-foot strong { color: var(--ink); } .winopen-foot em { color: var(--cobalt); font-style: italic; }
+
+    /* ── OKF interop (real Google source) ─────────────────────────── */
+    .okf-wrap { max-width: 940px; margin: 0 auto; }
+    .okf-h { font-family: var(--serif); font-weight: 600; font-size: clamp(30px, 4.2vw, 52px);
+      letter-spacing: -0.015em; line-height: 1.06; }
+    .okf-h em { color: var(--mint); font-style: italic; }
+    .okf-lead { font-size: clamp(16px, 1.9vw, 20px); color: var(--muted); max-width: 62ch;
+      margin: 16px auto 24px; }
+    .okf-lead strong { color: var(--ink); }
+    .okf-card { background: var(--card); border: 1px solid var(--line);
+      border-top: 3px solid var(--mint); border-radius: 12px; padding: 24px 26px; text-align: left;
+      max-width: 800px; margin: 0 auto; }
+    .okf-q { font-family: var(--serif); font-weight: 600; font-size: clamp(18px, 2.1vw, 24px);
+      letter-spacing: -0.01em; line-height: 1.25; }
+    .okf-q::before { content: "\\201C"; } .okf-q::after { content: "\\201D"; }
+    .okf-answer { display: flex; align-items: baseline; gap: 14px; margin: 16px 0 18px;
+      flex-wrap: wrap; }
+    .okf-amount { font-family: var(--serif); font-weight: 700; font-size: clamp(40px, 5vw, 58px);
+      color: var(--mint); letter-spacing: -0.02em; line-height: 1; }
+    .okf-amount-unit { font-family: var(--mono); font-size: 13px; color: var(--faint);
+      align-self: flex-end; }
+    .okf-verified { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--mint);
+      background: rgba(20,163,122,0.10); border: 1px solid rgba(20,163,122,0.4); border-radius: 6px;
+      padding: 7px 11px; margin-left: auto; }
+    .okf-prov { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; margin-bottom: 18px; }
+    .okf-prov-row { display: flex; justify-content: space-between; gap: 16px; padding: 9px 13px;
+      font-size: 12.5px; border-bottom: 1px solid var(--line); }
+    .okf-prov-row:last-child { border-bottom: none; }
+    .okf-prov-row.added { background: rgba(20,163,122,0.07); }
+    .okf-prov-row.src { background: rgba(31,111,136,0.05); }
+    .okf-prov-k { font-family: var(--mono); font-size: 11px; letter-spacing: 0.02em; color: var(--muted);
+      flex-shrink: 0; }
+    .okf-prov-row.added .okf-prov-k { color: var(--mint); font-weight: 600; }
+    .okf-prov-v { text-align: right; word-break: break-all; color: var(--ink); }
+    .okf-prov-v.mono { font-family: var(--mono); color: var(--mint); }
+    .okf-prov-v.small { font-size: 11.5px; color: var(--muted); }
+    .okf-prov-v code { font-family: var(--mono); font-size: 0.9em; background: rgba(31,111,136,0.12);
+      color: var(--cobalt); padding: 1px 4px; border-radius: 3px; }
+    .okf-panel .panel-label { font-size: 10.5px; color: var(--faint); letter-spacing: 0.04em;
+      text-transform: uppercase; font-weight: 600; margin-bottom: 8px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--line); }
+    .okf-foot { font-size: clamp(15px, 1.8vw, 19px); color: var(--muted); max-width: 64ch;
+      margin: 24px auto 0; line-height: 1.5; }
+    .okf-foot strong { color: var(--ink); } .okf-foot em { color: var(--cobalt); font-style: italic; }
 
     /* ── Precision-pair bridge copy (under hero reveals) ───────────── */
     .pair-bridge { font-size: clamp(15px, 1.8vw, 20px); color: var(--muted); text-align: center;

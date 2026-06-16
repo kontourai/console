@@ -255,6 +255,21 @@ export const CHUNKS: Chunk[] = [
       "Q3-2025 forecast: $600,000 USD. Actual recognized revenue is recorded separately.",
   },
 
+  // OKF scenarios — a real Google OKF concept (Bitcoin Blocks table) flattened to a
+  // retrievable chunk. The chunk states the same fact the OKF body states: the schema
+  // defines 12 fields. A naive OKF-trusting / RAG consumer reads this and serves 12 —
+  // it trusts the OKF `timestamp` (last-changed) and has no content-integrity check.
+  {
+    id: "chunk-okf-bitcoin-blocks",
+    docId: "okf-blocks",
+    text:
+      "Bitcoin Blocks BigQuery table (Google Cloud OKF concept). " +
+      "Resource: bigquery-public-data.crypto_bitcoin.blocks. " +
+      "The schema defines 12 fields: hash, size, stripped_size, weight, number, version, " +
+      "merkle_root, timestamp, nonce, bits, coinbase_param, transaction_count. " +
+      "Last meaningful change (OKF timestamp): 2026-05-28.",
+  },
+
   // Scenario 0 — absence. There is NO Vega chunk at all; retrieval finds nothing
   // on-topic, so the fact-checker can only abstain (cannot corroborate).
   {

@@ -15,8 +15,12 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import { runAll, runScenario } from "./harness.js";
-import { SCENARIOS, TRAP_SCENARIOS, WIN_SCENARIOS } from "./scenarios.js";
+import { SCENARIOS, TRAP_SCENARIOS, WIN_SCENARIOS, OKF_WIN, OKF_TRAP } from "./scenarios.js";
 import { factCheck, retrieve } from "./rag-baseline.js";
+import { loadOkfConcept, countSchemaFields, sha256Of } from "./okf.js";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const byId = (id: string) => SCENARIOS.find((s) => s.id === id)!;
 
@@ -94,8 +98,11 @@ describe("precision: the WIN (answerable) scenarios — Kontour CONFIDENTLY answ
         assert.ok(g.bundle.events[0].verifiedAt, "verified event has verifiedAt");
         // The report is the real surface report with one verified claim.
         assert.equal(g.report.summary.byStatus.verified, 1);
-        // The grounded period matches what was asked — that is WHY it passes.
-        assert.equal(g.groundedQualifier, scenario.query.match(/Q\d-\d{4}/)?.[0]);
+        // The grounded qualifier matches what was asked — that is WHY it passes. For the
+        // sales scenarios the qualifier is a quarter in the query; the OKF win's qualifier
+        // is the OKF `timestamp` (not in the query), asserted in its own dedicated tests.
+        const quarter = scenario.query.match(/Q\d-\d{4}/)?.[0];
+        if (quarter) assert.equal(g.groundedQualifier, quarter);
       });
 
       it("the RAG baseline ALSO answers the easy one correctly (both fine on wins)", () => {
@@ -183,6 +190,7 @@ describe("per-scenario gate mechanism is the RIGHT one", () => {
     s3: "join",
     s4: "locator",
     s0: "absent",
+    sokf: "freshness", // OKF stale-snapshot trap blocks via content-change invalidation
   };
   for (const scenario of TRAP_SCENARIOS) {
     it(`${scenario.id} blocks via the ${expected[scenario.id]} mismatch`, () => {
@@ -217,6 +225,105 @@ describe("per-scenario gate mechanism is the RIGHT one", () => {
     if (result.kontour.outcome !== "block") return;
     assert.match(result.kontour.reason, /records\[0\]\.forecast/, "names the cited locator");
     assert.equal(result.kontour.grounded!.groundedLocator, "records[0].forecast");
+  });
+});
+
+describe("OKF interop — grounded against a REAL, public Google OKF concept", () => {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const fixturePath = join(__dirname, "okf-fixture", "blocks.md");
+  const provenancePath = join(__dirname, "okf-fixture", "PROVENANCE.json");
+  const concept = loadOkfConcept();
+
+  it("the vendored fixture's sha256 matches PROVENANCE.json (un-riggable provenance)", () => {
+    const raw = readFileSync(fixturePath, "utf8");
+    const sha = sha256Of(raw);
+    const prov = JSON.parse(readFileSync(provenancePath, "utf8"));
+    assert.equal(sha, prov.sha256, "fixture sha256 must match recorded provenance");
+    assert.equal(
+      sha,
+      "2e110091dd19ae94c2e095e7d6559061e29ef6b094a52d690779873d3b188d77",
+      "the integrityRef is the real sha256 of Google's file"
+    );
+    assert.equal(concept.currentIntegrityRef, sha, "adapter computes the same hash");
+  });
+
+  it("the grounded fact (12 fields) genuinely appears in Google's file", () => {
+    const count = countSchemaFields(concept);
+    assert.equal(count, 12, "the OKF schema table has 12 field rows");
+    assert.equal(OKF_WIN.rawAnswer, count, "the win grounds the counted value, not a literal");
+    // Spot-check that real field names are present in the body (not fabricated).
+    for (const f of ["merkle_root", "transaction_count", "coinbase_param"]) {
+      assert.ok(concept.body.includes(f), `body must contain real field ${f}`);
+    }
+  });
+
+  it("the OKF frontmatter maps resource→locator and timestamp→freshness anchor", () => {
+    assert.match(
+      concept.frontmatter.resource ?? "",
+      /crypto_bitcoin\/tables\/blocks$/,
+      "resource is the BigQuery table URI"
+    );
+    assert.equal(concept.frontmatter.timestamp, "2026-05-28T22:43:59+00:00");
+    assert.equal(concept.frontmatter.type, "BigQuery Table");
+  });
+
+  it("OKF WIN: Kontour grounds the real source — sourceLocator==resource, integrityRef==sha256", () => {
+    const result = runScenario(OKF_WIN);
+    assert.equal(result.kontour.outcome, "pass", "the OKF win must PASS");
+    if (result.kontour.outcome !== "pass") return;
+    const g = result.kontour.grounded;
+    // Real schemaVersion-3 bundle with a verified claim.
+    assert.equal(g.bundle.schemaVersion, 3, "real buildSurveyTrustBundle output");
+    assert.equal(g.bundle.claims[0].status, "verified", "claim is verified");
+    assert.equal(g.report.summary.byStatus.verified, 1);
+    // The evidence sourceLocator == the OKF resource URI.
+    assert.equal(
+      g.groundedLocator,
+      concept.frontmatter.resource,
+      "sourceLocator is the OKF resource URI"
+    );
+    assert.match(g.bundle.evidence[0].sourceLocator ?? "", /crypto_bitcoin\/tables\/blocks$/);
+    // The integrityRef is the real sha256 of the vendored file content.
+    assert.equal(
+      g.groundingHashSnapshot,
+      concept.currentIntegrityRef,
+      "integrityRef == sha256 of the fixture"
+    );
+    // The real bundle surfaces the integrity-ref on the evidence (OKF's missing field).
+    assert.equal(g.bundle.evidence[0].integrityRef, concept.currentIntegrityRef);
+    // The freshness anchor is the OKF timestamp.
+    assert.equal(g.groundedQualifier, concept.frontmatter.timestamp);
+    assert.equal(result.kontour.value, 12, "answers the real field count");
+  });
+
+  it("OKF WIN: a fair RAG baseline ALSO answers the easy one (consistent precision framing)", () => {
+    const result = runScenario(OKF_WIN);
+    assert.equal(result.rag.passed, true, "RAG supports 12 fields from the OKF chunk");
+    assert.equal(result.rag.factCheck.verdict, "supported");
+  });
+
+  it("OKF TRAP: stale integrity-ref no longer matches the file's current content hash → STALE", () => {
+    const result = runScenario(OKF_TRAP);
+    assert.equal(result.kontour.outcome, "block", "the OKF stale trap must BLOCK");
+    if (result.kontour.outcome !== "block") return;
+    assert.equal(result.kontour.mismatch, "freshness", "blocks via freshness invalidation");
+    // The grounding snapshot is the STALE one; the current hash is the real sha256.
+    assert.notEqual(
+      result.kontour.grounded!.groundingHashSnapshot,
+      concept.currentIntegrityRef,
+      "the trap grounds a STALE snapshot, not the current hash"
+    );
+    assert.match(result.kontour.reason, /STALE|stale/);
+    assert.match(result.kontour.reason, /integrity-ref/, "names the integrity-ref boundary");
+    assert.match(result.kontour.reason, /OKF/, "explains OKF's timestamp cannot detect it");
+    // Still a real schemaVersion-3 bundle (the stale grounding is real, just stale).
+    assert.equal(result.kontour.grounded!.bundle.schemaVersion, 3);
+  });
+
+  it("OKF TRAP: a naive OKF-trusting / RAG consumer would serve the stale fact (the gap)", () => {
+    const result = runScenario(OKF_TRAP);
+    assert.equal(result.rag.passed, true, "RAG trusts the cached chunk and ships the stale value");
+    assert.equal(result.rag.factCheck.verdict, "supported");
   });
 });
 

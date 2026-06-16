@@ -31,6 +31,8 @@ const REMAINING_TRAP_ORDER = ["s2", "s4", "s3", "s0"];
 for (const id of REMAINING_TRAP_ORDER) {
   stepNames.push(`${id}-question`, `${id}-reveal`);
 }
+// OKF interop beats (real Google source): the win + the freshness trap.
+stepNames.push("okf-win", "okf-trap-reveal");
 stepNames.push("insight", "kontour-answer", "close");
 
 const distDir = join(__dirname, "dist");

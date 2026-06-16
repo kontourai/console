@@ -118,6 +118,25 @@ function rawColumn(r: LaneResults): string {
     </div>`;
 }
 
+function okfProvenance(r: LaneResults): string {
+  const okf = r.scenario.okf;
+  if (!okf) return "";
+  const short = (h: string) => `${h.slice(0, 12)}…${h.slice(-8)}`;
+  return `
+        <div class="okf-prov">
+          <div class="okf-prov-h">Real Google OKF source &mdash; un-riggable provenance</div>
+          <div class="okf-prov-row"><span class="okf-prov-k">OKF resource &rarr; sourceLocator</span>
+            <span class="okf-prov-v">${esc(okf.resourceUri)}</span></div>
+          <div class="okf-prov-row"><span class="okf-prov-k">OKF timestamp &rarr; freshness anchor</span>
+            <span class="okf-prov-v">${esc(okf.okfTimestamp)}</span></div>
+          <div class="okf-prov-row added"><span class="okf-prov-k">+ Hachure integrity-ref (sha256)</span>
+            <span class="okf-prov-v mono">${esc(short(okf.integrityRef))}</span></div>
+          <div class="okf-prov-row"><span class="okf-prov-k">Vendored from</span>
+            <span class="okf-prov-v small">GoogleCloudPlatform/knowledge-catalog @
+              <code>${esc(okf.repoCommitSha.slice(0, 10))}</code> &mdash; diff &amp; recompute the hash</span></div>
+        </div>`;
+}
+
 function kontourColumn(r: LaneResults): string {
   const k = r.kontour;
   const blocked = k.outcome === "block";
@@ -133,7 +152,7 @@ function kontourColumn(r: LaneResults): string {
     ? `The gate refuses because that binding does not answer the question asked.`
     : `The gate <strong>passes</strong> because that binding matches exactly what was asked.`;
   const panelBlock = grounded
-    ? `
+    ? `${okfProvenance(r)}
         <div class="panel-wrap">
           <div class="panel-label">
             Real Surface Trust Panel &mdash; what the bundle actually proves
@@ -540,6 +559,54 @@ const html = `<!DOCTYPE html>
     }
     surface-trust-panel { display: block; }
 
+    /* ── OKF provenance strip (real Google source) ────────────────── */
+    .okf-prov {
+      border: 1px solid rgba(20,163,122,0.35);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .okf-prov-h {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--mint);
+      background: rgba(20,163,122,0.08);
+      padding: 7px 12px;
+      border-bottom: 1px solid rgba(20,163,122,0.25);
+    }
+    .okf-prov-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 7px 12px;
+      font-size: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .okf-prov-row:last-child { border-bottom: none; }
+    .okf-prov-row.added { background: rgba(20,163,122,0.06); }
+    .okf-prov-k {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.02em;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    .okf-prov-row.added .okf-prov-k { color: var(--mint); font-weight: 600; }
+    .okf-prov-v { text-align: right; word-break: break-all; color: var(--ink); }
+    .okf-prov-v.mono { font-family: var(--mono); color: var(--mint); }
+    .okf-prov-v.small { font-size: 11px; color: var(--muted); }
+    .okf-prov-v code {
+      font-family: var(--mono);
+      font-size: 0.88em;
+      background: rgba(31,111,136,0.12);
+      color: var(--cobalt);
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
     /* ── Colophon ─────────────────────────────────────────────────── */
     .colophon {
       max-width: 1320px;
@@ -579,8 +646,9 @@ const html = `<!DOCTYPE html>
       traps, the RAG lane <strong>honestly passes</strong> a wrong answer the checker endorsed; only
       <strong>Kontour</strong> catches them &mdash; it grounds each claim with the real
       <code>buildSurveyTrustBundle()</code> and gates the value on its
-      <strong>qualifier, freshness, join, and locator</strong>. The first two scenarios below are
-      wins (it answers); the rest are traps (it refuses).
+      <strong>qualifier, freshness, join, and locator</strong>. The set mixes wins (it answers) with
+      traps (it refuses) &mdash; including one pair grounded against a <strong>real, public Google
+      Open Knowledge Format (OKF) bundle</strong>, not our own data.
     </p>
   </header>
 
@@ -617,6 +685,17 @@ const html = `<!DOCTYPE html>
       claim is &ldquo;verified&rdquo; without a review actor + <code>reviewedAt</code> + locator &mdash; and
       <code>buildTrustReport()</code> from <code>@kontourai/surface</code>. The trust panels above are the
       real output of those calls.
+    </p>
+    <p>
+      <strong>OKF interop (real, public source):</strong> the two OKF scenarios are NOT grounded
+      against our data. The grounded source is a byte-for-byte copy of a Google Cloud
+      <strong>Open Knowledge Format</strong> concept file (the Bitcoin Blocks BigQuery table),
+      vendored under <code>okf-fixture/</code> with a <code>PROVENANCE.json</code> recording the
+      upstream URL, repo commit SHA, and sha256. The grounded fact &mdash; the schema defines 12
+      fields &mdash; is counted from the file&rsquo;s own schema table. The adapter maps the OKF
+      <code>resource</code> URI to the evidence sourceLocator, the OKF <code>timestamp</code> to the
+      freshness anchor, and adds the sha256 <strong>integrity-ref OKF has no field for</strong>. A
+      skeptic can diff the fixture against Google&rsquo;s repo and recompute the hash.
     </p>
     <p>
       <strong>Structural gate:</strong> each lane verdict is a discriminated <code>GateOutcome</code>

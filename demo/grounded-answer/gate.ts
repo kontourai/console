@@ -74,9 +74,34 @@ export function gateQualifier(binding: ClaimBinding, grounded: GroundedClaim): G
 
 // ── Scenario 2 / freshness: grounding snapshot no longer matches source ────────
 
-export function gateFreshness(binding: ClaimBinding, grounded: GroundedClaim): GateOutcome {
-  const currentHash = currentContentHash(grounded.docId);
+export function gateFreshness(
+  binding: ClaimBinding,
+  grounded: GroundedClaim,
+  /**
+   * The source's CURRENT content hash, if the caller can supply it directly. The
+   * sales scenarios resolve it from the corpus (default); the OKF scenario supplies
+   * the live sha256 of the vendored fixture so the same freshness check applies to a
+   * real, public source whose integrity-ref OKF itself has no field for.
+   */
+  currentHashOverride?: { current: string; restatedTo?: string; restatedAt?: string }
+): GateOutcome {
+  const currentHash = currentHashOverride?.current ?? currentContentHash(grounded.docId);
   if (currentHash !== undefined && currentHash !== grounded.groundingHashSnapshot) {
+    if (currentHashOverride) {
+      return {
+        outcome: "block",
+        mismatch: "freshness",
+        grounded,
+        reason:
+          `Claim is STALE: the grounding snapshot (integrity-ref ${grounded.groundingHashSnapshot}) ` +
+          `no longer matches the source's current content hash (${currentHash}). ` +
+          `Source ${grounded.docId} changed since grounding` +
+          (currentHashOverride.restatedAt ? ` (${currentHashOverride.restatedAt})` : "") +
+          (currentHashOverride.restatedTo ? `: ${currentHashOverride.restatedTo}` : "") +
+          `. OKF's bare timestamp cannot detect a content change; Hachure's integrity-ref does. ` +
+          `Refusing to serve the cached value as fresh — pending re-grounding.`,
+      };
+    }
     const current = findRecordByDoc(grounded.docId);
     return {
       outcome: "block",

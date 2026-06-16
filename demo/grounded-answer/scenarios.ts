@@ -39,6 +39,13 @@ import {
   gateLocator,
 } from "./gate.js";
 import type { GateOutcome } from "./gate.js";
+import {
+  loadOkfConcept,
+  countSchemaFields,
+  groundOkf,
+  okfDocId,
+  sha256Of,
+} from "./okf.js";
 
 export interface Scenario {
   id: string;
@@ -72,6 +79,22 @@ export interface Scenario {
   correctAnswer: string;
   /** The scenario's distinct structural mechanism. Returns a real GateOutcome. */
   groundAndGate: () => GateOutcome;
+  /**
+   * Optional OKF provenance, surfaced by the deck/gallery for the interop scenarios.
+   * Present only on scenarios grounded against the vendored Google OKF concept file —
+   * lets the UI show that the source is Google's public data (un-riggable) and that
+   * Hachure adds the content-hash integrity-ref OKF has no field for.
+   */
+  okf?: {
+    resourceUri: string;
+    okfTimestamp: string;
+    /** sha256 of the vendored OKF file content (the integrity-ref OKF omits). */
+    integrityRef: string;
+    upstreamUrl: string;
+    repoCommitSha: string;
+    /** What the freshness trap modelled (only on the trap). */
+    staleSnapshot?: string;
+  };
 }
 
 const SUBJECT = "account";
@@ -344,6 +367,131 @@ const winHero: Scenario = {
   },
 };
 
+// ── OKF interop — grounding against a REAL, public Google source ──────────────
+//
+// These two scenarios kill "you wrote the data": the grounded source is a byte-for-byte
+// copy of a Google Cloud Open Knowledge Format (OKF) concept file (the Bitcoin Blocks
+// BigQuery table), vendored under okf-fixture/ with a PROVENANCE.json recording the
+// upstream URL + repo commit SHA + sha256. The fact — "the schema defines 12 fields" —
+// is COUNTED from the file's own schema table, so it genuinely appears in Google's file.
+//
+// One source, three proofs:
+//   (1) it's Google's public data, not ours — un-riggable;
+//   (2) Hachure ↔ OKF interop: OKF resource → sourceLocator, OKF timestamp → freshness;
+//   (3) Hachure adds the content-hash integrity-ref + freshness invalidation OKF omits.
+
+const okfConcept = loadOkfConcept();
+const okfFieldCount = countSchemaFields(okfConcept); // counted from the file (= 12)
+const OKF_RESOURCE = okfConcept.frontmatter.resource ?? "okf://concept";
+const OKF_TIMESTAMP = okfConcept.frontmatter.timestamp ?? "unknown";
+const OKF_INTEGRITY_REF = okfConcept.currentIntegrityRef; // sha256 of the vendored bytes
+const OKF_DOC_ID = okfDocId(okfConcept);
+const OKF_UPSTREAM_URL =
+  "https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/" +
+  "ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/bundles/crypto_bitcoin/tables/blocks.md";
+const OKF_COMMIT_SHA = "ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a";
+
+function okfBinding(requestedQualifier: string): ClaimBinding {
+  return {
+    subjectType: "okf-concept",
+    subjectId: OKF_DOC_ID,
+    requestedQualifier,
+    fieldOrBehavior: "schema_field_count",
+    claimType: "okf.schema",
+  };
+}
+
+// ── OKF Win — grounded against the real Google OKF concept ─────────────────────
+const winOkf: Scenario = {
+  id: "wokf",
+  slug: "wokf-okf-win",
+  title: "Grounded against a real Google OKF bundle",
+  kind: "answerable",
+  query: "How many fields does the Bitcoin Blocks BigQuery table schema define (per the Google OKF bundle)?",
+  rawAnswer: okfFieldCount, // 12
+  ragCandidate: okfFieldCount, // 12
+  subjectTerms: ["Bitcoin", "blocks", "OKF"],
+  shipOnAbstain: false,
+  whyFactCheckPasses:
+    "This is genuinely answerable from a REAL, public source: Google's OKF concept file for the " +
+    "Bitcoin Blocks BigQuery table lists 12 schema fields. The retriever surfaces the on-topic OKF " +
+    "chunk and the fact-checker correctly confirms 12 — a right answer to a right question. On the " +
+    "easy, well-grounded cases a competent RAG+fact-check pipeline is fine. So is Kontour — but " +
+    "Kontour also binds the answer to the OKF `resource` URI and stamps it with the content-hash " +
+    "(sha256) integrity-ref that OKF has no field for.",
+  correctAnswer:
+    `The Bitcoin Blocks schema defines ${okfFieldCount} fields (counted from the OKF file's own ` +
+    `schema table). Kontour grounds it at the OKF resource ${OKF_RESOURCE}, stamps the OKF timestamp ` +
+    `${OKF_TIMESTAMP} as the freshness anchor, and adds the sha256 integrity-ref OKF omits — so the ` +
+    `answer is portable and re-verifiable against Google's public file.`,
+  groundAndGate: () => {
+    const b = okfBinding(OKF_TIMESTAMP);
+    const grounded = groundOkf(b, okfConcept, okfFieldCount);
+    // The grounded qualifier (OKF timestamp) matches the request → gate PASSES, emitting
+    // a verified value bound to the OKF resource with the sha256 integrity-ref.
+    return gateQualifier(b, grounded);
+  },
+  okf: {
+    resourceUri: OKF_RESOURCE,
+    okfTimestamp: OKF_TIMESTAMP,
+    integrityRef: OKF_INTEGRITY_REF,
+    upstreamUrl: OKF_UPSTREAM_URL,
+    repoCommitSha: OKF_COMMIT_SHA,
+  },
+};
+
+// ── OKF Freshness Trap — the gap OKF cannot cover ──────────────────────────────
+//
+// We ground the SAME fact against the SAME real OKF file, but with a STALE integrity-ref
+// snapshot — the hash captured when the concept was first grounded, BEFORE the upstream
+// asset changed. The fixture's CURRENT content hash is the real sha256 of the vendored
+// bytes; the stale snapshot no longer matches it. Kontour's integrity-ref fires and marks
+// the claim STALE. A naive OKF-trusting / RAG consumer trusts the OKF `timestamp`
+// (last-changed) — which has NO content-integrity semantics — and serves the cached fact.
+// This is honest: the source changed and OKF has no mechanism to notice; Hachure does.
+const STALE_OKF_SNAPSHOT = sha256Of("okf-blocks::schema::pre-change-snapshot");
+const okfStaleTrap: Scenario = {
+  id: "sokf",
+  slug: "sokf-okf-stale",
+  title: "OKF freshness gap (source changed, OKF can't notice)",
+  kind: "trap",
+  query: "How many fields does the Bitcoin Blocks schema define (from the cached OKF grounding)?",
+  rawAnswer: okfFieldCount, // 12 — the value the stale snapshot would serve
+  ragCandidate: okfFieldCount,
+  subjectTerms: ["Bitcoin", "blocks", "OKF"],
+  shipOnAbstain: false,
+  whyFactCheckPasses:
+    "The retriever reads the cached OKF chunk, which still states 12 fields, and the fact-checker " +
+    "confirms 12 appears in it — PASS. Both the answer and the evidence agree, because both are read " +
+    "from the cached OKF copy. OKF's only temporal field is `timestamp` (last meaningful change) — it " +
+    "is NOT a content hash, so neither the OKF consumer nor the post-hoc checker can tell the source " +
+    "changed since this grounding was captured. There is no freshness boundary to cross.",
+  correctAnswer:
+    "The grounding snapshot's integrity-ref no longer matches the OKF file's current content hash — " +
+    "the source changed since it was grounded. OKF's bare `timestamp` provides no invalidation; " +
+    "Hachure's content-hash integrity-ref does. The cached value must be re-grounded before serving.",
+  groundAndGate: () => {
+    const b = okfBinding(OKF_TIMESTAMP);
+    // Ground against a STALE integrity-ref snapshot (captured before the source changed).
+    const grounded = groundOkf(b, okfConcept, okfFieldCount, { snapshotHash: STALE_OKF_SNAPSHOT });
+    // The fixture's CURRENT content hash is the real sha256 of the vendored bytes; the
+    // stale snapshot no longer matches it → freshness fires (content-change invalidation).
+    return gateFreshness(b, grounded, {
+      current: OKF_INTEGRITY_REF,
+      restatedTo: "the upstream OKF concept's content hash advanced past the grounding snapshot",
+      restatedAt: "since the cached grounding was captured",
+    });
+  },
+  okf: {
+    resourceUri: OKF_RESOURCE,
+    okfTimestamp: OKF_TIMESTAMP,
+    integrityRef: OKF_INTEGRITY_REF,
+    upstreamUrl: OKF_UPSTREAM_URL,
+    repoCommitSha: OKF_COMMIT_SHA,
+    staleSnapshot: STALE_OKF_SNAPSHOT,
+  },
+};
+
 /**
  * The full scenario set: wins (answerable) interleaved so the wins establish the product
  * before/around the traps. Builders re-order per surface (the present deck leads with a
@@ -357,8 +505,14 @@ export const SCENARIOS: Scenario[] = [
   scenario2,
   scenario3,
   scenario4,
+  winOkf, // OKF win — grounded against Google's real public OKF concept
+  okfStaleTrap, // OKF freshness trap — the gap OKF can't cover
   scenario0, // absence last (the original "refuse-moment")
 ];
+
+/** The OKF interop scenarios (grounded against the vendored Google OKF concept). */
+export const OKF_WIN = winOkf;
+export const OKF_TRAP = okfStaleTrap;
 
 /** Just the answerable wins. */
 export const WIN_SCENARIOS: Scenario[] = SCENARIOS.filter((s) => s.kind === "answerable");
