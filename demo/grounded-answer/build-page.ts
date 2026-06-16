@@ -18,7 +18,7 @@ import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAll } from "./harness.js";
-import { SCENARIOS } from "./scenarios.js";
+import { SCENARIOS, WIN_SCENARIOS, TRAP_SCENARIOS } from "./scenarios.js";
 import type { LaneResults } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -32,6 +32,16 @@ copyFileSync(
 );
 
 const results = runAll(SCENARIOS);
+
+// Precision counts, derived from the harness (NOT hardcoded).
+const wins = runAll(WIN_SCENARIOS);
+const traps = runAll(TRAP_SCENARIOS);
+const nWins = wins.length;
+const nTraps = traps.length;
+const kontourAnsweredWins = wins.filter((r) => r.kontour.outcome === "pass").length;
+const ragAnsweredWins = wins.filter((r) => r.rag.passed).length;
+const kontourRefusedTraps = traps.filter((r) => r.kontour.outcome === "block").length;
+const ragShippedTraps = traps.filter((r) => r.rag.passed).length;
 
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
 function esc(s: string): string {
@@ -51,11 +61,20 @@ for (const r of results) {
 
 function ragColumn(r: LaneResults): string {
   const fc = r.rag.factCheck;
+  const isWin = r.scenario.kind === "answerable";
   const retrieved = fc.retrieved
     .map((x) => `<span class="chip">${esc(x.chunk.id)} <em>${x.score.toFixed(2)}</em></span>`)
     .join("");
   const verdictClass =
     fc.verdict === "supported" ? "ok" : fc.verdict === "abstain" ? "warn" : "bad";
+  const verdictLine = isWin
+    ? `<div class="verdict held">&#10003; passed &mdash; correct answer shipped</div>`
+    : `<div class="verdict ${r.rag.passed ? "shipped" : "held"}">
+          ${r.rag.passed ? "&#10003; PASSED &mdash; bad answer shipped" : "held"}
+        </div>`;
+  const whyLabel = isWin
+    ? "Why RAG also gets the easy one right"
+    : "Why a fair fact-checker passes this";
   return `
     <div class="lane lane-rag">
       <div class="lane-head">
@@ -64,9 +83,7 @@ function ragColumn(r: LaneResults): string {
       </div>
       <div class="lane-body">
         <div class="amount neutral">${money(r.rag.answer)}</div>
-        <div class="verdict ${r.rag.passed ? "shipped" : "held"}">
-          ${r.rag.passed ? "&#10003; PASSED &mdash; bad answer shipped" : "held"}
-        </div>
+        ${verdictLine}
         <div class="kv">
           <div class="kv-label">Retrieved (cosine)</div>
           <div class="chips">${retrieved || "<span class='chip'>(none on-subject)</span>"}</div>
@@ -76,7 +93,7 @@ function ragColumn(r: LaneResults): string {
           <div><span class="pill ${verdictClass}">${fc.verdict}</span></div>
         </div>
         <div class="why">
-          <div class="why-label">Why a fair fact-checker passes this</div>
+          <div class="why-label">${whyLabel}</div>
           <p>${esc(r.scenario.whyFactCheckPasses)}</p>
         </div>
       </div>
@@ -112,6 +129,9 @@ function kontourColumn(r: LaneResults): string {
     locator: "unsupported locator",
     absent: "no source — nothing to ground",
   };
+  const panelFootTail = blocked
+    ? `The gate refuses because that binding does not answer the question asked.`
+    : `The gate <strong>passes</strong> because that binding matches exactly what was asked.`;
   const panelBlock = grounded
     ? `
         <div class="panel-wrap">
@@ -123,8 +143,7 @@ function kontourColumn(r: LaneResults): string {
             The panel above is the REAL output of <code>buildSurveyTrustBundle()</code> +
             <code>buildTrustReport()</code>. It verifies ${money(grounded.value)} bound to
             <code>${esc(grounded.groundedQualifier)}</code> at locator
-            <code>${esc(grounded.groundedLocator)}</code>. The gate refuses because that
-            binding does not answer the question asked.
+            <code>${esc(grounded.groundedLocator)}</code>. ${panelFootTail}
           </div>
         </div>`
     : `<div class="panel-absent">
@@ -159,10 +178,14 @@ function kontourColumn(r: LaneResults): string {
 
 function scenarioBlock(r: LaneResults): string {
   const s = r.scenario;
+  const kindBadge =
+    s.kind === "answerable"
+      ? `<span class="kind-badge win">Answerable &middot; win</span>`
+      : `<span class="kind-badge trap">Trap</span>`;
   return `
   <section class="scenario" id="${s.slug}">
     <div class="scenario-head">
-      <div class="scenario-tag">${s.id.toUpperCase()}</div>
+      <div class="scenario-tag">${s.id.toUpperCase()} ${kindBadge}</div>
       <h2 class="scenario-title">${esc(s.title)}</h2>
       <p class="scenario-query">${esc(s.query)}</p>
       <p class="scenario-truth"><strong>Truth:</strong> ${esc(s.correctAnswer)}</p>
@@ -300,6 +323,20 @@ const html = `<!DOCTYPE html>
       color: var(--cobalt);
       font-weight: 600;
     }
+    .kind-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-left: 8px;
+    }
+    .kind-badge.win { background: rgba(20,163,122,0.14); color: var(--mint);
+      border: 1px solid rgba(20,163,122,0.4); }
+    .kind-badge.trap { background: rgba(201,138,20,0.14); color: var(--amber);
+      border: 1px solid rgba(201,138,20,0.4); }
     .scenario-title {
       font-family: var(--serif);
       font-weight: 600;
@@ -533,31 +570,33 @@ const html = `<!DOCTYPE html>
 <body>
   <header class="masthead">
     <div class="brand">Kontour</div>
-    <h1>Structural grounding beats a <em>good</em> RAG&nbsp;+&nbsp;fact-check pipeline.</h1>
+    <h1>A <em>precise</em> discriminator &mdash; answers when it can, refuses when it can&rsquo;t.</h1>
     <p class="dek">
-      Five questions. Three lanes each. The <strong>RAG&nbsp;+&nbsp;fact-check</strong> lane is a
-      <strong>real, fair baseline</strong> &mdash; a deterministic cosine retriever over a chunk
-      corpus and an entailment-style checker that confirms the answer against retrieved evidence.
-      In every scenario it <strong>honestly passes</strong> the wrong answer. The
-      <strong>Kontour</strong> lane grounds each claim with the real
-      <code>buildSurveyTrustBundle()</code> and refuses through a structural gate that binds the
-      value to its <strong>qualifier, freshness, join, and locator</strong>.
+      ${nWins} answerable questions and ${nTraps} traps. Three lanes each. The
+      <strong>RAG&nbsp;+&nbsp;fact-check</strong> lane is a <strong>real, fair baseline</strong>
+      &mdash; a deterministic cosine retriever over a chunk corpus and an entailment-style checker.
+      On the answerable questions, <strong>both Kontour and RAG answer correctly</strong>. On the
+      traps, the RAG lane <strong>honestly passes</strong> a wrong answer the checker endorsed; only
+      <strong>Kontour</strong> catches them &mdash; it grounds each claim with the real
+      <code>buildSurveyTrustBundle()</code> and gates the value on its
+      <strong>qualifier, freshness, join, and locator</strong>. The first two scenarios below are
+      wins (it answers); the rest are traps (it refuses).
     </p>
   </header>
 
   <div class="thesis">
-    <div class="metric rag">
-      <span class="num">5 / 5</span>
-      <span class="lbl">scenarios where the fair RAG + fact-check lane shipped the wrong answer</span>
-    </div>
     <div class="metric kontour">
-      <span class="num">5 / 5</span>
-      <span class="lbl">scenarios where Kontour structurally refused the wrong answer</span>
+      <span class="num">${kontourAnsweredWins} / ${nWins} &middot; ${kontourRefusedTraps} / ${nTraps}</span>
+      <span class="lbl">Kontour answered every answerable question and refused every trap</span>
+    </div>
+    <div class="metric rag">
+      <span class="num">${ragAnsweredWins} / ${nWins} &middot; ${ragShippedTraps} / ${nTraps}</span>
+      <span class="lbl">RAG answered the wins too &mdash; but shipped a wrong answer on every trap</span>
     </div>
     <div class="note">
-      The point is not that the checker is bad &mdash; it is competent and subject-aware. The point
-      is that a <strong>post-hoc text check cannot see binding</strong>: whether the number answers
-      the exact question asked. Structural grounding can.
+      <strong>Answered exactly when it could. Refused exactly when it couldn&rsquo;t.</strong>
+      RAG + fact-check couldn&rsquo;t tell the two apart: a post-hoc text check confirms a number
+      appears in evidence, not that it answers the exact question asked. Structural grounding can.
     </div>
   </div>
 

@@ -15,13 +15,13 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 import { runAll, runScenario } from "./harness.js";
-import { SCENARIOS } from "./scenarios.js";
+import { SCENARIOS, TRAP_SCENARIOS, WIN_SCENARIOS } from "./scenarios.js";
 import { factCheck, retrieve } from "./rag-baseline.js";
 
 const byId = (id: string) => SCENARIOS.find((s) => s.id === id)!;
 
-describe("three-lane gallery — the central bet", () => {
-  for (const scenario of SCENARIOS) {
+describe("three-lane gallery — the central bet (TRAP scenarios)", () => {
+  for (const scenario of TRAP_SCENARIOS) {
     describe(`${scenario.id} — ${scenario.title}`, () => {
       const result = runScenario(scenario);
 
@@ -55,16 +55,102 @@ describe("three-lane gallery — the central bet", () => {
     });
   }
 
-  it("EVERY scenario: RAG passes AND Kontour blocks (the whole gallery)", () => {
-    for (const r of runAll(SCENARIOS)) {
+  it("EVERY trap: RAG passes AND Kontour blocks (the whole trap gallery)", () => {
+    for (const r of runAll(TRAP_SCENARIOS)) {
       assert.equal(r.rag.passed, true, `${r.scenario.id}: RAG must pass`);
       assert.equal(r.kontour.outcome, "block", `${r.scenario.id}: Kontour must block`);
     }
   });
 });
 
+describe("precision: the WIN (answerable) scenarios — Kontour CONFIDENTLY answers", () => {
+  it("there are answerable wins AND traps (Kontour is a discriminator, not a refuse-box)", () => {
+    assert.ok(WIN_SCENARIOS.length >= 2, "at least 2 win cases prove it answers when it can");
+    assert.ok(TRAP_SCENARIOS.length >= 1, "and traps prove it refuses when it can't");
+  });
+
+  for (const scenario of WIN_SCENARIOS) {
+    describe(`${scenario.id} — ${scenario.title}`, () => {
+      const result = runScenario(scenario);
+
+      it("Kontour gate PASSES with the confident grounded value", () => {
+        assert.equal(
+          result.kontour.outcome,
+          "pass",
+          `win ${scenario.id} must PASS, got ${result.kontour.outcome}`
+        );
+        if (result.kontour.outcome !== "pass") return;
+        assert.equal(result.kontour.value, scenario.rawAnswer, "answers the right number");
+      });
+
+      it("the PASS carries a REAL schemaVersion-3 bundle with a VERIFIED claim", () => {
+        assert.equal(result.kontour.outcome, "pass");
+        if (result.kontour.outcome !== "pass") return;
+        const g = result.kontour.grounded;
+        // schemaVersion 3 only comes from the real buildSurveyTrustBundle output.
+        assert.equal(g.bundle.schemaVersion, 3, "must be the real bundle");
+        assert.equal(g.bundle.claims[0].status, "verified", "claim is verified");
+        assert.ok(g.bundle.events.length > 0, "real bundle has verification events");
+        assert.ok(g.bundle.events[0].verifiedAt, "verified event has verifiedAt");
+        // The report is the real surface report with one verified claim.
+        assert.equal(g.report.summary.byStatus.verified, 1);
+        // The grounded period matches what was asked — that is WHY it passes.
+        assert.equal(g.groundedQualifier, scenario.query.match(/Q\d-\d{4}/)?.[0]);
+      });
+
+      it("the RAG baseline ALSO answers the easy one correctly (both fine on wins)", () => {
+        assert.equal(result.rag.passed, true, "RAG correctly supports the right answer");
+        assert.equal(result.rag.factCheck.verdict, "supported");
+      });
+    });
+  }
+
+  it("HERO PAIRING: w1 (Alpha Q2) ANSWERS $451k while s1 (Alpha Q3) REFUSES — same $451k", () => {
+    const win = runScenario(byId("w1"));
+    const trap = runScenario(byId("s1"));
+    // The win answers, verified, with the real value.
+    assert.equal(win.kontour.outcome, "pass");
+    if (win.kontour.outcome !== "pass") return;
+    assert.equal(win.kontour.value, 451_000, "the win answers the real Q2 figure");
+    assert.equal(win.kontour.grounded.groundedQualifier, "Q2-2025");
+    // The trap refuses — bound to the SAME $451k Q2 figure, asked for Q3.
+    assert.equal(trap.kontour.outcome, "block");
+    if (trap.kontour.outcome !== "block") return;
+    assert.equal(trap.kontour.grounded!.value, 451_000, "same $451k, refused for Q3");
+    assert.equal(trap.kontour.grounded!.groundedQualifier, "Q2-2025");
+    assert.equal(trap.kontour.mismatch, "qualifier");
+  });
+
+  it("precision counts: Kontour answers all wins and refuses all traps; RAG ships every trap", () => {
+    const wins = runAll(WIN_SCENARIOS);
+    const traps = runAll(TRAP_SCENARIOS);
+    // Kontour: answered exactly when it could, refused exactly when it couldn't.
+    assert.equal(
+      wins.filter((r) => r.kontour.outcome === "pass").length,
+      wins.length,
+      "Kontour answers EVERY answerable question"
+    );
+    assert.equal(
+      traps.filter((r) => r.kontour.outcome === "block").length,
+      traps.length,
+      "Kontour refuses EVERY trap"
+    );
+    // RAG: fine on the wins, wrong on every trap.
+    assert.equal(
+      wins.filter((r) => r.rag.passed).length,
+      wins.length,
+      "RAG also answers the wins"
+    );
+    assert.equal(
+      traps.filter((r) => r.rag.passed).length,
+      traps.length,
+      "RAG ships the wrong answer on EVERY trap"
+    );
+  });
+});
+
 describe("Kontour lane uses the REAL survey/surface kernel (not stubs)", () => {
-  for (const scenario of SCENARIOS.filter((s) => s.id !== "s0")) {
+  for (const scenario of TRAP_SCENARIOS.filter((s) => s.id !== "s0")) {
     it(`${scenario.id}: blocked outcome still carries a real schemaVersion-3 bundle`, () => {
       const result = runScenario(scenario);
       assert.equal(result.kontour.outcome, "block");
@@ -98,7 +184,7 @@ describe("per-scenario gate mechanism is the RIGHT one", () => {
     s4: "locator",
     s0: "absent",
   };
-  for (const scenario of SCENARIOS) {
+  for (const scenario of TRAP_SCENARIOS) {
     it(`${scenario.id} blocks via the ${expected[scenario.id]} mismatch`, () => {
       const result = runScenario(scenario);
       assert.equal(result.kontour.outcome, "block");

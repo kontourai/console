@@ -29,7 +29,7 @@ import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAll } from "./harness.js";
-import { SCENARIOS } from "./scenarios.js";
+import { SCENARIOS, WIN_SCENARIOS, TRAP_SCENARIOS } from "./scenarios.js";
 import type { LaneResults } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,9 +45,14 @@ copyFileSync(
 const results = runAll(SCENARIOS);
 const byId = (id: string) => results.find((r) => r.scenario.id === id)!;
 
-// Present in order of strength: the unbeatable SUPPORTED trio first, then the abstains.
-const PRESENT_ORDER = ["s1", "s2", "s4", "s3", "s0"];
-const ordered = PRESENT_ORDER.map(byId);
+// The HERO precision pair: the same Alpha data asked two ways — Q2 (answers) then Q3 (refuses).
+const heroWin = byId("w1"); // Alpha Q2 — answerable
+const heroTrap = byId("s1"); // Alpha Q3 — the trap twin
+// The opening win establishes "the product is a trustworthy answer" before any trap.
+const openWin = byId("w0");
+// Remaining traps after the hero pair: strong SUPPORTED (s2, s4) then the abstains (s3, s0).
+const REMAINING_TRAP_ORDER = ["s2", "s4", "s3", "s0"];
+const remainingTraps = REMAINING_TRAP_ORDER.map(byId);
 
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
 function esc(s: string): string {
@@ -58,15 +63,24 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-// ── Compute the live scoreboard from the harness (NOT hardcoded) ───────────────
-const total = results.length;
-const ragShippedWrong = results.filter((r) => r.rag.passed).length;
-const kontourRefused = results.filter((r) => r.kontour.outcome === "block").length;
+// ── Compute the live PRECISION scoreboard from the harness (NOT hardcoded) ─────
+// The story is discrimination, not a refusal count: across answerable AND trap
+// questions, Kontour answered exactly when it could and refused exactly when it
+// couldn't; RAG matched it on the answerable ones and shipped wrong on every trap.
+const wins = runAll(WIN_SCENARIOS);
+const traps = runAll(TRAP_SCENARIOS);
+const nWins = wins.length;
+const nTraps = traps.length;
+const kontourAnsweredWins = wins.filter((r) => r.kontour.outcome === "pass").length;
+const ragAnsweredWins = wins.filter((r) => r.rag.passed).length;
+const kontourRefusedTraps = traps.filter((r) => r.kontour.outcome === "block").length;
+const ragShippedTraps = traps.filter((r) => r.rag.passed).length;
 
-// Each scenario gives the panel its real grounded report (if any).
+// Each scenario gives the panel its real grounded report (if any) — wins (PASS) and
+// the non-absence blocks both carry a real bundle/report the panel renders.
 const panelReports: Record<string, unknown> = {};
 for (const r of results) {
-  const g = r.kontour.outcome === "block" ? r.kontour.grounded : r.kontour.grounded;
+  const g = r.kontour.grounded;
   if (g) panelReports[`panel-${r.scenario.id}`] = g.report;
 }
 
@@ -97,13 +111,24 @@ function rawLane(r: LaneResults): string {
 function ragLane(r: LaneResults): string {
   const fc = r.rag.factCheck;
   const v = fc.verdict; // "supported" | "abstain" | "unsupported"
+  const isWin = r.scenario.kind === "answerable";
   // SUPPORTED on a wrong answer is the irony — render it as an alarming green check.
+  // On a WIN, SUPPORTED is genuinely correct — render it as an ordinary correct pass.
   const heroClass = v === "supported" ? "hero-supported" : "hero-abstain";
   const heroText = v === "supported" ? "&#10003; SUPPORTED" : "ABSTAIN";
-  const heroSub =
-    v === "supported"
+  const heroSub = isWin
+    ? "correctly confirms the right answer"
+    : v === "supported"
       ? "the fact-checker endorsed this number"
       : "no contradicting evidence &mdash; pipeline ships anyway";
+  const shipText = isWin
+    ? "&rarr; the correct answer ships"
+    : r.rag.passed
+      ? "&rarr; the wrong answer SHIPS to the user"
+      : "held";
+  const whyLabel = isWin
+    ? "Why RAG also gets the easy one right"
+    : "Why a fair fact-checker passes this";
   return `
     <div class="lane lane-rag">
       <div class="lane-head"><span class="lane-badge rag">RAG + Fact-check</span>
@@ -114,11 +139,11 @@ function ragLane(r: LaneResults): string {
           <div class="rag-hero-badge">${heroText}</div>
           <div class="rag-hero-sub">${heroSub}</div>
         </div>
-        <div class="ship-line ${r.rag.passed ? "shipped" : "held"}">
-          ${r.rag.passed ? "&rarr; the wrong answer SHIPS to the user" : "held"}
+        <div class="ship-line ${isWin ? "held" : r.rag.passed ? "shipped" : "held"}">
+          ${shipText}
         </div>
         <div class="why">
-          <div class="why-label">Why a fair fact-checker passes this</div>
+          <div class="why-label">${whyLabel}</div>
           <p>${esc(r.scenario.whyFactCheckPasses)}</p>
         </div>
       </div>
@@ -129,12 +154,19 @@ function kontourLane(r: LaneResults): string {
   const k = r.kontour;
   const grounded = k.grounded;
   if (k.outcome !== "block") {
-    // (Never happens in this deck — every scenario blocks — but keep it honest.)
+    // WIN: the gate PASSES. Emit the confident grounded value + the real green trust panel.
     return `
     <div class="lane lane-kontour is-pass">
-      <div class="lane-head"><span class="lane-badge kontour">Kontour Conducted</span></div>
-      <div class="lane-body"><div class="amount mint">${money((k as { value: number }).value)}</div>
-        <div class="lane-verdict held">&#10003; grounded &amp; verified</div></div>
+      <div class="lane-head"><span class="lane-badge kontour">Kontour Conducted</span>
+        <span class="lane-sub">real bundle &middot; structural gate</span></div>
+      <div class="lane-body">
+        <div class="amount mint">${money(k.value)}</div>
+        <div class="answer-verified">&#10003; Grounded &amp; verified &mdash; the binding matches what was asked</div>
+        <div class="panel-wrap">
+          <div class="panel-label">Real Surface trust panel &mdash; what the bundle proves</div>
+          <surface-trust-panel id="panel-${r.scenario.id}"></surface-trust-panel>
+        </div>
+      </div>
     </div>`;
   }
   const panelBlock = grounded
@@ -204,14 +236,105 @@ addStep("setup", "step-center", `
       <span class="setup-foot-q">So &mdash; does it work?</span></p>
   </div>`);
 
-// 3..N — per-scenario, two steps each (question, then reveal)
-ordered.forEach((r, i) => {
+// 3 — THE PRODUCT: an opening win. Kontour confidently answers a well-grounded question.
+//     Establish "the product is a trustworthy answer" BEFORE any trap appears.
+{
+  const r = openWin;
+  const s = r.scenario;
+  const k = r.kontour;
+  const value = k.outcome === "pass" ? k.value : 0;
+  addStep("win-open", "step-center", `
+    <div class="winopen-wrap">
+      <div class="kicker mint">The product</div>
+      <h2 class="winopen-h">First, what Kontour is <em>for</em>.</h2>
+      <p class="winopen-lead">A user asks a question that <strong>can</strong> be answered &mdash;
+        and the answer is grounded in a real record for the period asked.</p>
+      <div class="winopen-card">
+        <div class="winopen-q">${esc(s.query)}</div>
+        <div class="winopen-answer">
+          <div class="winopen-amount">${money(value)}</div>
+          <div class="winopen-verified">&#10003; Grounded &amp; verified</div>
+        </div>
+        <div class="winopen-panel">
+          <div class="panel-label">Real Surface trust panel &mdash; recomputable, auditable</div>
+          <surface-trust-panel id="panel-${s.id}"></surface-trust-panel>
+        </div>
+      </div>
+      <p class="winopen-foot">This is the product: <strong>a trustworthy answer.</strong> Every
+        binding matched &mdash; period, locator, source &mdash; so the gate <strong>passes</strong>
+        and emits a portable trust bundle. Now watch what happens when the binding <em>doesn&rsquo;t</em> match.</p>
+    </div>`);
+}
+
+// 4 — THE HERO PRECISION PAIR: the same Alpha data, asked two ways.
+//     w1 (Q2, answerable) → Kontour ANSWERS, verified. s1 (Q3, trap) → Kontour REFUSES.
+//     "Same data — it knows the difference."
+
+// (4a) Hero win — question
+addStep("w1-question", "step-center", `
+  <div class="q-wrap">
+    <div class="kicker mint">The precision pair &middot; 1 of 2</div>
+    <div class="q-label">A user asks</div>
+    <p class="q-query">${esc(heroWin.scenario.query)}</p>
+    <div class="q-frame">
+      <span class="q-frame-on">This period exists.</span>
+      Alpha&rsquo;s <strong>Q2-2025</strong> sales are on record. Does Kontour answer it?
+    </div>
+    <p class="q-predict">It should &mdash; if it&rsquo;s precise, not timid.</p>
+  </div>`);
+
+// (4b) Hero win — reveal (ANSWERS)
+addStep("w1-reveal", "step-reveal", `
+  <div class="reveal-head">
+    <div class="kicker mint">${heroWin.scenario.id.toUpperCase()} &middot; ${esc(heroWin.scenario.title)}</div>
+    <p class="reveal-query">${esc(heroWin.scenario.query)}</p>
+    <p class="reveal-truth"><strong>Truth:</strong> ${esc(heroWin.scenario.correctAnswer)}</p>
+  </div>
+  <div class="lanes">
+    ${rawLane(heroWin)}
+    ${ragLane(heroWin)}
+    ${kontourLane(heroWin)}
+  </div>
+  <p class="pair-bridge">Same account. Same <strong>$451,000</strong> on record. Now change just
+    <em>one word</em> in the question &mdash; the period &mdash; from Q2 to Q3&hellip;</p>`);
+
+// (4c) Hero trap — question (the s1 twin)
+addStep("s1-question", "step-center", `
+  <div class="q-wrap">
+    <div class="kicker cobalt">The precision pair &middot; 2 of 2</div>
+    <div class="q-label">Now the user asks</div>
+    <p class="q-query">${esc(heroTrap.scenario.query)}</p>
+    <div class="q-frame">
+      <span class="q-frame-on">RAG + fact-check is on.</span>
+      The retriever pulls the same Alpha sales doc. The fact-checker verifies $451,000 against it.
+    </div>
+    <p class="q-predict">Same data, one word changed. Does it catch the error?</p>
+  </div>`);
+
+// (4d) Hero trap — reveal (REFUSES)
+addStep("s1-reveal", "step-reveal", `
+  <div class="reveal-head">
+    <div class="kicker cobalt">${heroTrap.scenario.id.toUpperCase()} &middot; ${esc(heroTrap.scenario.title)}</div>
+    <p class="reveal-query">${esc(heroTrap.scenario.query)}</p>
+    <p class="reveal-truth"><strong>Truth:</strong> ${esc(heroTrap.scenario.correctAnswer)}</p>
+  </div>
+  <div class="lanes">
+    ${rawLane(heroTrap)}
+    ${ragLane(heroTrap)}
+    ${kontourLane(heroTrap)}
+  </div>
+  <p class="pair-bridge accent"><strong>Same data &mdash; it knows the difference.</strong> RAG
+    said SUPPORTED on the wrong period both times it could. Kontour answered Q2 and refused Q3,
+    off the <em>same</em> $451,000 record. That is precision, not timidity.</p>`);
+
+// 5 — The remaining traps: "and it refuses rather than fake it."
+remainingTraps.forEach((r, i) => {
   const s = r.scenario;
   const idx = i + 1;
   // (A) prediction beat — question only
   addStep(`${s.id}-question`, "step-center", `
     <div class="q-wrap">
-      <div class="kicker cobalt">Scenario ${idx} of ${ordered.length} &middot; ${s.id.toUpperCase()}</div>
+      <div class="kicker cobalt">More traps &middot; ${idx} of ${remainingTraps.length} &middot; ${s.id.toUpperCase()}</div>
       <div class="q-label">A user asks</div>
       <p class="q-query">${esc(s.query)}</p>
       <div class="q-frame">
@@ -283,24 +406,46 @@ addStep("kontour-answer", "step-center", `
       saw &mdash; recomputable and auditable by someone who doesn&rsquo;t trust us.</p>
   </div>`);
 
-// Close (dark) — scoreboard from the harness
+// Close (dark) — PRECISION scoreboard from the harness (discrimination, not refusal count)
 addStep("close", "step-dark step-center", `
   <div class="close-wrap">
-    <div class="kicker">The proof</div>
-    <div class="scoreboard">
-      <div class="score score-rag">
-        <span class="score-num">${ragShippedWrong} / ${total}</span>
-        <span class="score-lbl">a fair, competent RAG + fact-check pipeline<br>
-          <strong>shipped the wrong answer</strong></span>
+    <div class="kicker">The proof &mdash; precision</div>
+    <div class="precision-board">
+      <div class="pb-row pb-answerable">
+        <div class="pb-row-head">
+          <span class="pb-row-title">Answerable questions</span>
+          <span class="pb-row-sub">both fine on the easy ones</span>
+        </div>
+        <div class="pb-cells">
+          <div class="pb-cell kontour">
+            <span class="pb-num">${kontourAnsweredWins} / ${nWins}</span>
+            <span class="pb-lbl">Kontour <strong>answered correctly</strong></span>
+          </div>
+          <div class="pb-cell rag">
+            <span class="pb-num">${ragAnsweredWins} / ${nWins}</span>
+            <span class="pb-lbl">RAG + fact-check <strong>answered correctly</strong></span>
+          </div>
+        </div>
       </div>
-      <div class="score-vs">vs</div>
-      <div class="score score-kontour">
-        <span class="score-num">${kontourRefused} / ${total}</span>
-        <span class="score-lbl">the conducted path<br><strong>refused</strong></span>
+      <div class="pb-row pb-trap">
+        <div class="pb-row-head">
+          <span class="pb-row-title">Trap questions</span>
+          <span class="pb-row-sub">only Kontour caught them</span>
+        </div>
+        <div class="pb-cells">
+          <div class="pb-cell kontour">
+            <span class="pb-num">${kontourRefusedTraps} / ${nTraps}</span>
+            <span class="pb-lbl">Kontour <strong>refused</strong> rather than fake it</span>
+          </div>
+          <div class="pb-cell rag bad">
+            <span class="pb-num">${ragShippedTraps} / ${nTraps}</span>
+            <span class="pb-lbl">RAG + fact-check <strong>shipped wrong</strong></span>
+          </div>
+        </div>
       </div>
     </div>
-    <p class="close-line">Not because it&rsquo;s smarter &mdash; because grounding is
-      <strong>structural, not best-effort.</strong></p>
+    <p class="close-line"><strong>Answered exactly when it could. Refused exactly when it couldn&rsquo;t.
+      RAG + fact-check couldn&rsquo;t tell the two apart.</strong></p>
     <h2 class="close-tag">AI answers you can stand behind.</h2>
   </div>`);
 
@@ -463,6 +608,9 @@ const html = `<!DOCTYPE html>
       font-variant-numeric: tabular-nums; line-height: 1; }
     .amount.neutral { color: var(--ink); }
     .amount.mint { color: var(--mint); }
+    .answer-verified { font-family: var(--mono); font-size: 12.5px; font-weight: 600;
+      color: var(--mint); background: rgba(20,163,122,0.10); border: 1px solid rgba(20,163,122,0.4);
+      border-radius: 6px; padding: 8px 11px; }
     .lane-verdict { font-family: var(--mono); font-size: 12px; font-weight: 600; }
     .lane-verdict.shipped { color: var(--muted); }
     .lane-verdict.held { color: var(--mint); }
@@ -560,6 +708,64 @@ const html = `<!DOCTYPE html>
     .close-line strong { color: var(--paper); }
     .close-tag { font-family: var(--serif); font-weight: 600; font-style: italic;
       font-size: clamp(34px, 5vw, 62px); color: var(--mint); letter-spacing: -0.01em; }
+
+    /* ── Opening win (the product) ────────────────────────────────── */
+    .winopen-wrap { max-width: 920px; margin: 0 auto; }
+    .winopen-h { font-family: var(--serif); font-weight: 600; font-size: clamp(32px, 4.4vw, 54px);
+      letter-spacing: -0.015em; line-height: 1.06; }
+    .winopen-h em { color: var(--mint); font-style: italic; }
+    .winopen-lead { font-size: clamp(16px, 1.9vw, 21px); color: var(--muted); max-width: 56ch;
+      margin: 16px auto 26px; }
+    .winopen-lead strong { color: var(--ink); }
+    .winopen-card { background: var(--card); border: 1px solid var(--line);
+      border-top: 3px solid var(--mint); border-radius: 12px; padding: 26px 28px; text-align: left;
+      max-width: 760px; margin: 0 auto; }
+    .winopen-q { font-family: var(--serif); font-weight: 600; font-size: clamp(20px, 2.4vw, 28px);
+      letter-spacing: -0.01em; }
+    .winopen-q::before { content: "\\201C"; } .winopen-q::after { content: "\\201D"; }
+    .winopen-answer { display: flex; align-items: baseline; gap: 18px; margin: 18px 0 20px;
+      flex-wrap: wrap; }
+    .winopen-amount { font-family: var(--serif); font-weight: 700; font-size: clamp(40px, 5vw, 60px);
+      color: var(--mint); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1; }
+    .winopen-verified { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--mint);
+      background: rgba(20,163,122,0.10); border: 1px solid rgba(20,163,122,0.4); border-radius: 6px;
+      padding: 7px 12px; }
+    .winopen-panel .panel-label { font-size: 10.5px; color: var(--faint); letter-spacing: 0.04em;
+      text-transform: uppercase; font-weight: 600; margin-bottom: 8px; padding-bottom: 6px;
+      border-bottom: 1px solid var(--line); }
+    .winopen-foot { font-size: clamp(15px, 1.8vw, 19px); color: var(--muted); max-width: 64ch;
+      margin: 26px auto 0; line-height: 1.5; }
+    .winopen-foot strong { color: var(--ink); } .winopen-foot em { color: var(--cobalt); font-style: italic; }
+
+    /* ── Precision-pair bridge copy (under hero reveals) ───────────── */
+    .pair-bridge { font-size: clamp(15px, 1.8vw, 20px); color: var(--muted); text-align: center;
+      max-width: 76ch; margin: 22px auto 0; line-height: 1.5; }
+    .pair-bridge strong { color: var(--ink); } .pair-bridge em { color: var(--cobalt); font-style: italic; }
+    .pair-bridge.accent { color: var(--ink); }
+    .pair-bridge.accent strong { color: var(--mint); }
+
+    /* ── Precision scoreboard (close) ─────────────────────────────── */
+    .precision-board { display: flex; flex-direction: column; gap: 18px; max-width: 760px;
+      margin: 18px auto 30px; }
+    .pb-row { background: rgba(245,244,239,0.05); border: 1px solid rgba(245,244,239,0.16);
+      border-radius: 12px; padding: 18px 22px; text-align: left; }
+    .pb-trap { border-color: rgba(245,244,239,0.22); }
+    .pb-row-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px;
+      flex-wrap: wrap; }
+    .pb-row-title { font-family: var(--serif); font-weight: 600; font-size: clamp(19px, 2.2vw, 26px);
+      color: var(--paper); }
+    .pb-row-sub { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em;
+      color: rgba(245,244,239,0.55); }
+    .pb-cells { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .pb-cell { display: flex; align-items: baseline; gap: 12px; }
+    .pb-num { font-family: var(--serif); font-weight: 700; font-size: clamp(30px, 4vw, 46px);
+      line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+    .pb-cell.kontour .pb-num { color: var(--mint); }
+    .pb-cell.rag .pb-num { color: rgba(245,244,239,0.78); }
+    .pb-cell.rag.bad .pb-num { color: var(--amber); }
+    .pb-lbl { font-size: 13px; color: rgba(245,244,239,0.72); line-height: 1.35; }
+    .pb-lbl strong { color: var(--paper); font-weight: 600; }
+    @media (max-width: 720px) { .pb-cells { grid-template-columns: 1fr; } }
 
     /* ── Chrome: nav + indicator + progress ───────────────────────── */
     .chrome { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
@@ -665,5 +871,9 @@ steps.forEach((s, i) =>
 );
 console.log(`\n  HTML:  ${join(outDir, "present.html")}`);
 console.log(`  Panel: ${join(outDir, "surface-trust-panel.js")}`);
-console.log(`\n  Scoreboard (from harness): RAG shipped wrong ${ragShippedWrong}/${total} · Kontour refused ${kontourRefused}/${total}`);
+console.log(
+  `\n  Precision scoreboard (from harness):\n` +
+    `    Answerable (${nWins}): Kontour answered ${kontourAnsweredWins}/${nWins} · RAG answered ${ragAnsweredWins}/${nWins}\n` +
+    `    Traps (${nTraps}):      Kontour refused ${kontourRefusedTraps}/${nTraps} · RAG shipped wrong ${ragShippedTraps}/${nTraps}`
+);
 console.log(`\nOpen: file://${join(outDir, "present.html")}\n`);

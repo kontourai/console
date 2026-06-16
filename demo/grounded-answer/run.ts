@@ -11,7 +11,7 @@
  */
 
 import { runAll } from "./harness.js";
-import { SCENARIOS } from "./scenarios.js";
+import { SCENARIOS, WIN_SCENARIOS, TRAP_SCENARIOS } from "./scenarios.js";
 
 function hr(char = "─", width = 78) {
   return char.repeat(width);
@@ -22,22 +22,21 @@ console.log(
   "\n" +
     hr("═") +
     "\n  KONTOUR GROUNDED ANSWER — Three-Lane Gallery\n" +
-    "  Structural grounding vs. a fair RAG + fact-check baseline\n" +
+    "  A precise discriminator vs. a fair RAG + fact-check baseline\n" +
     hr("═")
 );
 console.log(
-  "\n  The bet: structural grounding is categorically more trustworthy than a good\n" +
-    "  RAG + fact-check pipeline. In EVERY scenario below, a fair, real RAG+fact-check\n" +
-    "  lane PASSES the wrong answer, while the Kontour lane STRUCTURALLY refuses it.\n"
+  "\n  The bet: Kontour answers EXACTLY when it can and refuses EXACTLY when it can't.\n" +
+    "  Below, ANSWERABLE questions (wins) and TRAPS run through the same harness. On the\n" +
+    "  wins, both Kontour and a fair RAG+fact-check lane answer correctly. On the traps, the\n" +
+    "  RAG lane ships a wrong answer the fact-checker endorsed — only Kontour catches them.\n"
 );
-
-let ragShippedBad = 0;
-let kontourCaught = 0;
 
 for (const r of runAll(SCENARIOS)) {
   const s = r.scenario;
+  const kindTag = s.kind === "answerable" ? "ANSWERABLE (win)" : "TRAP";
   console.log("\n" + hr());
-  console.log(`  ${s.id.toUpperCase()} · ${s.title}`);
+  console.log(`  ${s.id.toUpperCase()} · [${kindTag}] · ${s.title}`);
   console.log(`  Q: ${s.query}`);
   console.log(hr());
 
@@ -54,16 +53,24 @@ for (const r of runAll(SCENARIOS)) {
       .join(", ") || "(none)"}`
   );
   console.log(`      Verdict:   ${r.rag.factCheck.verdict.toUpperCase()}`);
-  console.log(`      Ships?     ${r.rag.passed ? "YES — bad answer SHIPPED" : "no"}`);
-  console.log(`      Why pass:  ${wrap(s.whyFactCheckPasses, 64, "                 ")}`);
-  if (r.rag.passed) ragShippedBad++;
+  if (s.kind === "answerable") {
+    console.log(`      Ships?     YES — correct answer (a right answer to a right question)`);
+  } else {
+    console.log(`      Ships?     ${r.rag.passed ? "YES — WRONG answer SHIPPED" : "no"}`);
+  }
+  console.log(`      Why:       ${wrap(s.whyFactCheckPasses, 64, "                 ")}`);
 
   // KONTOUR
   console.log("\n  [3] KONTOUR (real buildSurveyTrustBundle + structural gate)");
   if (r.kontour.outcome === "pass") {
-    console.log(`      Verdict:   PASS — ${money(r.kontour.value)} (grounded)`);
+    const g = r.kontour.grounded;
+    console.log(`      Verdict:   ANSWERED — ${money(r.kontour.value)} (grounded & verified)`);
+    console.log(
+      `      Bundle:    schemaVersion=${g.bundle.schemaVersion} · ` +
+        `claim status=${g.bundle.claims[0]?.status} · ` +
+        `bound to qualifier=${g.groundedQualifier} · locator=${g.groundedLocator}`
+    );
   } else {
-    kontourCaught++;
     const g = r.kontour.grounded;
     console.log(`      Verdict:   REFUSED  [mismatch: ${r.kontour.mismatch}]`);
     if (g) {
@@ -81,17 +88,34 @@ for (const r of runAll(SCENARIOS)) {
   console.log(`\n      Truth:     ${wrap(s.correctAnswer, 64, "                 ")}`);
 }
 
+// ── Precision scoreboard, all counts derived from the harness ──────────────────
+const wins = runAll(WIN_SCENARIOS);
+const traps = runAll(TRAP_SCENARIOS);
+const nWins = wins.length;
+const nTraps = traps.length;
+const kontourAnsweredWins = wins.filter((r) => r.kontour.outcome === "pass").length;
+const ragAnsweredWins = wins.filter((r) => r.rag.passed).length;
+const kontourRefusedTraps = traps.filter((r) => r.kontour.outcome === "block").length;
+const ragShippedTraps = traps.filter((r) => r.rag.passed).length;
+
 console.log("\n" + hr("═"));
+console.log("  SCOREBOARD — precision, not a refusal count\n");
+console.log(`  ANSWERABLE questions (${nWins}):  both fine on the easy ones`);
+console.log(`    Kontour answered correctly:                 ${kontourAnsweredWins}/${nWins}`);
+console.log(`    RAG + fact-check answered correctly:        ${ragAnsweredWins}/${nWins}`);
+console.log(`\n  TRAP questions (${nTraps}):  only Kontour caught them`);
+console.log(`    Kontour refused (rather than fake it):      ${kontourRefusedTraps}/${nTraps}`);
+console.log(`    RAG + fact-check shipped the WRONG answer:  ${ragShippedTraps}/${nTraps}`);
 console.log(
-  `  SCOREBOARD across ${SCENARIOS.length} scenarios:\n` +
-    `    RAG + fact-check shipped the WRONG answer:  ${ragShippedBad}/${SCENARIOS.length}\n` +
-    `    Kontour structurally REFUSED the wrong answer: ${kontourCaught}/${SCENARIOS.length}`
+  "\n  Answered exactly when it could. Refused exactly when it couldn't.\n" +
+    "  RAG + fact-check couldn't tell the two apart.\n"
 );
 console.log(
-  "\n  Every Kontour refusal is structural: a discriminated GateOutcome over a REAL\n" +
-    "  TrustBundle. No confidence threshold. The block carries no passable value —\n" +
-    "  TypeScript makes it impossible to read one from a refusal."
+  "  Every Kontour verdict is structural: a discriminated GateOutcome over a REAL\n" +
+    "  TrustBundle. No confidence threshold. A block carries no passable value —\n" +
+    "  TypeScript makes it impossible to read one from a refusal.\n"
 );
+console.log("  AI answers you can stand behind.");
 console.log(hr("═") + "\n");
 
 function wrap(text: string, width: number, indent: string): string {

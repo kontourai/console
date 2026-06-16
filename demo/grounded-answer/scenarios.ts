@@ -1,10 +1,21 @@
 /**
- * The four (plus one) scenarios, declared mostly as data.
+ * The scenarios, declared mostly as data.
+ *
+ * Two CLASSES, distinguished by `kind`:
+ *   - "answerable" (wins) : the question CAN be grounded cleanly. Kontour answers with
+ *                           confidence (gate PASSES, real trust panel). A fair RAG pipeline
+ *                           also answers it correctly — both are fine on the easy ones.
+ *   - "trap"              : no clean grounding exists. Kontour refuses; RAG ships a wrong
+ *                           answer the fact-checker endorsed. Only Kontour catches it.
+ * Together they prove Kontour is a PRECISE DISCRIMINATOR: it answers exactly when it can
+ * and refuses exactly when it can't.
  *
  * Each scenario supplies:
+ *   - kind               : "answerable" | "trap"
  *   - query              : the natural-language question
- *   - rawAnswer          : what the ungrounded LLM confidently returns (the WRONG answer)
- *   - ragCandidate       : the value the RAG pipeline ships (same wrong answer)
+ *   - rawAnswer          : what the ungrounded LLM confidently returns (the answer it emits)
+ *   - ragCandidate       : the value the RAG pipeline ships (the right answer on wins; the
+ *                          SAME wrong answer on traps)
  *   - shipOnAbstain      : whether the RAG pipeline ships when the checker abstains
  *   - whyFactCheckPasses : the honest reason a FAIR fact-checker passes the bad answer
  *   - groundAndGate      : the scenario's distinct structural mechanism — grounds the
@@ -33,6 +44,15 @@ export interface Scenario {
   id: string;
   slug: string; // for screenshot filenames
   title: string;
+  /**
+   * Whether the question is genuinely ANSWERABLE from the corpus (a win — Kontour
+   * confidently grounds it and the gate PASSES) or a TRAP (no clean grounding exists —
+   * Kontour refuses where a fair RAG+fact-check pipeline ships the wrong answer).
+   *
+   * This discriminator lets the harness, builders, and scoreboard treat the two classes
+   * distinctly — proving Kontour is a PRECISE DISCRIMINATOR, not a refuse-everything box.
+   */
+  kind: "answerable" | "trap";
   query: string;
   /** Confident, ungrounded answer. */
   rawAnswer: number;
@@ -72,6 +92,7 @@ const scenario0: Scenario = {
   id: "s0",
   slug: "s0-absence",
   title: "Absence → confabulation",
+  kind: "trap",
   query: "What were Vega Labs' Q3-2025 sales?",
   rawAnswer: 295_000,
   ragCandidate: 295_000,
@@ -98,6 +119,7 @@ const scenario1: Scenario = {
   id: "s1",
   slug: "s1-qualifier",
   title: "Right number, wrong qualifier (period)",
+  kind: "trap",
   query: "What were Alpha Corp's Q3-2025 sales?",
   rawAnswer: 451_000, // the real Q2 figure, mis-presented as Q3
   ragCandidate: 451_000,
@@ -132,6 +154,7 @@ const scenario2: Scenario = {
   id: "s2",
   slug: "s2-stale",
   title: "Stale source (restated since grounding)",
+  kind: "trap",
   query: "What were Beta Industries' Q3-2025 sales?",
   rawAnswer: 512_000, // the OLD, pre-restatement value
   ragCandidate: 512_000,
@@ -164,6 +187,7 @@ const scenario3: Scenario = {
   id: "s3",
   slug: "s3-join",
   title: "Composition / join error (wrong-period COGS)",
+  kind: "trap",
   query: "What was Gamma Holdings' Q3-2025 gross margin?",
   // margin = Q3 revenue (900k) - Q2 COGS (600k) = 300k  ← WRONG (used Q2 COGS)
   // correct = 900k - Q3 COGS (540k) = 360k
@@ -225,6 +249,7 @@ const scenario4: Scenario = {
   id: "s4",
   slug: "s4-citation",
   title: "Citation theater (real doc, unsupported locator)",
+  kind: "trap",
   query: "What were Delta Systems' Q3-2025 sales?",
   rawAnswer: 600_000, // the FORECAST figure, cited as if it were actuals
   ragCandidate: 600_000,
@@ -251,10 +276,91 @@ const scenario4: Scenario = {
   },
 };
 
+// ── Win W0 — the opening win: a cleanly grounded answer (establishes the product) ──
+//
+// Before any trap appears, show the product doing the thing it exists to do: answer a
+// well-grounded question with confidence. Gamma Q3-2025 revenue is a real record at a
+// real locator for the requested period — every binding matches, so the gate PASSES and
+// emits a verified value with a real green trust panel.
+
+const winOpening: Scenario = {
+  id: "w0",
+  slug: "w0-open-win",
+  title: "A grounded answer (the product)",
+  kind: "answerable",
+  query: "What was Gamma Holdings' Q3-2025 revenue?",
+  rawAnswer: 900_000,
+  ragCandidate: 900_000,
+  subjectTerms: ["Gamma Holdings", "Gamma"],
+  shipOnAbstain: false,
+  whyFactCheckPasses:
+    "This question is genuinely answerable: the Gamma Q3-2025 revenue record states $900,000 " +
+    "for the period asked. The retriever surfaces the on-topic Gamma revenue chunk and the " +
+    "fact-checker correctly confirms $900,000 — a right answer to a right question. On the easy, " +
+    "well-grounded cases a competent RAG+fact-check pipeline is fine. So is Kontour.",
+  correctAnswer:
+    "Gamma Holdings Q3-2025 revenue is $900,000 (records[0].amount). The question is answerable " +
+    "and every binding matches — period, locator, source. The correct response is to ANSWER it.",
+  groundAndGate: () => {
+    const b = binding("account-gamma", "Q3-2025", "revenue_usd");
+    const rec = findRecord("account-gamma", "Q3-2025", "revenue_usd");
+    if (!rec) return gateAbsent(b);
+    // Every binding matches the request → gateQualifier passes and emits the verified value.
+    return gateQualifier(b, groundValue(b, rec));
+  },
+};
+
+// ── Win W1 — the HERO win: the same data as s1, asked for the period that EXISTS ─────
+//
+// s1 asks Alpha for Q3 (no record) and Kontour refuses. THIS asks Alpha for Q2 — the
+// period the $451,000 record actually covers — and Kontour answers, verified. Same
+// number, same source, same machinery: Kontour refuses s1 because it is PRECISE about
+// the period, not because it is timid. This is the precision pairing.
+
+const winHero: Scenario = {
+  id: "w1",
+  slug: "w1-qualifier-win",
+  title: "Right number, right qualifier (the period that exists)",
+  kind: "answerable",
+  query: "What were Alpha Corp's Q2-2025 sales?",
+  rawAnswer: 451_000,
+  ragCandidate: 451_000,
+  subjectTerms: ["Alpha Corp", "Alpha"],
+  shipOnAbstain: false,
+  whyFactCheckPasses:
+    "Asked about the period that actually exists, everyone agrees. The Alpha Q2 chunk states " +
+    "$451,000 and the fact-checker correctly supports it. This is the twin of s1: SAME $451,000, " +
+    "SAME source — but here the requested period (Q2) matches the grounded period, so the answer " +
+    "is genuinely correct. The fact-checker can't tell this case apart from s1; Kontour can.",
+  correctAnswer:
+    "Alpha Corp Q2-2025 sales are $451,000 — the period this record actually covers. The binding " +
+    "matches the request, so Kontour ANSWERS it (the s1 twin asked for Q3, which does not exist).",
+  groundAndGate: () => {
+    const b = binding("account-alpha", "Q2-2025", "revenue_usd");
+    const q2 = findRecord("account-alpha", "Q2-2025", "revenue_usd");
+    if (!q2) return gateAbsent(b);
+    // Requested qualifier (Q2-2025) matches the grounded qualifier → the gate PASSES.
+    return gateQualifier(b, groundValue(b, q2));
+  },
+};
+
+/**
+ * The full scenario set: wins (answerable) interleaved so the wins establish the product
+ * before/around the traps. Builders re-order per surface (the present deck leads with a
+ * win, pairs w1↔s1, then runs the remaining traps). The gallery and tests iterate this
+ * array directly; filter by `kind` to separate wins from traps.
+ */
 export const SCENARIOS: Scenario[] = [
-  scenario1, // hero first
+  winOpening, // W0 — the product: a confident grounded answer
+  winHero, // W1 — Alpha Q2 win (the s1 twin: same data, answerable)
+  scenario1, // s1 hero trap — Alpha Q3 (the same data, refused)
   scenario2,
   scenario3,
   scenario4,
-  scenario0, // absence last (already proven by the original demo)
+  scenario0, // absence last (the original "refuse-moment")
 ];
+
+/** Just the answerable wins. */
+export const WIN_SCENARIOS: Scenario[] = SCENARIOS.filter((s) => s.kind === "answerable");
+/** Just the traps. */
+export const TRAP_SCENARIOS: Scenario[] = SCENARIOS.filter((s) => s.kind === "trap");
