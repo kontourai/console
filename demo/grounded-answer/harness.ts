@@ -17,6 +17,7 @@
 
 import { runRagLane } from "./rag-baseline.js";
 import type { RagLaneResult } from "./rag-baseline.js";
+import type { McpLaneResult } from "./mcp-baseline.js";
 import type { GateOutcome } from "./gate.js";
 import type { Scenario } from "./scenarios.js";
 
@@ -29,6 +30,8 @@ export interface LaneResults {
   scenario: Scenario;
   raw: RawLaneResult;
   rag: RagLaneResult;
+  /** Agent + Tools (MCP) lane — present only on scenarios that declare runMcp. */
+  mcp?: McpLaneResult;
   kontour: GateOutcome;
 }
 
@@ -43,10 +46,14 @@ export function runScenario(scenario: Scenario): LaneResults {
     scenario.ragJoin
   );
 
+  // The Agent + Tools (MCP) lane: a real tool over the same corpus, used un-bound.
+  // Present only where the scenario declares it (optional, like an extra column).
+  const mcp = scenario.runMcp?.();
+
   // The Kontour lane: real grounding + real structural gate. No threshold.
   const kontour = scenario.groundAndGate();
 
-  return { scenario, raw, rag, kontour };
+  return { scenario, raw, rag, mcp, kontour };
 }
 
 export function runAll(scenarios: Scenario[]): LaneResults[] {

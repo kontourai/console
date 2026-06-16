@@ -157,6 +157,17 @@ describe("precision: the WIN (answerable) scenarios — Kontour CONFIDENTLY answ
 });
 
 describe("Kontour lane uses the REAL survey/surface kernel (not stubs)", () => {
+  // TASK A: refusal panels now carry the REAL adverse status the Surface artifact derives.
+  //   - Freshness traps (s2, sokf): buildTrustReport() derives the claim as STALE
+  //     (TrustStatus "stale") because the live source content-hash no longer matches the
+  //     grounding snapshot. The report must NOT show a contradictory green "Verified".
+  //   - Binding traps (qualifier/locator/join): the value really IS verified — it is just
+  //     mis-bound — so the derived report keeps a single "verified" claim, and the gate
+  //     blocks on the binding, not on the value's truth.
+  // The bundle's AUTHORED claim status is "verified" in every case (the value was reviewed);
+  // what TASK A changed is the DERIVED report status for the freshness traps.
+  const FRESHNESS_TRAPS = new Set(["s2", "sokf"]);
+
   for (const scenario of TRAP_SCENARIOS.filter((s) => s.id !== "s0")) {
     it(`${scenario.id}: blocked outcome still carries a real schemaVersion-3 bundle`, () => {
       const result = runScenario(scenario);
@@ -166,20 +177,64 @@ describe("Kontour lane uses the REAL survey/surface kernel (not stubs)", () => {
       assert.ok(grounded, "non-absence blocks should carry the grounded bundle");
       // schemaVersion 3 only comes from the real buildSurveyTrustBundle output.
       assert.equal(grounded!.bundle.schemaVersion, 3, "must be the real bundle");
+      // The authored claim is verified (the value was reviewed) in every trap; the DERIVED
+      // report status is what distinguishes freshness from binding traps (asserted below).
       assert.equal(grounded!.bundle.claims[0].status, "verified");
       assert.ok(grounded!.bundle.events.length > 0, "real bundle has verification events");
       assert.ok(grounded!.bundle.events[0].verifiedAt, "verified event has verifiedAt");
-      // The report is the real surface report.
-      assert.equal(grounded!.report.summary.byStatus.verified, 1);
+    });
+
+    it(`${scenario.id}: the REAL report derives the ${
+      FRESHNESS_TRAPS.has(scenario.id) ? "STALE" : "verified-but-mis-bound"
+    } status (no contradictory green Verified on a refusal)`, () => {
+      const result = runScenario(scenario);
+      assert.equal(result.kontour.outcome, "block");
+      if (result.kontour.outcome !== "block") return;
+      const byStatus = result.kontour.grounded!.report.summary.byStatus;
+      if (FRESHNESS_TRAPS.has(scenario.id)) {
+        // TASK A: freshness traps must surface the adverse STALE status, derived by Surface's
+        // own deriveTrustStatus() (commit-validity policy + currentIntegrityRef mismatch).
+        assert.equal(byStatus.stale, 1, `${scenario.id} must derive a STALE claim`);
+        assert.equal(
+          byStatus.verified,
+          0,
+          `${scenario.id} refusal must NOT show a contradictory green "Verified"`
+        );
+      } else {
+        // Binding traps (qualifier/locator/join): the value really is verified — it is just
+        // bound to the wrong qualifier/locator/composition, which is why the GATE blocks.
+        assert.equal(byStatus.verified, 1, `${scenario.id} carries a verified (mis-bound) claim`);
+        assert.equal(byStatus.stale, 0, `${scenario.id} is a binding trap, not a freshness one`);
+      }
     });
   }
 
-  it("s0 (absence) produces NO bundle — structurally cannot ground", () => {
+  it("freshness traps surface STALE (not Verified): the show-don't-tell guarantee", () => {
+    // The whole point of TASK A: a refusal lane proves its refusal through the artifact's
+    // real status, not just prose. Every freshness trap's REAL report carries exactly one
+    // stale claim and zero verified claims.
+    for (const id of ["s2", "sokf"]) {
+      const result = runScenario(byId(id));
+      assert.equal(result.kontour.outcome, "block");
+      if (result.kontour.outcome !== "block") continue;
+      const byStatus = result.kontour.grounded!.report.summary.byStatus;
+      assert.equal(byStatus.stale, 1, `${id}: exactly one STALE claim`);
+      assert.equal(byStatus.verified, 0, `${id}: zero verified claims (no green panel)`);
+    }
+  });
+
+  it("s0 (absence) produces NO bundle — structurally cannot ground (empty-evidence)", () => {
     const result = runScenario(byId("s0"));
     assert.equal(result.kontour.outcome, "block");
     if (result.kontour.outcome !== "block") return;
     assert.equal(result.kontour.mismatch, "absent");
     assert.equal(result.kontour.grounded, undefined, "absence cannot carry a bundle");
+    // Empty-evidence state: there is no report/claim to verify because nothing was grounded.
+    assert.ok(
+      !("value" in result.kontour),
+      "absence carries no passable value — an explicit empty-evidence refusal"
+    );
+    assert.ok(result.kontour.reason.length > 0, "absence still names a reason");
   });
 });
 

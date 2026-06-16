@@ -46,6 +46,8 @@ import {
   okfDocId,
   sha256Of,
 } from "./okf.js";
+import { salesQuery, salesQueryByLocator } from "./mcp-baseline.js";
+import type { McpLaneResult } from "./mcp-baseline.js";
 
 export interface Scenario {
   id: string;
@@ -97,6 +99,16 @@ export interface Scenario {
   };
   /** Optional value unit. When set, the value renders as "N noun" instead of "$N". */
   unit?: { noun: string };
+  /**
+   * Optional Agent + Tools (MCP) lane. When present, the lane is rendered alongside
+   * Raw/RAG/Kontour on this scenario. The agent invokes a REAL tool over the SAME
+   * corpus the other lanes use (stronger than RAG's fuzzy retrieval), and this returns
+   * the honest outcome — where the tool answer is wrong (qualifier/freshness/locator),
+   * where a well-formed query genuinely catches it, and where the answer is right but
+   * leaves no recomputable artifact (the binding + portability gap). Optional: scenarios
+   * without it still render the existing three lanes.
+   */
+  runMcp?: () => McpLaneResult;
 }
 
 const SUBJECT = "account";
@@ -136,6 +148,25 @@ const scenario0: Scenario = {
     // (unreachable: no Vega record exists)
     return gateQualifier(b, groundValue(b, record));
   },
+  // Agent + Tools (MCP): a well-formed strict tool query genuinely CATCHES this — the tool
+  // returns nothing for Vega, so a disciplined agent refuses (like RAG abstaining on a clean
+  // miss). We are honest: data access is enough here. The residual gap is only that no
+  // recomputable artifact records the refusal — but on absence, MCP gets it right.
+  runMcp: () => {
+    const call = { tool: "sales.query", args: { account: "account-vega", period: "Q3-2025", field: "revenue_usd" } };
+    const result = salesQuery(call.args, { loose: false });
+    return {
+      kind: "mcp",
+      call,
+      result,
+      shipped: false,
+      gap: "none",
+      caught: true,
+      note:
+        "The strict tool query finds no Vega row, so a disciplined agent refuses — a well-formed " +
+        "query catches absence, just like RAG abstaining. Tool access is enough here.",
+    };
+  },
 };
 
 // ── Scenario 1 — HERO: right number, wrong qualifier (period) ──────────────────
@@ -171,6 +202,27 @@ const scenario1: Scenario = {
     // Ground the real Q2 value; the gate compares its bound qualifier to the request.
     return gateQualifier(b, groundValue(b, q2));
   },
+  // Agent + Tools (MCP): the agent calls the live tool for Alpha Q3. No Q3 row exists, so a
+  // loosely-scoped call falls back to the account's latest row (Q2, $451,000) and the agent
+  // presents it for Q3 — REAL data, fresh, wrong period. Stronger than RAG (it queried the
+  // system) but it still answers the wrong qualifier, and nothing binds the call to the claim.
+  runMcp: () => {
+    const call = { tool: "sales.query", args: { account: "account-alpha", period: "Q3-2025", field: "revenue_usd" } };
+    const result = salesQuery(call.args, { loose: true });
+    return {
+      kind: "mcp",
+      call,
+      result,
+      answer: result.value,
+      shipped: result.value !== undefined,
+      gap: "qualifier",
+      caught: false,
+      note:
+        "The tool returned a REAL, fresh row — but it is Alpha's Q2 figure, surfaced for a Q3 " +
+        "question by a loosely-scoped call. The agent has no qualifier gate, so it ships $451,000 " +
+        "for Q3. And no portable artifact records which call backed the claim — only the transcript does.",
+    };
+  },
 };
 
 // ── Scenario 2 — stale source ─────────────────────────────────────────────────
@@ -201,8 +253,35 @@ const scenario2: Scenario = {
     // Ground with the OLD snapshot hash (the value as it was when first grounded = 512_000).
     // The source's CURRENT hash reflects the restated 488_000, so freshness fires.
     const staleSnapshot = hashValue("sales-2025-q3-beta", "records[0].amount", 512_000);
-    const grounded = groundValue(b, record, { snapshotHash: staleSnapshot });
+    // Pass the source's CURRENT content hash so the REAL buildTrustReport() derives the
+    // claim as STALE (TrustStatus "stale") — the panel shows "Needs refresh" + a
+    // freshness-breach gap, not a contradictory "Verified".
+    const grounded = groundValue(b, record, {
+      snapshotHash: staleSnapshot,
+      currentIntegrityRef: record.contentHash,
+    });
     return gateFreshness(b, grounded);
+  },
+  // Agent + Tools (MCP): the agent queries the tool for Beta Q3 — but the MCP server reads a
+  // cached replica (the latency-friendly default), which still holds the pre-restated $512,000.
+  // No content-hash boundary means the agent can't tell the cache drifted from the live row,
+  // so it confidently ships the stale value. Querying the system did not make it fresh.
+  runMcp: () => {
+    const call = { tool: "sales.query", args: { account: "account-beta", period: "Q3-2025", field: "revenue_usd" } };
+    const result = salesQuery(call.args, { fromCache: true, cacheValue: 512_000 });
+    return {
+      kind: "mcp",
+      call,
+      result,
+      answer: result.value,
+      shipped: result.value !== undefined,
+      gap: "freshness",
+      caught: false,
+      note:
+        "The tool returned $512,000 from a cached replica — the value before the Beta row was " +
+        "restated to $488,000. With no content-hash freshness boundary, the agent cannot see the " +
+        "cache drifted, so it ships the stale figure. A live-looking tool call is not a fresh one.",
+    };
   },
 };
 
@@ -299,6 +378,28 @@ const scenario4: Scenario = {
     const grounded = groundValue(b, record, { citedLocator: "records[0].forecast" });
     return gateLocator(b, grounded, record.fieldLocator /* the real actuals locator */);
   },
+  // Agent + Tools (MCP): the agent calls the tool against the REAL Delta Q3 doc and reads a
+  // value from the forecast locator. The tool faithfully returns whatever field the agent
+  // asked for; nothing binds the cited locator to the actuals the question wanted. So the
+  // agent reports the $600,000 forecast as Q3 sales — a real doc, the wrong locator.
+  runMcp: () => {
+    const call = { tool: "sales.query", args: { account: "account-delta", period: "Q3-2025", field: "records[0].forecast" } };
+    const result = salesQueryByLocator("sales-2025-q3-delta", "records[0].forecast");
+    return {
+      kind: "mcp",
+      call,
+      // The tool grabbed the forecast value (600k), not the actuals (750k) — model that.
+      answer: 600_000,
+      result: { ...result, value: 600_000, note: result.note },
+      shipped: true,
+      gap: "locator",
+      caught: false,
+      note:
+        "The tool returned the REAL Delta Q3 doc, and the agent read the value at the forecast " +
+        "locator ($600,000). The document exists, but nothing binds that locator to actuals — the " +
+        "agent presents a forecast as sales, with no recomputable proof of which locator it used.",
+    };
+  },
 };
 
 // ── Win W0 — the opening win: a cleanly grounded answer (establishes the product) ──
@@ -367,6 +468,28 @@ const winHero: Scenario = {
     // Requested qualifier (Q2-2025) matches the grounded qualifier → the gate PASSES.
     return gateQualifier(b, groundValue(b, q2));
   },
+  // Agent + Tools (MCP): asked the period that EXISTS, the tool returns the right row and the
+  // agent answers $451,000 correctly — data access is genuinely sufficient for the number.
+  // The remaining gap is portability: the answer lives only in the transcript, with no
+  // recomputable bundle binding this call to the claim (the `/goal` problem). Right answer,
+  // no portable proof — the exact difference Kontour closes.
+  runMcp: () => {
+    const call = { tool: "sales.query", args: { account: "account-alpha", period: "Q2-2025", field: "revenue_usd" } };
+    const result = salesQuery(call.args, { loose: false });
+    return {
+      kind: "mcp",
+      call,
+      answer: result.value,
+      result,
+      shipped: result.value !== undefined,
+      gap: "no-artifact",
+      caught: true,
+      note:
+        "Asked the period that exists, the tool returns the right row and the agent answers " +
+        "$451,000 correctly. But the result lives only in the transcript — there is no portable, " +
+        "recomputable trust bundle binding THIS call to the claim. Right answer, no portable proof.",
+    };
+  },
 };
 
 // ── OKF interop — grounding against a REAL, public Google source ──────────────
@@ -434,6 +557,27 @@ const winOkf: Scenario = {
     // a verified value bound to the OKF resource with the sha256 integrity-ref.
     return gateQualifier(b, grounded);
   },
+  // Agent + Tools (MCP): a BigQuery-style tool (bq.tableSchema) queries the live table and
+  // counts 12 fields — the right answer, from a real query. Sufficient for the number; but
+  // the answer is unbound and non-portable: nothing records WHICH table version (content hash)
+  // the count was read from, so it cannot be re-verified later against Google's bytes.
+  runMcp: (): McpLaneResult => ({
+    kind: "mcp",
+    call: { tool: "bq.tableSchema", args: { account: OKF_RESOURCE, period: "live", field: "schema_field_count" } },
+    answer: okfFieldCount,
+    result: {
+      value: okfFieldCount,
+      returnedPeriod: "live",
+      note: `Tool queried ${OKF_RESOURCE} and counted ${okfFieldCount} schema fields from the live table.`,
+    },
+    shipped: true,
+    gap: "no-artifact",
+    caught: true,
+    note:
+      `The tool queried the live BigQuery table and returned ${okfFieldCount} fields — correct. But ` +
+      "the answer is unbound: no content-hash records which table version it was read from, so it " +
+      "cannot be re-verified against Google's bytes later. Right answer, no portable proof.",
+  }),
   okf: {
     resourceUri: OKF_RESOURCE,
     okfTimestamp: OKF_TIMESTAMP,
@@ -477,7 +621,12 @@ const okfStaleTrap: Scenario = {
   groundAndGate: () => {
     const b = okfBinding(OKF_TIMESTAMP);
     // Ground against a STALE integrity-ref snapshot (captured before the source changed).
-    const grounded = groundOkf(b, okfConcept, okfFieldCount, { snapshotHash: STALE_OKF_SNAPSHOT });
+    // Pass the OKF file's CURRENT content hash so the REAL buildTrustReport() derives the
+    // claim as STALE — the panel shows "Needs refresh" + a freshness-breach gap, not "Verified".
+    const grounded = groundOkf(b, okfConcept, okfFieldCount, {
+      snapshotHash: STALE_OKF_SNAPSHOT,
+      currentIntegrityRef: OKF_INTEGRITY_REF,
+    });
     // The fixture's CURRENT content hash is the real sha256 of the vendored bytes; the
     // stale snapshot no longer matches it → freshness fires (content-change invalidation).
     return gateFreshness(b, grounded, {
@@ -486,6 +635,28 @@ const okfStaleTrap: Scenario = {
       restatedAt: "since the cached grounding was captured",
     });
   },
+  // Agent + Tools (MCP): the agent reads the cached OKF grounding (the same indexed snapshot an
+  // MCP server serves), which still reports 12 fields. With no content-hash boundary the agent
+  // can't tell the upstream concept changed since the cache was captured, so it ships the stale
+  // count. A tool call over a cached source is no fresher than the cache.
+  runMcp: (): McpLaneResult => ({
+    kind: "mcp",
+    call: { tool: "bq.tableSchema", args: { account: OKF_RESOURCE, period: "cached", field: "schema_field_count" } },
+    answer: okfFieldCount,
+    result: {
+      value: okfFieldCount,
+      returnedPeriod: "cached",
+      fromCache: true,
+      note: `Tool read the cached OKF grounding for ${OKF_RESOURCE} and returned ${okfFieldCount} fields.`,
+    },
+    shipped: true,
+    gap: "freshness",
+    caught: false,
+    note:
+      "The tool read the cached OKF grounding and returned 12 fields. With no content-hash boundary, " +
+      "the agent can't see the upstream concept advanced past the grounding snapshot, so it ships the " +
+      "stale count. Querying a cached source through a tool does not make it fresh.",
+  }),
   okf: {
     resourceUri: OKF_RESOURCE,
     okfTimestamp: OKF_TIMESTAMP,

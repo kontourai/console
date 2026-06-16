@@ -78,6 +78,14 @@ const kontourAnsweredWins = wins.filter((r) => r.kontour.outcome === "pass").len
 const ragAnsweredWins = wins.filter((r) => r.rag.passed).length;
 const kontourRefusedTraps = traps.filter((r) => r.kontour.outcome === "block").length;
 const ragShippedTraps = traps.filter((r) => r.rag.passed).length;
+// MCP counts, only over scenarios that carry an MCP lane (harness-derived). On a trap, the
+// MCP agent "shipped wrong" when it shipped without catching the error; on a win, it answered.
+const winsWithMcp = wins.filter((r) => r.mcp);
+const trapsWithMcp = traps.filter((r) => r.mcp);
+const nWinsMcp = winsWithMcp.length;
+const nTrapsMcp = trapsWithMcp.length;
+const mcpAnsweredWins = winsWithMcp.filter((r) => r.mcp!.shipped).length;
+const mcpShippedTraps = trapsWithMcp.filter((r) => r.mcp!.shipped && !r.mcp!.caught).length;
 
 // Each scenario gives the panel its real grounded report (if any) — wins (PASS) and
 // the non-absence blocks both carry a real bundle/report the panel renders.
@@ -148,6 +156,56 @@ function ragLane(r: LaneResults): string {
         <div class="why">
           <div class="why-label">${whyLabel}</div>
           <p>${esc(r.scenario.whyFactCheckPasses)}</p>
+        </div>
+      </div>
+    </div>`;
+}
+
+const MCP_GAP_LABEL: Record<string, string> = {
+  qualifier: "wrong qualifier",
+  freshness: "stale tool/cache result",
+  locator: "wrong locator",
+  join: "mixed-period join",
+  "no-artifact": "no recomputable artifact",
+  none: "caught it",
+};
+
+function mcpLane(r: LaneResults): string {
+  const m = r.mcp;
+  if (!m) return "";
+  const caught = m.caught;
+  // Right answer with only a portability gap → amber-neutral. A shipped wrong answer → alarm.
+  const shippedWrong = m.shipped && !caught;
+  const verdictClass = shippedWrong ? "mcp-bad" : "mcp-soft";
+  const verdictText = !m.shipped
+    ? "&#8856; refused (tool returned nothing)"
+    : caught
+      ? "&#10003; answered &mdash; but unbound"
+      : "&#10003; answered &mdash; from a real tool call";
+  const amount = m.answer !== undefined ? fmtVal(m.answer, r.scenario) : "&mdash;";
+  const shipLine = shippedWrong
+    ? `&rarr; the wrong answer SHIPS &mdash; from a live tool call`
+    : caught && m.shipped
+      ? `right number, but no portable proof of which call backed it`
+      : !m.shipped
+        ? `a well-formed query catches it &mdash; honest`
+        : ``;
+  return `
+    <div class="lane lane-mcp">
+      <div class="lane-head"><span class="lane-badge mcp">Agent + Tools (MCP)</span>
+        <span class="lane-sub">real tool &middot; live system query</span></div>
+      <div class="lane-body">
+        <div class="amount neutral">${amount}</div>
+        <div class="mcp-call"><span class="mcp-call-k">tool call</span>
+          <code>${esc(m.call.tool)}(${esc(m.call.args.account)}, ${esc(m.call.args.period)})</code></div>
+        <div class="mcp-verdict ${verdictClass}">
+          <span class="mcp-gap">${MCP_GAP_LABEL[m.gap]}</span>
+          <span class="mcp-vtext">${verdictText}</span>
+        </div>
+        ${shipLine ? `<div class="mcp-ship ${shippedWrong ? "bad" : "soft"}">${shipLine}</div>` : ""}
+        <div class="why mcp-why">
+          <div class="why-label">${caught && m.gap === "none" ? "Where the tool is enough" : "Where tool access falls short"}</div>
+          <p>${esc(m.note)}</p>
         </div>
       </div>
     </div>`;
@@ -239,6 +297,44 @@ addStep("setup", "step-center", `
       <span class="setup-foot-q">So &mdash; does it work?</span></p>
   </div>`);
 
+// 2b — THE LADDER: Raw → RAG → Agent+Tools (MCP) → Kontour. Each rung more grounded than
+//      the last; only Kontour is bound-and-gated with a portable artifact. This frames the
+//      MCP baseline as the relatable stepping stone to how Kontour delivers its answer.
+addStep("ladder", "step-center", `
+  <div class="ladder-wrap">
+    <div class="kicker cobalt">The ladder of grounding</div>
+    <h2 class="ladder-h">There&rsquo;s more than one way to ground an answer.</h2>
+    <p class="ladder-lead">Each rung is <strong>more grounded</strong> than the last. The modern
+      one isn&rsquo;t RAG &mdash; it&rsquo;s giving an agent a <strong>real tool</strong> to query the
+      actual system. Watch how far that gets you, and where it still stops short.</p>
+    <div class="ladder">
+      <div class="ladder-rung r-raw">
+        <div class="ladder-n">Raw LLM</div>
+        <p>A confident number. <strong>No source</strong> at all.</p>
+      </div>
+      <div class="ladder-arrow">&rarr;</div>
+      <div class="ladder-rung r-rag">
+        <div class="ladder-n">RAG</div>
+        <p>Retrieve documents, fact-check the text. <strong>Fuzzy</strong>, post-hoc.</p>
+      </div>
+      <div class="ladder-arrow">&rarr;</div>
+      <div class="ladder-rung r-mcp">
+        <div class="ladder-n">Agent + Tools (MCP)</div>
+        <p>Query the <strong>live system</strong> with a real tool. Authoritative &mdash; but
+          <strong>unbound</strong>, and the result lives in the transcript.</p>
+      </div>
+      <div class="ladder-arrow">&rarr;</div>
+      <div class="ladder-rung r-kontour">
+        <div class="ladder-n">Kontour</div>
+        <p>Tool result <strong>bound</strong> to the claim, <strong>gated</strong>, emitted as a
+          <strong>portable, recomputable</strong> trust bundle.</p>
+      </div>
+    </div>
+    <p class="ladder-foot">MCP is the stepping stone. The last step &mdash; <strong>binding + gate +
+      portable proof</strong> &mdash; is the one only Kontour takes. We&rsquo;ll show exactly where
+      each rung breaks.</p>
+  </div>`);
+
 // 3 — THE PRODUCT: an opening win. Kontour confidently answers a well-grounded question.
 //     Establish "the product is a trustworthy answer" BEFORE any trap appears.
 {
@@ -321,14 +417,17 @@ addStep("s1-reveal", "step-reveal", `
     <p class="reveal-query">${esc(heroTrap.scenario.query)}</p>
     <p class="reveal-truth"><strong>Truth:</strong> ${esc(heroTrap.scenario.correctAnswer)}</p>
   </div>
-  <div class="lanes">
+  <div class="lanes lanes-4">
     ${rawLane(heroTrap)}
     ${ragLane(heroTrap)}
+    ${mcpLane(heroTrap)}
     ${kontourLane(heroTrap)}
   </div>
   <p class="pair-bridge accent"><strong>Same data &mdash; it knows the difference.</strong> RAG
-    said SUPPORTED on the wrong period both times it could. Kontour answered Q2 and refused Q3,
-    off the <em>same</em> $451,000 record. That is precision, not timidity.</p>`);
+    said SUPPORTED and the MCP agent <em>queried the live system</em> &mdash; both handed back the
+    wrong period off the same $451,000 record. Only Kontour bound the value to the period asked,
+    gated it, and emitted a portable bundle. Kontour answered Q2 and refused Q3. That is precision,
+    not timidity.</p>`);
 
 // 5 — The remaining traps: "and it refuses rather than fake it."
 remainingTraps.forEach((r, i) => {
@@ -346,16 +445,18 @@ remainingTraps.forEach((r, i) => {
       </div>
       <p class="q-predict">Does it catch the error?</p>
     </div>`);
-  // (B) reveal — three lanes
+  // (B) reveal — three lanes, or four when the scenario carries an MCP lane.
+  const hasMcp = Boolean(r.mcp);
   addStep(`${s.id}-reveal`, "step-reveal", `
     <div class="reveal-head">
       <div class="kicker cobalt">${s.id.toUpperCase()} &middot; ${esc(s.title)}</div>
       <p class="reveal-query">${esc(s.query)}</p>
       <p class="reveal-truth"><strong>Truth:</strong> ${esc(s.correctAnswer)}</p>
     </div>
-    <div class="lanes">
+    <div class="lanes ${hasMcp ? "lanes-4" : ""}">
       ${rawLane(r)}
       ${ragLane(r)}
+      ${hasMcp ? mcpLane(r) : ""}
       ${kontourLane(r)}
     </div>`);
 });
@@ -415,9 +516,10 @@ addStep("okf-trap-reveal", "step-reveal", `
     <p class="reveal-query">${esc(okfTrap.scenario.query)}</p>
     <p class="reveal-truth"><strong>Truth:</strong> ${esc(okfTrap.scenario.correctAnswer)}</p>
   </div>
-  <div class="lanes">
+  <div class="lanes lanes-4">
     ${rawLane(okfTrap)}
     ${ragLane(okfTrap)}
+    ${mcpLane(okfTrap)}
     ${kontourLane(okfTrap)}
   </div>
   <p class="pair-bridge accent">OKF&rsquo;s only temporal field is <code>timestamp</code> &mdash; last
@@ -657,7 +759,8 @@ const html = `<!DOCTYPE html>
     .reveal-truth strong { color: var(--cobalt); }
 
     .lanes { display: grid; grid-template-columns: 0.92fr 1.18fr 1.25fr; gap: 20px; }
-    @media (max-width: 1100px) { .lanes { grid-template-columns: 1fr; } }
+    .lanes.lanes-4 { grid-template-columns: 0.74fr 1fr 1fr 1.08fr; gap: 14px; }
+    @media (max-width: 1100px) { .lanes, .lanes.lanes-4 { grid-template-columns: 1fr; } }
     .lane { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
       display: flex; flex-direction: column; overflow: hidden; }
     .lane-rag { border-color: rgba(201,138,20,0.4); }
@@ -669,6 +772,8 @@ const html = `<!DOCTYPE html>
     .lane-badge.raw { background: rgba(10,14,19,0.07); color: var(--muted); }
     .lane-badge.rag { background: rgba(201,138,20,0.16); color: var(--amber); }
     .lane-badge.kontour { background: rgba(20,163,122,0.16); color: var(--mint); }
+    .lane-badge.mcp { background: rgba(31,111,136,0.16); color: var(--cobalt); }
+    .lane-mcp { border-color: rgba(31,111,136,0.4); }
     .lane-sub { font-size: 11px; color: var(--faint); font-family: var(--mono); }
     .lane-body { padding: 18px 16px; display: flex; flex-direction: column; gap: 14px; flex: 1;
       text-align: left; }
@@ -708,6 +813,55 @@ const html = `<!DOCTYPE html>
     .why-label { font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
       font-weight: 700; color: var(--amber); margin-bottom: 6px; }
     .why p { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+    /* ── Agent + Tools (MCP) lane ──────────────────────────────────── */
+    .mcp-call { font-family: var(--mono); font-size: 11px; color: var(--muted);
+      display: flex; flex-direction: column; gap: 3px; }
+    .mcp-call-k { font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--faint); font-weight: 600; }
+    .mcp-call code { background: rgba(31,111,136,0.10); color: var(--cobalt); padding: 4px 7px;
+      border-radius: 4px; word-break: break-all; }
+    .mcp-verdict { border-radius: 8px; padding: 11px 12px; display: flex; flex-direction: column;
+      gap: 5px; }
+    .mcp-verdict.mcp-bad { background: rgba(176,48,48,0.08); border: 1.5px solid rgba(176,48,48,0.45); }
+    .mcp-verdict.mcp-soft { background: rgba(31,111,136,0.07); border: 1.5px solid rgba(31,111,136,0.35); }
+    .mcp-gap { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+      text-transform: uppercase; }
+    .mcp-bad .mcp-gap { color: var(--red); }
+    .mcp-soft .mcp-gap { color: var(--cobalt); }
+    .mcp-vtext { font-size: 12.5px; font-weight: 600; }
+    .mcp-bad .mcp-vtext { color: var(--red); }
+    .mcp-soft .mcp-vtext { color: var(--cobalt); }
+    .mcp-ship { font-family: var(--mono); font-size: 11.5px; font-weight: 600; }
+    .mcp-ship.bad { color: var(--red); }
+    .mcp-ship.soft { color: var(--muted); }
+    .why.mcp-why { background: rgba(31,111,136,0.06); border-color: rgba(31,111,136,0.22); }
+    .why.mcp-why .why-label { color: var(--cobalt); }
+
+    /* ── The ladder beat ──────────────────────────────────────────── */
+    .ladder-wrap { max-width: 1100px; margin: 0 auto; }
+    .ladder-h { font-family: var(--serif); font-weight: 600; font-size: clamp(30px, 4.2vw, 50px);
+      letter-spacing: -0.015em; line-height: 1.06; }
+    .ladder-lead { font-size: clamp(16px, 1.9vw, 21px); color: var(--muted); max-width: 64ch;
+      margin: 16px auto 30px; }
+    .ladder-lead strong { color: var(--ink); }
+    .ladder { display: flex; align-items: stretch; justify-content: center; gap: 10px;
+      margin: 0 auto 28px; flex-wrap: nowrap; }
+    .ladder-rung { flex: 1; background: var(--card); border: 1px solid var(--line);
+      border-radius: 12px; padding: 18px 16px; text-align: left; }
+    .ladder-rung.r-raw { border-top: 3px solid var(--faint); }
+    .ladder-rung.r-rag { border-top: 3px solid var(--amber); }
+    .ladder-rung.r-mcp { border-top: 3px solid var(--cobalt); }
+    .ladder-rung.r-kontour { border-top: 3px solid var(--mint); background: rgba(20,163,122,0.05); }
+    .ladder-n { font-family: var(--serif); font-weight: 600; font-size: 19px; margin-bottom: 8px; }
+    .r-mcp .ladder-n { color: var(--cobalt); } .r-kontour .ladder-n { color: var(--mint); }
+    .ladder-rung p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+    .ladder-rung strong { color: var(--ink); }
+    .ladder-arrow { align-self: center; font-size: 22px; color: var(--faint); flex-shrink: 0; }
+    .ladder-foot { font-size: clamp(15px, 1.8vw, 19px); color: var(--muted); max-width: 70ch;
+      margin: 0 auto; line-height: 1.5; }
+    .ladder-foot strong { color: var(--ink); }
+    @media (max-width: 1000px) { .ladder { flex-wrap: wrap; } .ladder-arrow { display: none; } }
 
     /* Kontour refusal lane */
     .refuse-head { font-family: var(--serif); font-size: 21px; font-weight: 600; color: var(--cobalt); }

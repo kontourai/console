@@ -214,8 +214,20 @@ export function groundOkf(
   binding: ClaimBinding,
   concept: OkfConcept,
   value: number,
-  opts?: { snapshotHash?: string }
+  opts?: {
+    snapshotHash?: string;
+    /**
+     * The OKF file's CURRENT content hash. When supplied and it differs from the
+     * grounding snapshot, the real buildTrustReport() derives the claim as STALE
+     * (see groundValue). Used by the OKF freshness trap so the panel shows the
+     * adverse state, not "Verified".
+     */
+    currentIntegrityRef?: string;
+  }
 ): GroundedClaim {
   const record = okfSourceRecord(concept, value, opts);
-  return groundValue(binding, record);
+  return groundValue(binding, record, {
+    snapshotHash: opts?.snapshotHash,
+    currentIntegrityRef: opts?.currentIntegrityRef,
+  });
 }

@@ -17,7 +17,7 @@
 import { buildSurveyTrustBundle } from "@kontourai/survey";
 import { buildTrustReport } from "@kontourai/surface";
 import type { SurveyInput } from "@kontourai/survey";
-import type { TrustBundle, TrustReport } from "@kontourai/surface";
+import type { TrustBundle, TrustReport, VerificationPolicy } from "@kontourai/surface";
 import type { SourceRecord } from "./corpus.js";
 
 /** What the query asked to be grounded — the requested binding. */
@@ -67,6 +67,15 @@ export function groundValue(
     citedLocator?: string;
     /** Override the integrity-ref snapshot (stale grounding). */
     snapshotHash?: string;
+    /**
+     * The source's CURRENT content hash. When supplied AND it differs from the
+     * grounding snapshot (`snapshotHash`), the bundle is annotated with a real
+     * Surface commit-validity policy and `currentIntegrityRef`, so the REAL
+     * buildTrustReport() derives the claim's status as **stale** (TrustStatus
+     * "stale") — not "verified". This makes the trust ARTIFACT carry the adverse
+     * freshness state, so the panel shows it independently of the lane's prose.
+     */
+    currentIntegrityRef?: string;
   }
 ): GroundedClaim {
   const now = new Date().toISOString();
@@ -182,6 +191,42 @@ export function groundValue(
 
   // REAL call. Throws if producer discipline is violated (verified w/o actor+reviewedAt+locator).
   const bundle = buildSurveyTrustBundle(surveyInput);
+
+  // Freshness: if the caller supplied the source's CURRENT content hash and it no
+  // longer matches the grounding snapshot, annotate the REAL bundle so Surface's own
+  // deriveTrustStatus() resolves the claim to "stale". This is not a label we paint:
+  // buildTrustReport() below derives it, exactly as it would in production —
+  //   - a commit-validity VerificationPolicy on the claim's claimType, and
+  //   - claim.currentIntegrityRef = the live source hash (≠ the evidence integrityRef,
+  //     which is the stale grounding snapshot).
+  // status.isVerifiedEventStale() then sees no event-evidence integrityRef matching the
+  // claim's currentIntegrityRef and returns "stale" → the panel renders "Needs refresh"
+  // and a freshness-breach transparency gap. NOTHING fabricated; the data is just stale.
+  const isStale =
+    opts?.currentIntegrityRef !== undefined && opts.currentIntegrityRef !== snapshotHash;
+  if (isStale) {
+    const stalePolicy: VerificationPolicy = {
+      id: `policy.${binding.claimType}.commit`,
+      claimType: binding.claimType,
+      requiredEvidence: [],
+      acceptanceCriteria: [
+        "the grounding snapshot's integrity-ref still matches the source's current content hash",
+      ],
+      reviewAuthority: "revenue-ops",
+      // commit-validity: the grounding is valid only while its content hash holds.
+      validityRule: { kind: "commit" },
+      stalenessTriggers: ["source content hash advanced past the grounding snapshot"],
+      conflictRules: [],
+      impactLevel: "high",
+    };
+    bundle.policies = [...bundle.policies, stalePolicy];
+    for (const c of bundle.claims) {
+      // The CURRENT content hash of the live source — differs from the evidence
+      // integrityRef (the stale snapshot), which is what makes the claim stale.
+      c.currentIntegrityRef = opts.currentIntegrityRef;
+    }
+  }
+
   const report = buildTrustReport(bundle, { id: `report.${claimId}`, now: new Date() });
 
   return {
