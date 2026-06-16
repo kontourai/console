@@ -95,6 +95,8 @@ export interface Scenario {
     /** What the freshness trap modelled (only on the trap). */
     staleSnapshot?: string;
   };
+  /** Optional value unit. When set, the value renders as "N noun" instead of "$N". */
+  unit?: { noun: string };
 }
 
 const SUBJECT = "account";
@@ -404,6 +406,7 @@ function okfBinding(requestedQualifier: string): ClaimBinding {
 // ── OKF Win — grounded against the real Google OKF concept ─────────────────────
 const winOkf: Scenario = {
   id: "wokf",
+  unit: { noun: "schema fields" },
   slug: "wokf-okf-win",
   title: "Grounded against a real Google OKF bundle",
   kind: "answerable",
@@ -452,6 +455,7 @@ const winOkf: Scenario = {
 const STALE_OKF_SNAPSHOT = sha256Of("okf-blocks::schema::pre-change-snapshot");
 const okfStaleTrap: Scenario = {
   id: "sokf",
+  unit: { noun: "schema fields" },
   slug: "sokf-okf-stale",
   title: "OKF freshness gap (source changed, OKF can't notice)",
   kind: "trap",

@@ -17,6 +17,9 @@ function hr(char = "─", width = 78) {
   return char.repeat(width);
 }
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
+// Scenario-aware value formatter: counts (e.g. OKF schema fields) render as "N noun", money otherwise.
+const fmtVal = (n: number, sc?: { unit?: { noun: string } }) =>
+  sc?.unit ? `${n.toLocaleString("en-US")} ${sc.unit.noun}` : money(n);
 
 console.log(
   "\n" +
@@ -42,11 +45,11 @@ for (const r of runAll(SCENARIOS)) {
 
   // RAW
   console.log("\n  [1] RAW LLM (no grounding)");
-  console.log(`      Answer:    ${money(r.raw.answer)}   (confident, no provenance)`);
+  console.log(`      Answer:    ${fmtVal(r.raw.answer, s)}   (confident, no provenance)`);
 
   // RAG
   console.log("\n  [2] RAG + FACT-CHECK (real retriever + real entailment check)");
-  console.log(`      Answer:    ${money(r.rag.answer)}`);
+  console.log(`      Answer:    ${fmtVal(r.rag.answer, s)}`);
   console.log(
     `      Retrieved: ${r.rag.factCheck.retrieved
       .map((x) => `${x.chunk.id}(${x.score.toFixed(2)})`)
@@ -64,7 +67,7 @@ for (const r of runAll(SCENARIOS)) {
   console.log("\n  [3] KONTOUR (real buildSurveyTrustBundle + structural gate)");
   if (r.kontour.outcome === "pass") {
     const g = r.kontour.grounded;
-    console.log(`      Verdict:   ANSWERED — ${money(r.kontour.value)} (grounded & verified)`);
+    console.log(`      Verdict:   ANSWERED — ${fmtVal(r.kontour.value, s)} (grounded & verified)`);
     console.log(
       `      Bundle:    schemaVersion=${g.bundle.schemaVersion} · ` +
         `claim status=${g.bundle.claims[0]?.status} · ` +
@@ -77,7 +80,7 @@ for (const r of runAll(SCENARIOS)) {
       console.log(
         `      Bundle:    schemaVersion=${g.bundle.schemaVersion} · ` +
           `claim status=${g.bundle.claims[0]?.status} · ` +
-          `value=${money(g.value)} · bound to qualifier=${g.groundedQualifier} · ` +
+          `value=${fmtVal(g.value, s)} · bound to qualifier=${g.groundedQualifier} · ` +
           `locator=${g.groundedLocator}`
       );
     } else {

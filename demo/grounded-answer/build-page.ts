@@ -44,6 +44,9 @@ const kontourRefusedTraps = traps.filter((r) => r.kontour.outcome === "block").l
 const ragShippedTraps = traps.filter((r) => r.rag.passed).length;
 
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
+// Scenario-aware value formatter: counts (e.g. OKF schema fields) render as "N noun", money otherwise.
+const fmtVal = (n: number, sc?: { unit?: { noun: string } }) =>
+  sc?.unit ? `${n.toLocaleString("en-US")} ${sc.unit.noun}` : money(n);
 function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -82,7 +85,7 @@ function ragColumn(r: LaneResults): string {
         <span class="lane-sub">real retriever · real entailment check</span>
       </div>
       <div class="lane-body">
-        <div class="amount neutral">${money(r.rag.answer)}</div>
+        <div class="amount neutral">${fmtVal(r.rag.answer, r.scenario)}</div>
         ${verdictLine}
         <div class="kv">
           <div class="kv-label">Retrieved (cosine)</div>
@@ -108,7 +111,7 @@ function rawColumn(r: LaneResults): string {
         <span class="lane-sub">no grounding · no provenance</span>
       </div>
       <div class="lane-body">
-        <div class="amount neutral">${money(r.raw.answer)}</div>
+        <div class="amount neutral">${fmtVal(r.raw.answer, r.scenario)}</div>
         <div class="verdict shipped">&#10003; answered confidently</div>
         <div class="confab">
           &#9889; No source, no provenance, no refusal mechanism. The raw model emits a
@@ -160,7 +163,7 @@ function kontourColumn(r: LaneResults): string {
           <surface-trust-panel id="panel-${r.scenario.id}"></surface-trust-panel>
           <div class="panel-foot">
             The panel above is the REAL output of <code>buildSurveyTrustBundle()</code> +
-            <code>buildTrustReport()</code>. It verifies ${money(grounded.value)} bound to
+            <code>buildTrustReport()</code>. It verifies ${fmtVal(grounded.value, r.scenario)} bound to
             <code>${esc(grounded.groundedQualifier)}</code> at locator
             <code>${esc(grounded.groundedLocator)}</code>. ${panelFootTail}
           </div>
@@ -186,7 +189,7 @@ function kontourColumn(r: LaneResults): string {
         ${panelBlock}
         `
             : `
-        <div class="amount mint">${money((k as { value: number }).value)}</div>
+        <div class="amount mint">${fmtVal((k as { value: number }).value, r.scenario)}</div>
         <div class="verdict held">&#10003; grounded &amp; verified</div>
         ${panelBlock}
         `

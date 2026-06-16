@@ -55,6 +55,9 @@ const REMAINING_TRAP_ORDER = ["s2", "s4", "s3", "s0"];
 const remainingTraps = REMAINING_TRAP_ORDER.map(byId);
 
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
+// Scenario-aware value formatter: counts (e.g. OKF schema fields) render as "N noun", money otherwise.
+const fmtVal = (n: number, sc?: { unit?: { noun: string } }) =>
+  sc?.unit ? `${n.toLocaleString("en-US")} ${sc.unit.noun}` : money(n);
 function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -100,7 +103,7 @@ function rawLane(r: LaneResults): string {
       <div class="lane-head"><span class="lane-badge raw">Raw LLM</span>
         <span class="lane-sub">no grounding</span></div>
       <div class="lane-body">
-        <div class="amount neutral">${money(r.raw.answer)}</div>
+        <div class="amount neutral">${fmtVal(r.raw.answer, r.scenario)}</div>
         <div class="lane-verdict shipped">&#10003; answered confidently</div>
         <p class="lane-note">No source. No provenance. No refusal. A confident number whether or
           not it answers the question asked.</p>
@@ -134,7 +137,7 @@ function ragLane(r: LaneResults): string {
       <div class="lane-head"><span class="lane-badge rag">RAG + Fact-check</span>
         <span class="lane-sub">real retriever &middot; real entailment check</span></div>
       <div class="lane-body">
-        <div class="amount neutral">${money(r.rag.answer)}</div>
+        <div class="amount neutral">${fmtVal(r.rag.answer, r.scenario)}</div>
         <div class="rag-hero ${heroClass}">
           <div class="rag-hero-badge">${heroText}</div>
           <div class="rag-hero-sub">${heroSub}</div>
@@ -160,7 +163,7 @@ function kontourLane(r: LaneResults): string {
       <div class="lane-head"><span class="lane-badge kontour">Kontour Conducted</span>
         <span class="lane-sub">real bundle &middot; structural gate</span></div>
       <div class="lane-body">
-        <div class="amount mint">${money(k.value)}</div>
+        <div class="amount mint">${fmtVal(k.value, r.scenario)}</div>
         <div class="answer-verified">&#10003; Grounded &amp; verified &mdash; the binding matches what was asked</div>
         <div class="panel-wrap">
           <div class="panel-label">Real Surface trust panel &mdash; what the bundle proves</div>
