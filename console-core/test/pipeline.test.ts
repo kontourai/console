@@ -483,3 +483,98 @@ test("buildPipeline DAG: ready reason is 'Dependencies met — ready to run'", (
   assert.ok(publish);
   assert.equal(publish.status, "blocked");
 });
+
+// ── trust.bundle gate expect tests ───────────────────────────────────────────
+
+test("buildPipeline: trust.bundle expect has kind=claimType from bundle_claim", () => {
+  const def = {
+    spec: {
+      steps: [
+        { id: "verify", next: null },
+      ],
+      gates: {
+        "verify-gate": {
+          step: "verify",
+          expects: [
+            {
+              id: "tests-passed",
+              kind: "trust.bundle",
+              required: true,
+              description: "Test results are ready for verification.",
+              bundle_claim: {
+                claimType: "quality.tests",
+                subjectType: "flow-step",
+                subjectId: "builder.verify",
+                accepted_statuses: ["verified"],
+              },
+            },
+          ],
+        },
+      },
+    },
+  };
+  const state = { run_id: "r1", status: "running", current_step: "verify", gate_outcomes: [], transitions: [] };
+  const pipeline = buildPipeline(def, state);
+
+  const verify = pipeline.stages.find((s) => s.id === "verify");
+  assert.ok(verify, "verify stage should exist");
+  const gate = verify.gates[0];
+  assert.ok(gate, "verify-gate should exist");
+  const expect_ = gate.expects[0];
+  assert.ok(expect_, "tests-passed expect should exist");
+  assert.equal(expect_.id, "tests-passed");
+  // kind should be the claimType (quality.tests) from bundle_claim
+  assert.equal(expect_.kind, "quality.tests", "expect.kind should be bundle_claim.claimType");
+  // label comes from description
+  assert.equal(expect_.label, "Test results are ready for verification.");
+  assert.equal(expect_.required, true);
+});
+
+test("buildPipeline: trust.bundle expect without bundle_claim falls back to raw kind", () => {
+  const def = {
+    spec: {
+      steps: [{ id: "verify", next: null }],
+      gates: {
+        "verify-gate": {
+          step: "verify",
+          expects: [
+            { id: "tb-expect", kind: "trust.bundle", required: true, description: "A trust bundle" },
+          ],
+        },
+      },
+    },
+  };
+  const state = { run_id: "r1", status: "running", current_step: "verify", gate_outcomes: [], transitions: [] };
+  const pipeline = buildPipeline(def, state);
+  const expect_ = pipeline.stages[0].gates[0].expects[0];
+  // No bundle_claim → kind stays as "trust.bundle"
+  assert.equal(expect_.kind, "trust.bundle");
+});
+
+test("buildPipeline: trust.bundle expect label falls back to claimType when no description", () => {
+  const def = {
+    spec: {
+      steps: [{ id: "verify", next: null }],
+      gates: {
+        "verify-gate": {
+          step: "verify",
+          expects: [
+            {
+              id: "tests-passed",
+              kind: "trust.bundle",
+              required: true,
+              // no description — should fall back to claimType
+              bundle_claim: { claimType: "quality.tests", subjectId: "builder.verify", accepted_statuses: ["verified"] },
+            },
+          ],
+        },
+      },
+    },
+  };
+  const state = { run_id: "r1", status: "running", current_step: "verify", gate_outcomes: [], transitions: [] };
+  const pipeline = buildPipeline(def, state);
+  const expect_ = pipeline.stages[0].gates[0].expects[0];
+  assert.equal(expect_.kind, "quality.tests");
+  // No description; label falls back to claimType (since claimType is defined)
+  assert.equal(expect_.label, "quality.tests");
+});

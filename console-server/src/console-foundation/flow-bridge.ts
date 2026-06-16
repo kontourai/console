@@ -154,47 +154,41 @@ export async function deriveFlowRunEvents(runDir: string, options: FlowBridgeSco
 // ── Trust report attachment ───────────────────────────────────────────────────
 
 /**
- * Loads Surface TrustBundles from evidence files in the run directory and
- * attaches derived TrustReports to matching gate-expects. Graceful: any parse
- * or derivation error is silently skipped — the pipeline still renders.
+ * Reads the Flow evidence manifest (evidence/manifest.json) from the run
+ * directory and attaches derived Surface TrustReports to matching gate-expects.
+ *
+ * Matching logic (Flow 1.3+ trust.bundle format):
+ *   For each gate-expect whose kind is "trust.bundle", look up the manifest
+ *   entry that has kind=="trust.bundle" and whose bundle_report (or bundle)
+ *   contains a claim matching the expect's bundle_claim selector
+ *   (claimType + optional subjectId).
+ *
+ *   For each match:
+ *     1. Call buildTrustReport(entry.bundle) for live derivation.
+ *     2. Fall back to entry.bundle_report if bundle is absent.
+ *     3. Attach as expect.trustReport.
+ *
+ * Graceful: any missing file, parse error, or derivation error is silently
+ * skipped — the pipeline still renders without trust report data.
  */
 async function attachTrustReports(runDir: string, pipeline: Pipeline): Promise<void> {
-  // Load candidate files: evidence/ subdir and any .json trust-artifact at top level
-  const candidateFiles: string[] = [];
-  const evidenceDir = path.join(runDir, "evidence");
-  if (fs.existsSync(evidenceDir)) {
-    try {
-      const entries: string[] = fs.readdirSync(evidenceDir).filter((f: string) => f.endsWith(".json"));
-      for (const entry of entries) candidateFiles.push(path.join(evidenceDir, entry));
-    } catch { /* skip unreadable dirs */ }
-  }
-  // Also check run-dir top-level for trust artifacts (Flow CLI typically writes them here)
+  // Read the evidence manifest (evidence/manifest.json is the canonical location
+  // in Flow 1.3+; the bridge only reads — Flow owns these files).
+  const manifestPath = path.join(runDir, "evidence", "manifest.json");
+  if (!fs.existsSync(manifestPath)) return;
+
+  let manifest: Record<string, unknown>;
   try {
-    const entries: string[] = fs.readdirSync(runDir).filter((f: string) => f.endsWith(".json") && f !== "state.json" && f !== "definition.json");
-    for (const entry of entries) candidateFiles.push(path.join(runDir, entry));
-  } catch { /* skip */ }
+    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+  } catch { return; /* malformed manifest — skip gracefully */ }
 
-  if (candidateFiles.length === 0) return;
+  const evidenceEntries = Array.isArray(manifest["evidence"])
+    ? (manifest["evidence"] as Array<Record<string, unknown>>)
+    : [];
 
-  // Parse candidates and identify Surface TrustBundles (schemaVersion 2 or 3)
-  const bundles: Array<{ file: string; bundle: Record<string, unknown>; verifyUrl?: string }> = [];
-  for (const file of candidateFiles) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
-      const sv = raw["schemaVersion"];
-      if ((sv === 2 || sv === 3) && Array.isArray(raw["claims"]) && Array.isArray(raw["evidence"])) {
-        const verifyUrl = typeof raw["verifyUrl"] === "string" ? raw["verifyUrl"] :
-          typeof raw["verification_url"] === "string" ? raw["verification_url"] : undefined;
-        bundles.push({ file, bundle: raw, verifyUrl });
-      } else if (typeof raw["verifyUrl"] === "string" || typeof raw["verification_url"] === "string") {
-        // Evidence file with only a verification URL (no bundle present yet)
-        const verifyUrl = (typeof raw["verifyUrl"] === "string" ? raw["verifyUrl"] : raw["verification_url"]) as string;
-        bundles.push({ file, bundle: raw, verifyUrl });
-      }
-    } catch { /* skip malformed files */ }
-  }
-
-  if (bundles.length === 0) return;
+  // Filter to trust.bundle evidence entries only (Flow 1.3+).
+  const trustBundleEntries = evidenceEntries.filter((e) => e["kind"] === "trust.bundle");
+  if (trustBundleEntries.length === 0) return;
 
   // Lazily import buildTrustReport — keep the require dynamic so the CJS build
   // can tree-shake if surface is absent, and to avoid top-level async.
@@ -208,33 +202,88 @@ async function attachTrustReports(runDir: string, pipeline: Pipeline): Promise<v
     }
   } catch { /* @kontourai/surface not available; skip trust reports */ }
 
-  // For each gate-expect of kind surface.claim, try to match a bundle and attach the report
+  // For each gate-expect whose Flow definition kind is "trust.bundle", find the
+  // matching manifest entry and attach a derived TrustReport.
+  //
+  // We need the raw definition to read bundle_claim selectors. Re-read it here
+  // rather than threading it through — it was already parsed in the caller.
+  let rawDef: Record<string, unknown> = {};
+  try {
+    const defPath = path.join(runDir, "definition.json");
+    if (fs.existsSync(defPath)) {
+      rawDef = JSON.parse(fs.readFileSync(defPath, "utf8")) as Record<string, unknown>;
+    }
+  } catch { /* if definition is unreadable, selector matching falls back to id */ }
+
+  // Build a lookup: expectId → bundle_claim selector from the definition.
+  const bundleClaimByExpectId = new Map<string, Record<string, unknown>>();
+  const gateSection = (rawDef["spec"] as Record<string, unknown> | undefined)?.["gates"] ?? rawDef["gates"] ?? {};
+  if (gateSection && typeof gateSection === "object") {
+    for (const [, gateDef] of Object.entries(gateSection as Record<string, unknown>)) {
+      const g = gateDef as Record<string, unknown>;
+      const expects = Array.isArray(g["expects"]) ? (g["expects"] as Array<Record<string, unknown>>) : [];
+      for (const ex of expects) {
+        if (ex["kind"] === "trust.bundle" && ex["bundle_claim"] && typeof ex["bundle_claim"] === "object") {
+          bundleClaimByExpectId.set(String(ex["id"]), ex["bundle_claim"] as Record<string, unknown>);
+        }
+      }
+    }
+  }
+
   for (const stage of pipeline.stages) {
     for (const gate of stage.gates) {
       for (const expect of gate.expects as PipelineGateExpect[]) {
-        if (expect.kind !== "surface.claim") continue;
-        if (expect.trustReport !== undefined || expect.verifyUrl !== undefined) continue;
+        if (expect.trustReport !== undefined) continue;
+        // The pipeline-built expect.kind is the claimType (if trust.bundle) or the raw kind.
+        // Detect trust.bundle expects by looking up the selector we extracted from the definition.
+        const selector = bundleClaimByExpectId.get(expect.id);
+        // If no selector found but we have trust.bundle entries, try matching by expect.kind
+        // as a claimType (handles cases where definition re-read was unavailable).
+        const claimType: string | undefined =
+          typeof selector?.["claimType"] === "string" ? selector["claimType"] as string : undefined;
+        const subjectId: string | undefined =
+          typeof selector?.["subjectId"] === "string" ? selector["subjectId"] as string : undefined;
 
-        // Match: prefer a bundle whose source or claims subject matches the expect id/label
-        const matched = bundles.find((b) => {
-          const source = typeof b.bundle["source"] === "string" ? b.bundle["source"] as string : "";
-          const claims = Array.isArray(b.bundle["claims"]) ? b.bundle["claims"] as Array<Record<string, unknown>> : [];
-          return source.includes(expect.id) ||
-            source.includes(expect.label) ||
-            claims.some((c) => String(c["subjectId"] ?? "").includes(expect.id) ||
-              String(c["claimType"] ?? "").includes(expect.id) ||
-              String(c["subjectId"] ?? "").includes(expect.label));
-        }) ?? bundles[0]; // fall back to first bundle if only one available
+        // Only process trust.bundle expects (selector present, or kind looks like claimType)
+        if (!selector) continue;
+
+        // Find the manifest entry that best matches this expect's bundle_claim selector.
+        // Match: entry's bundle or bundle_report contains a claim with matching claimType
+        // and (if specified) subjectId.
+        const matched = trustBundleEntries.find((entry) => {
+          // Check via bundle_report.claims (cached) or bundle.claims (live).
+          const reportClaims = Array.isArray((entry["bundle_report"] as Record<string, unknown> | undefined)?.["claims"])
+            ? ((entry["bundle_report"] as Record<string, unknown>)["claims"] as Array<Record<string, unknown>>)
+            : [];
+          const bundleData = entry["bundle"] as Record<string, unknown> | undefined;
+          const bundleClaims = Array.isArray(bundleData?.["claims"])
+            ? (bundleData!["claims"] as Array<Record<string, unknown>>)
+            : [];
+          const allClaims = [...reportClaims, ...bundleClaims];
+          if (allClaims.length === 0) return false;
+
+          return allClaims.some((c) => {
+            const claimTypeMatch = !claimType || String(c["claimType"] ?? c["type"] ?? "") === claimType;
+            const subjectMatch = !subjectId || String(c["subjectId"] ?? c["id"] ?? "") === subjectId;
+            return claimTypeMatch && subjectMatch;
+          });
+        });
 
         if (!matched) continue;
 
-        if (matched.verifyUrl) {
-          (expect as PipelineGateExpect).verifyUrl = matched.verifyUrl;
-        }
-        if (buildTrustReport && Array.isArray(matched.bundle["claims"]) && Array.isArray(matched.bundle["evidence"])) {
+        const bundleData = matched["bundle"] as Record<string, unknown> | undefined;
+
+        // Prefer live derivation from the raw bundle; fall back to embedded bundle_report.
+        if (buildTrustReport && bundleData &&
+          Array.isArray(bundleData["claims"]) && Array.isArray(bundleData["evidence"])) {
           try {
-            (expect as PipelineGateExpect).trustReport = buildTrustReport(matched.bundle);
-          } catch { /* derivation error — skip */ }
+            (expect as PipelineGateExpect).trustReport = buildTrustReport(bundleData);
+          } catch { /* derivation error — try fallback */ }
+        }
+
+        // Fallback: use the embedded bundle_report if live derivation wasn't possible.
+        if (expect.trustReport === undefined && matched["bundle_report"]) {
+          (expect as PipelineGateExpect).trustReport = matched["bundle_report"];
         }
       }
     }
