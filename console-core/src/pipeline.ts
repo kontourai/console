@@ -60,12 +60,21 @@ interface FlowDefinitionStep {
   needs?: string[];
 }
 
+interface BundleClaim {
+  claimType?: string;
+  subjectType?: string;
+  subjectId?: string;
+  accepted_statuses?: string[];
+}
+
 interface FlowDefinitionGateExpect {
   id: string;
   kind?: string;
   required?: boolean;
   description?: string;
   claim?: Record<string, unknown>;
+  /** trust.bundle gate expectation selector (Flow 1.3+). */
+  bundle_claim?: BundleClaim;
 }
 
 interface FlowDefinitionGate {
@@ -233,12 +242,19 @@ export function buildPipeline(
       .filter(([, gate]) => gate.step === step.id)
       .map(([gateId, gate]) => {
         const gateStatus = gateOutcomeStatus(gateId, outcomeByGateId, routeBackGateIds);
-        const expects: PipelineGateExpect[] = (gate.expects ?? []).map((e) => ({
-          id: e.id,
-          label: e.description ?? e.id,
-          required: e.required ?? true,
-          kind: e.kind ?? "unknown",
-        }));
+        const expects: PipelineGateExpect[] = (gate.expects ?? []).map((e) => {
+          // For trust.bundle expects, surface the claimType as the kind label so
+          // the drawer shows a sensible row (e.g. "quality.tests" rather than a
+          // generic string). The id and label come from the expect definition.
+          const isTrustBundle = e.kind === "trust.bundle";
+          const claimType = isTrustBundle && e.bundle_claim?.claimType ? e.bundle_claim.claimType : undefined;
+          return {
+            id: e.id,
+            label: e.description ?? (claimType ? claimType : e.id),
+            required: e.required ?? true,
+            kind: claimType ?? e.kind ?? "unknown",
+          };
+        });
         return {
           id: gateId,
           label: gateId,

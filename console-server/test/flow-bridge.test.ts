@@ -79,3 +79,196 @@ test("bridges a run into a live hub and skips sent ids on the second pass", asyn
     await new Promise((resolve: any) => app.close(resolve));
   }
 });
+
+test("attachTrustReports: trust.bundle evidence in manifest produces trustReport on gate-expect", async () => {
+  const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-trust-"));
+  const runId = "trust-run-1";
+  const runDir = join(flowRoot, "runs", runId);
+  mkdirSync(runDir, { recursive: true });
+
+  // State with current_step at verify
+  const state = {
+    run_id: runId,
+    subject: "checkout-banner",
+    status: "active",
+    current_step: "verify",
+    updated_at: "2026-06-15T00:00:00Z",
+    transitions: [],
+  };
+  writeFileSync(join(runDir, "state.json"), JSON.stringify(state));
+
+  // Definition with trust.bundle gate expect (Flow 1.3+ format)
+  const definition = {
+    steps: [
+      { id: "plan", next: "verify" },
+      { id: "verify", next: null },
+    ],
+    gates: {
+      "verify-gate": {
+        step: "verify",
+        expects: [
+          {
+            id: "tests-passed",
+            kind: "trust.bundle",
+            required: true,
+            description: "Test results are ready for verification.",
+            bundle_claim: {
+              claimType: "quality.tests",
+              subjectType: "flow-step",
+              subjectId: "builder.verify",
+              accepted_statuses: ["verified"],
+            },
+          },
+        ],
+      },
+    },
+  };
+  writeFileSync(join(runDir, "definition.json"), JSON.stringify(definition));
+
+  // Evidence manifest with a trust.bundle entry (Flow 1.3+ format)
+  const evidenceDir = join(runDir, "evidence");
+  mkdirSync(evidenceDir, { recursive: true });
+  const manifest = {
+    schema_version: "0.1",
+    run_id: runId,
+    evidence: [
+      {
+        id: "ev.1749000000.1",
+        gate_id: "verify-gate",
+        kind: "trust.bundle",
+        status: "passed",
+        bundle: {
+          schemaVersion: 3,
+          source: "ci/main",
+          claims: [
+            {
+              id: "claim.quality.tests",
+              subjectType: "flow-step",
+              subjectId: "builder.verify",
+              surface: "quality.developer-evidence",
+              claimType: "quality.tests",
+              fieldOrBehavior: "testSuite",
+              value: "all tests passed",
+              createdAt: "2026-06-15T00:00:00.000Z",
+              updatedAt: "2026-06-15T00:00:00.000Z",
+            },
+          ],
+          evidence: [
+            {
+              id: "evitem.1",
+              claimId: "claim.quality.tests",
+              evidenceType: "test_output",
+              method: "validation",
+              sourceRef: "ci/main",
+              excerptOrSummary: "All 42 tests passed.",
+              observedAt: "2026-06-15T00:00:00.000Z",
+              collectedBy: "ci/main",
+              passing: true,
+              supportStrength: "entails",
+            },
+          ],
+          policies: [],
+          events: [
+            {
+              id: "ev.verify.claim",
+              claimId: "claim.quality.tests",
+              status: "verified",
+              createdAt: "2026-06-15T00:00:00.000Z",
+              actor: "ci/main",
+            },
+          ],
+        },
+        bundle_report: {
+          id: "report.1749000000",
+          generatedAt: "2026-06-15T00:00:00.000Z",
+          claims: [
+            { id: "claim.quality.tests", claimType: "quality.tests", status: "verified" },
+          ],
+          summary: { counts: { total: 1, byStatus: { verified: 1 } } },
+        },
+        attached_at: "2026-06-15T00:00:00.000Z",
+      },
+    ],
+  };
+  writeFileSync(join(evidenceDir, "manifest.json"), JSON.stringify(manifest));
+
+  const events = await deriveFlowRunEvents(runDir);
+
+  // Find the pipeline snapshot event (sequence 0)
+  const pipelineEvent = events.find((e: { type: string }) => e.type === "flow.pipeline.snapshot");
+  assert.ok(pipelineEvent, "should have a pipeline snapshot event");
+
+  const pipeline = (pipelineEvent.payload.after as { pipeline: unknown }).pipeline as {
+    stages: Array<{
+      id: string;
+      gates: Array<{ expects: Array<{ id: string; kind: string; trustReport?: unknown }> }>;
+    }>;
+  };
+
+  const verifyStage = pipeline.stages.find((s: { id: string }) => s.id === "verify");
+  assert.ok(verifyStage, "verify stage should exist");
+  if (!verifyStage) return;
+
+  const verifyGate = verifyStage.gates[0];
+  assert.ok(verifyGate, "verify gate should exist");
+  if (!verifyGate) return;
+
+  const testsPassedExpect = verifyGate.expects.find((e: { id: string }) => e.id === "tests-passed");
+  assert.ok(testsPassedExpect, "tests-passed expect should exist");
+  if (!testsPassedExpect) return;
+
+  // The kind should be the claimType (quality.tests) from the bundle_claim selector
+  assert.equal(testsPassedExpect.kind, "quality.tests", "expect.kind should be the bundle_claim claimType");
+
+  // The trustReport should be attached — derived from the Hachure bundle
+  assert.ok(testsPassedExpect.trustReport !== undefined, "trustReport should be attached from trust.bundle evidence");
+
+  // Verify the trustReport has the expected structure (TrustReport from buildTrustReport)
+  const tr = testsPassedExpect.trustReport as { claims?: Array<{ claimType?: string; status?: string }> };
+  assert.ok(Array.isArray(tr.claims), "trustReport.claims should be an array");
+  const qualityClaim = (tr.claims ?? []).find((c: { claimType?: string }) => c.claimType === "quality.tests");
+  assert.ok(qualityClaim, "trustReport should contain a quality.tests claim");
+  assert.equal((qualityClaim as { status?: string })?.status, "verified", "claim status should be verified");
+});
+
+test("attachTrustReports: no manifest.json gracefully produces no trustReport", async () => {
+  const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-no-manifest-"));
+  const runId = "no-manifest-run";
+  const runDir = join(flowRoot, "runs", runId);
+  mkdirSync(runDir, { recursive: true });
+
+  writeFileSync(join(runDir, "state.json"), JSON.stringify({
+    run_id: runId, subject: "test", status: "active", current_step: "verify",
+    updated_at: "2026-06-15T00:00:00Z", transitions: [],
+  }));
+
+  const definition = {
+    steps: [{ id: "verify", next: null }],
+    gates: {
+      "verify-gate": {
+        step: "verify",
+        expects: [{
+          id: "tests-passed",
+          kind: "trust.bundle",
+          required: true,
+          description: "Tests",
+          bundle_claim: { claimType: "quality.tests", subjectId: "builder.verify", accepted_statuses: ["verified"] },
+        }],
+      },
+    },
+  };
+  writeFileSync(join(runDir, "definition.json"), JSON.stringify(definition));
+  // No evidence directory / manifest.json
+
+  const events = await deriveFlowRunEvents(runDir);
+  const pipelineEvent = events.find((e: { type: string }) => e.type === "flow.pipeline.snapshot");
+  assert.ok(pipelineEvent, "should still have a pipeline snapshot");
+
+  const pipeline = (pipelineEvent.payload.after as { pipeline: unknown }).pipeline as {
+    stages: Array<{ gates: Array<{ expects: Array<{ trustReport?: unknown }> }> }>;
+  };
+  const expect_ = pipeline.stages[0]?.gates[0]?.expects[0];
+  assert.ok(expect_ !== undefined);
+  // No trustReport — no crash
+  assert.equal(expect_?.trustReport, undefined, "should not have trustReport when no manifest");
+});

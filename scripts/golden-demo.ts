@@ -72,39 +72,41 @@ async function stage(title: string) {
   await sleep(slow);
 }
 
-/** Builds a small but valid Surface TrustReport for a claim. Uses dynamic import
- * to avoid CJS/ESM interop issues in the root tsconfig (module: Node16). */
-async function buildSampleTrustReport(opts: {
+/**
+ * Builds a Hachure TrustBundle and derives a TrustReport from it via
+ * buildTrustReport(). This exercises the SAME path a real Flow run uses:
+ * Flow attaches a trust.bundle evidence entry, the bridge reads the bundle
+ * from manifest.json, calls buildTrustReport, and attaches to the gate-expect.
+ *
+ * Uses dynamic import to avoid CJS-requires-ESM error in root tsconfig.
+ */
+async function buildTrustReportFromBundle(opts: {
   claimId: string;
   claimType: string;
-  subject: string;
-  status: "verified" | "assumed" | "stale" | "proposed";
+  subjectType: string;
+  subjectId: string;
   evidenceSummary: string;
   producer: string;
 }): Promise<unknown> {
-  // Dynamic import avoids the CJS-requires-ESM error in the root tsconfig.
   const { buildTrustReport } = await import("@kontourai/surface");
   const now = new Date();
+  // Build a Hachure-conformant TrustBundle (schemaVersion 3) — same shape
+  // that Flow writes to evidence/manifest.json as a trust.bundle entry's
+  // "bundle" field.
   const bundle = {
     schemaVersion: 3 as const,
     source: opts.producer,
     claims: [
       {
         id: opts.claimId,
-        subjectType: "artifact",
-        subjectId: opts.subject,
+        subjectType: opts.subjectType,
+        subjectId: opts.subjectId,
         surface: opts.producer,
         claimType: opts.claimType,
         fieldOrBehavior: opts.claimType,
-        value: true,
-        status: opts.status,
+        value: "all checks passed",
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
-        impactLevel: "high" as const,
-        confidenceBasis: {
-          evidenceStrength: "strong" as const,
-          reviewerAuthority: "domain_expert" as const,
-        },
       },
     ],
     evidence: [
@@ -122,7 +124,19 @@ async function buildSampleTrustReport(opts: {
       },
     ],
     policies: [],
-    events: [],
+    // A claim event with status="verified" is required by Surface's derivation
+    // function (deriveTrustStatus) to produce a verified TrustStatus.
+    events: [
+      {
+        id: `ev.${opts.claimId}.verified`,
+        claimId: opts.claimId,
+        status: "verified" as const,
+        createdAt: now.toISOString(),
+        actor: opts.producer,
+        method: "automated-ci" as const,
+        evidenceIds: [`ev-${opts.claimId}-1`],
+      },
+    ],
   };
   return buildTrustReport(bundle);
 }
@@ -146,27 +160,63 @@ async function emitDagPipelineSnapshot() {
       gates: {
         "plan-gate": {
           step: "plan",
-          expects: [{ id: "plan-done", kind: "surface.claim", required: true, description: "Plan & acceptance criteria ready" }],
+          expects: [{
+            id: "plan-done",
+            kind: "trust.bundle",
+            required: true,
+            description: "Plan & acceptance criteria ready",
+            bundle_claim: { claimType: "builder.acceptance", subjectType: "flow-step", subjectId: "builder.plan", accepted_statuses: ["verified"] },
+          }],
         },
         "shape-gate": {
           step: "shape",
-          expects: [{ id: "shape-done", kind: "surface.claim", required: true, description: "API shape & contract ready" }],
+          expects: [{
+            id: "shape-done",
+            kind: "trust.bundle",
+            required: true,
+            description: "API shape & contract ready",
+            bundle_claim: { claimType: "builder.acceptance", subjectType: "flow-step", subjectId: "builder.shape", accepted_statuses: ["verified"] },
+          }],
         },
         // Note: no gate for "integrate" — intentional for config-warning demo
         "implement-gate": {
           step: "implement",
           expects: [
-            { id: "impl-diff", kind: "surface.claim", required: true, description: "Implementation scoped diff" },
-            { id: "test-coverage", kind: "surface.claim", required: false, description: "Test coverage report" },
+            {
+              id: "impl-diff",
+              kind: "trust.bundle",
+              required: true,
+              description: "Implementation scoped diff",
+              bundle_claim: { claimType: "implementation.scoped-diff", subjectType: "flow-step", subjectId: "builder.implement", accepted_statuses: ["verified"] },
+            },
+            {
+              id: "test-coverage",
+              kind: "trust.bundle",
+              required: false,
+              description: "Test coverage report",
+              bundle_claim: { claimType: "quality.coverage", subjectType: "flow-step", subjectId: "builder.implement", accepted_statuses: ["verified", "assumed"] },
+            },
           ],
         },
         "verify-gate": {
           step: "verify",
-          expects: [{ id: "tests-pass", kind: "surface.claim", required: true, description: "Tests passing" }],
+          expects: [{
+            id: "tests-pass",
+            kind: "trust.bundle",
+            required: true,
+            description: "Tests passing",
+            bundle_claim: { claimType: "quality.tests", subjectType: "flow-step", subjectId: "builder.verify", accepted_statuses: ["verified"] },
+          }],
         },
         "publish-gate": {
           step: "publish",
-          expects: [{ id: "release-ready", kind: "surface.claim", required: false, description: "Release readiness confirmed" }],
+          expects: [{
+            id: "release-ready",
+            kind: "trust.bundle",
+            required: false,
+            description: "Release readiness confirmed",
+            bundle_claim: { claimType: "release.readiness", subjectType: "flow-step", subjectId: "builder.publish", accepted_statuses: ["verified", "assumed"] },
+          }],
         },
       },
     },
@@ -192,26 +242,27 @@ async function emitDagPipelineSnapshot() {
 
   const dagPipeline = buildPipeline(dagDefinition, dagState);
 
-  // Attach a realistic Surface TrustReport to the impl-diff gate-expect so the
-  // embedded trust panel renders with content in the Console operate view.
+  // Attach Surface TrustReports derived via buildTrustReport(bundle) — the same
+  // path the flow-bridge uses for real runs: bundle → buildTrustReport → trustReport.
+  // This exercises the REAL derivation pipeline, not a bespoke synthetic TrustReport.
   for (const stage of dagPipeline.stages) {
     for (const gate of stage.gates) {
       for (const expect of gate.expects) {
         if (expect.id === "impl-diff") {
-          (expect as typeof expect & { trustReport?: unknown }).trustReport = await buildSampleTrustReport({
+          (expect as typeof expect & { trustReport?: unknown }).trustReport = await buildTrustReportFromBundle({
             claimId: "impl-diff",
             claimType: "implementation.scoped-diff",
-            subject: "checkout-retry-banner",
-            status: "verified",
+            subjectType: "flow-step",
+            subjectId: "builder.implement",
             evidenceSummary: "Scoped diff analysis: 14 files changed, all within the checkout module. No cross-cutting side effects detected. Coverage held at 87%.",
             producer: "ci/main",
           });
         } else if (expect.id === "plan-done") {
-          (expect as typeof expect & { trustReport?: unknown }).trustReport = await buildSampleTrustReport({
+          (expect as typeof expect & { trustReport?: unknown }).trustReport = await buildTrustReportFromBundle({
             claimId: "plan-done",
             claimType: "builder.acceptance",
-            subject: "checkout-retry-banner",
-            status: "verified",
+            subjectType: "flow-step",
+            subjectId: "builder.plan",
             evidenceSummary: "Plan and acceptance criteria reviewed and approved by the team lead. All edge cases documented.",
             producer: "team/reviewer",
           });
