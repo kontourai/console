@@ -46,7 +46,7 @@
     "setup:repo-hooks": "node --import tsx scripts/setup-repo-hooks.ts",
     "validate:repo-hooks": "node --import tsx scripts/validate-repo-hooks.ts",
     "demo:grounded": "node --import tsx demo/grounded-answer/run.ts",
-    "test:demo:grounded": "node --import tsx --test demo/grounded-answer/conductor.test.ts",
+    "test:demo:grounded": "node --import tsx --test demo/grounded-answer/conductor.test.ts demo/grounded-answer/gallery.test.ts",
     "demo:grounded:build": "node --import tsx demo/grounded-answer/build-page.ts",
     "demo:grounded:serve": "node --import tsx demo/grounded-answer/build-page.ts && npx serve demo/grounded-answer/dist -p 9876",
     "demo:grounded:screenshot": "node --import tsx demo/grounded-answer/screenshot.ts"

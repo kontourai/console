@@ -1,575 +1,608 @@
 #!/usr/bin/env -S node --import tsx
 /**
- * Builds the standalone demo HTML page.
- * Copies surface-trust-panel.js to dist/ and generates the HTML with
- * real grounding data baked in.
+ * Builds the standalone three-lane gallery HTML page.
  *
- * Usage: node --import tsx demo/grounded-answer/build-page.ts
- *        or: npm run demo:grounded:build
+ * For every scenario it renders THREE columns — Raw LLM, RAG + fact-check, Kontour —
+ * with real lane verdicts baked in from the shared harness. The Kontour column embeds
+ * the REAL <surface-trust-panel> web component fed the REAL TrustReport whenever a claim
+ * was grounded (even on a block: the panel shows WHAT was proven, next to why it does not
+ * answer the question). The RAG column surfaces the honest WHY_FACTCHECK_PASSES note.
  *
- * Output: demo/grounded-answer/dist/index.html (serve the dist/ directory)
- *         demo/grounded-answer/dist/surface-trust-panel.js (web component)
+ * Editorial styling: Fraunces / Hanken Grotesk / IBM Plex Mono;
+ *   paper #f5f4ef, ink #0a0e13, mint #14a37a, cobalt #1f6f88, amber #c98a14.
+ *
+ * Usage: npm run demo:grounded:build  →  demo/grounded-answer/dist/index.html
  */
 
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { answer, rawAnswer } from "./conductor.js";
+import { runAll } from "./harness.js";
+import { SCENARIOS } from "./scenarios.js";
+import type { LaneResults } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, "..", "..");
 const outDir = join(__dirname, "dist");
 
-// Generate real grounding data using the real conductor + lab pipeline
-const queryAlpha = { accountId: "account-alpha", period: "Q3-2025" };
-const queryOmega = { accountId: "account-omega", period: "Q3-2025" };
-
-const conductedAlpha = answer(queryAlpha);
-const conductedOmega = answer(queryOmega);
-const rawAlpha = rawAnswer(queryAlpha);
-const rawOmega = rawAnswer(queryOmega);
-
-// Copy the surface-trust-panel web component to dist/
 mkdirSync(outDir, { recursive: true });
 copyFileSync(
   join(root, "console-ui", "public", "surface-trust-panel.js"),
   join(outDir, "surface-trust-panel.js")
 );
 
-// Serialize the trust reports for embedding
-const alphaReport = conductedAlpha.kind === "grounded"
-  ? JSON.stringify(conductedAlpha.report)
-  : null;
+const results = runAll(SCENARIOS);
 
-function formatAmount(amount: number): string {
-  return `$${amount.toLocaleString("en-US")}`;
+const money = (n: number) => `$${n.toLocaleString("en-US")}`;
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// Collect the reports to feed to the trust panels after the component defines.
+const panelReports: Record<string, unknown> = {};
+for (const r of results) {
+  const g = r.kontour.outcome === "block" ? r.kontour.grounded : r.kontour.grounded;
+  if (g) panelReports[`panel-${r.scenario.id}`] = g.report;
+}
+
+function ragColumn(r: LaneResults): string {
+  const fc = r.rag.factCheck;
+  const retrieved = fc.retrieved
+    .map((x) => `<span class="chip">${esc(x.chunk.id)} <em>${x.score.toFixed(2)}</em></span>`)
+    .join("");
+  const verdictClass =
+    fc.verdict === "supported" ? "ok" : fc.verdict === "abstain" ? "warn" : "bad";
+  return `
+    <div class="lane lane-rag">
+      <div class="lane-head">
+        <span class="lane-badge rag">RAG + Fact-check</span>
+        <span class="lane-sub">real retriever · real entailment check</span>
+      </div>
+      <div class="lane-body">
+        <div class="amount neutral">${money(r.rag.answer)}</div>
+        <div class="verdict ${r.rag.passed ? "shipped" : "held"}">
+          ${r.rag.passed ? "&#10003; PASSED &mdash; bad answer shipped" : "held"}
+        </div>
+        <div class="kv">
+          <div class="kv-label">Retrieved (cosine)</div>
+          <div class="chips">${retrieved || "<span class='chip'>(none on-subject)</span>"}</div>
+        </div>
+        <div class="kv">
+          <div class="kv-label">Fact-check verdict</div>
+          <div><span class="pill ${verdictClass}">${fc.verdict}</span></div>
+        </div>
+        <div class="why">
+          <div class="why-label">Why a fair fact-checker passes this</div>
+          <p>${esc(r.scenario.whyFactCheckPasses)}</p>
+        </div>
+      </div>
+    </div>`;
+}
+
+function rawColumn(r: LaneResults): string {
+  return `
+    <div class="lane lane-raw">
+      <div class="lane-head">
+        <span class="lane-badge raw">Raw LLM</span>
+        <span class="lane-sub">no grounding · no provenance</span>
+      </div>
+      <div class="lane-body">
+        <div class="amount neutral">${money(r.raw.answer)}</div>
+        <div class="verdict shipped">&#10003; answered confidently</div>
+        <div class="confab">
+          &#9889; No source, no provenance, no refusal mechanism. The raw model emits a
+          confident number whether or not it answers the question that was asked.
+        </div>
+      </div>
+    </div>`;
+}
+
+function kontourColumn(r: LaneResults): string {
+  const k = r.kontour;
+  const blocked = k.outcome === "block";
+  const grounded = k.grounded;
+  const mismatchLabel: Record<string, string> = {
+    qualifier: "qualifier mismatch",
+    freshness: "stale / freshness breach",
+    join: "invalid join",
+    locator: "unsupported locator",
+    absent: "no source — nothing to ground",
+  };
+  const panelBlock = grounded
+    ? `
+        <div class="panel-wrap">
+          <div class="panel-label">
+            Real Surface Trust Panel &mdash; what the bundle actually proves
+          </div>
+          <surface-trust-panel id="panel-${r.scenario.id}"></surface-trust-panel>
+          <div class="panel-foot">
+            The panel above is the REAL output of <code>buildSurveyTrustBundle()</code> +
+            <code>buildTrustReport()</code>. It verifies ${money(grounded.value)} bound to
+            <code>${esc(grounded.groundedQualifier)}</code> at locator
+            <code>${esc(grounded.groundedLocator)}</code>. The gate refuses because that
+            binding does not answer the question asked.
+          </div>
+        </div>`
+    : `<div class="panel-absent">
+         Nothing could be grounded &mdash; there is no source record to build a bundle from.
+         The gate refuses structurally; no panel because no claim exists.
+       </div>`;
+
+  return `
+    <div class="lane lane-kontour ${blocked ? "is-block" : "is-pass"}">
+      <div class="lane-head">
+        <span class="lane-badge kontour">Kontour Conducted</span>
+        <span class="lane-sub">real bundle · structural gate</span>
+      </div>
+      <div class="lane-body">
+        ${
+          blocked
+            ? `
+        <div class="refuse-head">&#8856; Structural refusal</div>
+        <div class="refuse-tag">${esc(mismatchLabel[(k as { mismatch: string }).mismatch])}</div>
+        <div class="refuse-reason">${esc((k as { reason: string }).reason)}</div>
+        ${panelBlock}
+        `
+            : `
+        <div class="amount mint">${money((k as { value: number }).value)}</div>
+        <div class="verdict held">&#10003; grounded &amp; verified</div>
+        ${panelBlock}
+        `
+        }
+      </div>
+    </div>`;
+}
+
+function scenarioBlock(r: LaneResults): string {
+  const s = r.scenario;
+  return `
+  <section class="scenario" id="${s.slug}">
+    <div class="scenario-head">
+      <div class="scenario-tag">${s.id.toUpperCase()}</div>
+      <h2 class="scenario-title">${esc(s.title)}</h2>
+      <p class="scenario-query">${esc(s.query)}</p>
+      <p class="scenario-truth"><strong>Truth:</strong> ${esc(s.correctAnswer)}</p>
+    </div>
+    <div class="lanes">
+      ${rawColumn(r)}
+      ${ragColumn(r)}
+      ${kontourColumn(r)}
+    </div>
+  </section>`;
 }
 
 const html = `<!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Kontour · Structural Grounding Demo</title>
-  <!-- surface-trust-panel web component — loaded as external ES module -->
+  <title>Kontour · Structural Grounding Gallery</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <script type="module" src="./surface-trust-panel.js"><\/script>
   <style>
-    /* ── Kontour design tokens (inline) ────────────────────────────────────── */
     :root {
-      color-scheme: dark;
-      --k-bg: #0d1410;
-      --k-panel: #141a17;
-      --k-panel-raised: #1b2320;
-      --k-line: rgba(36,68,52,0.22);
-      --k-line-strong: rgba(36,68,52,0.44);
-      --k-text: #d4e8dc;
-      --k-text-muted: #8cad9c;
-      --k-text-faint: #4a6456;
-      --k-positive: #34c97e;
-      --k-caution: #f5c542;
-      --k-negative: #e05c5c;
-      --k-brand: #2d9c5c;
-      --k-active: #3dd68c;
-      --k-shadow: 0 2px 12px rgba(0,0,0,0.4);
-      --k-radius-sm: 6px;
-      --k-font-ui: "Inter", system-ui, -apple-system, sans-serif;
+      --paper: #f5f4ef;
+      --ink: #0a0e13;
+      --mint: #14a37a;
+      --cobalt: #1f6f88;
+      --amber: #c98a14;
+      --line: rgba(10,14,19,0.12);
+      --line-strong: rgba(10,14,19,0.22);
+      --muted: rgba(10,14,19,0.62);
+      --faint: rgba(10,14,19,0.42);
+      --card: #fffefb;
+      --serif: "Fraunces", Georgia, serif;
+      --sans: "Hanken Grotesk", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, monospace;
     }
-    [data-theme="light"] {
-      color-scheme: light;
-      --k-bg: #f4f8f6;
-      --k-panel: #fff;
-      --k-panel-raised: #f0f5f2;
-      --k-line: rgba(36,68,52,0.12);
-      --k-line-strong: rgba(36,68,52,0.24);
-      --k-text: #1a2e22;
-      --k-text-muted: #4a6456;
-      --k-text-faint: #8cad9c;
-      --k-positive: #1e8c52;
-      --k-caution: #b58c00;
-      --k-negative: #b03030;
-      --k-brand: #1a7a42;
-      --k-active: #1a9c52;
-      --k-shadow: 0 2px 8px rgba(0,0,0,0.12);
-    }
-
-    /* ── Layout ─────────────────────────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      background: var(--k-bg);
-      color: var(--k-text);
-      font-family: var(--k-font-ui);
-      font-size: 14px;
-      line-height: 1.55;
-      min-height: 100vh;
-      padding: 0 0 48px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 15px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      padding-bottom: 64px;
     }
 
-    /* ── Header ─────────────────────────────────────────────────────────────── */
-    .demo-header {
-      background: var(--k-panel);
-      border-bottom: 1px solid var(--k-line-strong);
-      padding: 20px 32px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
+    /* ── Masthead ─────────────────────────────────────────────────── */
+    .masthead {
+      border-bottom: 2px solid var(--ink);
+      padding: 40px 48px 28px;
+      max-width: 1320px;
+      margin: 0 auto;
     }
-    .demo-header-logo {
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      color: var(--k-brand);
+    .brand {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.22em;
       text-transform: uppercase;
+      color: var(--mint);
+      font-weight: 600;
     }
-    .demo-header-title {
+    .masthead h1 {
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: 44px;
+      line-height: 1.08;
+      letter-spacing: -0.015em;
+      margin: 10px 0 14px;
+      max-width: 22ch;
+    }
+    .masthead h1 em { font-style: italic; color: var(--cobalt); }
+    .dek {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 78ch;
+    }
+    .dek strong { color: var(--ink); }
+
+    /* ── Thesis strip ─────────────────────────────────────────────── */
+    .thesis {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 18px 48px;
+      display: flex;
+      gap: 36px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid var(--line);
+    }
+    .thesis .metric { display: flex; flex-direction: column; }
+    .thesis .metric .num {
+      font-family: var(--serif);
+      font-size: 30px;
+      font-weight: 600;
+      line-height: 1;
+    }
+    .thesis .metric.rag .num { color: var(--amber); }
+    .thesis .metric.kontour .num { color: var(--mint); }
+    .thesis .metric .lbl {
+      font-size: 12px;
+      color: var(--muted);
+      max-width: 28ch;
+      margin-top: 4px;
+    }
+    .thesis .note {
+      font-size: 13px;
+      color: var(--muted);
+      max-width: 46ch;
+      border-left: 2px solid var(--line-strong);
+      padding-left: 16px;
+    }
+    .thesis code, .dek code {
+      font-family: var(--mono);
+      font-size: 0.85em;
+      background: rgba(20,163,122,0.10);
+      color: var(--mint);
+      padding: 1px 5px;
+      border-radius: 3px;
+    }
+
+    /* ── Scenario ─────────────────────────────────────────────────── */
+    .scenario {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 40px 48px 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .scenario-head { margin-bottom: 24px; }
+    .scenario-tag {
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      color: var(--cobalt);
+      font-weight: 600;
+    }
+    .scenario-title {
+      font-family: var(--serif);
+      font-weight: 600;
+      font-size: 27px;
+      letter-spacing: -0.01em;
+      margin: 4px 0 8px;
+    }
+    .scenario-query {
       font-size: 17px;
-      font-weight: 600;
-      color: var(--k-text);
+      font-weight: 500;
+      color: var(--ink);
     }
-    .demo-header-subtitle {
-      font-size: 12px;
-      color: var(--k-text-muted);
-      margin-left: auto;
-      text-align: right;
-    }
-
-    /* ── Thesis strip ────────────────────────────────────────────────────────── */
-    .thesis-strip {
-      background: color-mix(in srgb, var(--k-brand) 10%, transparent);
-      border-bottom: 1px solid color-mix(in srgb, var(--k-brand) 25%, transparent);
-      padding: 12px 32px;
+    .scenario-query::before { content: "\\201C"; }
+    .scenario-query::after { content: "\\201D"; }
+    .scenario-truth {
       font-size: 13px;
-      color: var(--k-text-muted);
+      color: var(--muted);
+      margin-top: 8px;
+      max-width: 90ch;
     }
-    .thesis-strip strong { color: var(--k-active); }
-    .thesis-strip code {
-      font-family: "JetBrains Mono", "Fira Code", monospace;
-      font-size: 11px;
-      color: var(--k-active);
-      background: color-mix(in srgb, var(--k-active) 10%, transparent);
-      padding: 1px 4px;
-      border-radius: 3px;
-    }
+    .scenario-truth strong { color: var(--cobalt); }
 
-    /* ── Query section ───────────────────────────────────────────────────────── */
-    .query-section {
-      padding: 32px 32px 0;
-    }
-    .query-label {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--k-text-faint);
-      margin-bottom: 6px;
-    }
-    .query-text {
-      font-size: 20px;
-      font-weight: 600;
-      color: var(--k-text);
-      margin-bottom: 24px;
-    }
-
-    /* ── Comparison grid ─────────────────────────────────────────────────────── */
-    .comparison-grid {
+    /* ── Lanes ────────────────────────────────────────────────────── */
+    .lanes {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1.15fr;
       gap: 20px;
-      padding: 0 32px 32px;
     }
+    @media (max-width: 1080px) { .lanes { grid-template-columns: 1fr; } }
 
-    /* ── Path card ───────────────────────────────────────────────────────────── */
-    .path-card {
-      background: var(--k-panel);
-      border: 1px solid var(--k-line);
-      border-radius: var(--k-radius-sm);
+    .lane {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 8px;
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
-    .path-card-header {
+    .lane-kontour.is-block { border-color: rgba(31,111,136,0.5); }
+    .lane-head {
       padding: 12px 16px;
-      border-bottom: 1px solid var(--k-line);
+      border-bottom: 1px solid var(--line);
       display: flex;
-      align-items: center;
+      align-items: baseline;
       gap: 10px;
+      flex-wrap: wrap;
     }
-    .path-badge {
+    .lane-badge {
+      font-family: var(--mono);
       font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      padding: 2px 8px;
-      border-radius: 3px;
-    }
-    .path-badge.raw {
-      background: color-mix(in srgb, var(--k-caution) 15%, transparent);
-      color: var(--k-caution);
-      border: 1px solid color-mix(in srgb, var(--k-caution) 30%, transparent);
-    }
-    .path-badge.grounded {
-      background: color-mix(in srgb, var(--k-positive) 15%, transparent);
-      color: var(--k-positive);
-      border: 1px solid color-mix(in srgb, var(--k-positive) 30%, transparent);
-    }
-    .path-badge.refused {
-      background: color-mix(in srgb, var(--k-negative) 15%, transparent);
-      color: var(--k-negative);
-      border: 1px solid color-mix(in srgb, var(--k-negative) 30%, transparent);
-    }
-    .path-title {
-      font-size: 13px;
       font-weight: 600;
-      color: var(--k-text);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border-radius: 4px;
     }
-    .path-desc {
-      font-size: 11px;
-      color: var(--k-text-faint);
-      margin-left: auto;
-    }
-    .path-card-body { padding: 16px; }
+    .lane-badge.raw { background: rgba(201,138,20,0.14); color: var(--amber); }
+    .lane-badge.rag { background: rgba(201,138,20,0.14); color: var(--amber); }
+    .lane-badge.kontour { background: rgba(20,163,122,0.16); color: var(--mint); }
+    .lane-sub { font-size: 11px; color: var(--faint); font-family: var(--mono); }
+    .lane-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
 
-    /* ── Answer display ──────────────────────────────────────────────────────── */
-    .answer-amount {
-      font-size: 36px;
-      font-weight: 700;
+    .amount {
+      font-family: var(--serif);
+      font-size: 38px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
       font-variant-numeric: tabular-nums;
-      margin-bottom: 10px;
-      letter-spacing: -0.5px;
+      line-height: 1;
     }
-    .answer-amount.grounded { color: var(--k-positive); }
-    .answer-amount.raw { color: var(--k-text); }
+    .amount.neutral { color: var(--ink); }
+    .amount.mint { color: var(--mint); }
 
-    .provenance-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 10px;
-      border-radius: 4px;
+    .verdict {
       font-size: 12px;
-      margin-bottom: 10px;
+      font-weight: 600;
+      font-family: var(--mono);
+      letter-spacing: 0.02em;
     }
-    .provenance-row.none {
-      background: color-mix(in srgb, var(--k-caution) 8%, transparent);
-      border: 1px solid color-mix(in srgb, var(--k-caution) 20%, transparent);
-      color: var(--k-caution);
-    }
-    .provenance-row.present {
-      background: color-mix(in srgb, var(--k-positive) 8%, transparent);
-      border: 1px solid color-mix(in srgb, var(--k-positive) 20%, transparent);
-      color: var(--k-positive);
-    }
-    .confabulation-warn {
-      margin-top: 10px;
+    .verdict.shipped { color: var(--amber); }
+    .verdict.held { color: var(--mint); }
+
+    .confab {
+      font-size: 12.5px;
+      color: var(--muted);
+      background: rgba(201,138,20,0.08);
+      border: 1px solid rgba(201,138,20,0.24);
+      border-radius: 6px;
       padding: 10px 12px;
-      background: color-mix(in srgb, var(--k-caution) 10%, transparent);
-      border: 1px solid color-mix(in srgb, var(--k-caution) 25%, transparent);
-      border-radius: 4px;
-      font-size: 12px;
-      color: var(--k-caution);
       line-height: 1.5;
     }
 
-    /* ── Refusal card ────────────────────────────────────────────────────────── */
-    .refusal-card {
-      background: color-mix(in srgb, var(--k-negative) 8%, transparent);
-      border: 1px solid color-mix(in srgb, var(--k-negative) 25%, transparent);
+    .kv { display: flex; flex-direction: column; gap: 4px; }
+    .kv-label {
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--faint);
+      font-weight: 600;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      background: rgba(10,14,19,0.05);
+      border: 1px solid var(--line);
       border-radius: 4px;
-      padding: 16px;
+      padding: 2px 6px;
+      color: var(--muted);
     }
-    .refusal-title {
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--k-negative);
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .refusal-message {
-      font-size: 13px;
-      color: var(--k-text-muted);
-      font-style: italic;
-      padding: 8px 10px;
-      background: color-mix(in srgb, var(--k-negative) 6%, transparent);
-      border-radius: 4px;
-      border-left: 2px solid var(--k-negative);
-      margin-bottom: 12px;
-    }
-    .refusal-structural {
-      font-size: 12px;
-      color: var(--k-text-faint);
-      padding-top: 10px;
-      border-top: 1px solid color-mix(in srgb, var(--k-negative) 20%, transparent);
-      line-height: 1.65;
-    }
-    .refusal-structural strong { color: var(--k-text-muted); }
-    .refusal-structural code {
-      font-family: "JetBrains Mono", "Fira Code", monospace;
+    .chip em { color: var(--cobalt); font-style: normal; }
+    .pill {
+      font-family: var(--mono);
       font-size: 11px;
-      color: var(--k-active);
-      background: color-mix(in srgb, var(--k-active) 10%, transparent);
-      padding: 1px 4px;
-      border-radius: 3px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
+    .pill.ok { background: rgba(20,163,122,0.14); color: var(--mint); }
+    .pill.warn { background: rgba(201,138,20,0.16); color: var(--amber); }
+    .pill.bad { background: rgba(176,48,48,0.14); color: #b03030; }
 
-    /* ── Trust panel wrapper ─────────────────────────────────────────────────── */
-    .trust-panel-wrapper {
-      margin-top: 12px;
+    .why {
+      margin-top: auto;
+      background: rgba(201,138,20,0.07);
+      border: 1px solid rgba(201,138,20,0.22);
+      border-radius: 6px;
+      padding: 11px 13px;
     }
-    .trust-panel-label {
-      font-size: 11px;
+    .why-label {
+      font-size: 10px;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
       font-weight: 700;
+      color: var(--amber);
+      margin-bottom: 6px;
+    }
+    .why p { font-size: 12.5px; color: var(--muted); line-height: 1.55; }
+
+    /* ── Kontour refusal ──────────────────────────────────────────── */
+    .refuse-head {
+      font-family: var(--serif);
+      font-size: 19px;
+      font-weight: 600;
+      color: var(--cobalt);
+    }
+    .refuse-tag {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
       letter-spacing: 0.06em;
       text-transform: uppercase;
-      color: var(--k-text-faint);
+      color: var(--cobalt);
+      background: rgba(31,111,136,0.10);
+      border: 1px solid rgba(31,111,136,0.3);
+      border-radius: 4px;
+      padding: 3px 9px;
+      align-self: flex-start;
+    }
+    .refuse-reason {
+      font-size: 13.5px;
+      color: var(--ink);
+      background: rgba(31,111,136,0.06);
+      border-left: 3px solid var(--cobalt);
+      border-radius: 0 6px 6px 0;
+      padding: 11px 13px;
+      line-height: 1.55;
+    }
+    .panel-wrap { margin-top: 4px; }
+    .panel-label, .panel-foot {
+      font-size: 11px;
+      color: var(--faint);
+      letter-spacing: 0.04em;
+    }
+    .panel-label {
+      text-transform: uppercase;
+      font-weight: 600;
       margin-bottom: 8px;
       padding-bottom: 6px;
-      border-bottom: 1px solid var(--k-line);
+      border-bottom: 1px solid var(--line);
     }
-
-    /* ── Divider between queries ─────────────────────────────────────────────── */
-    .query-divider {
-      border: none;
-      border-top: 1px solid var(--k-line-strong);
-      margin: 0 32px 32px;
-    }
-
-    /* ── Architecture note ───────────────────────────────────────────────────── */
-    .arch-note {
-      margin: 0 32px;
-      padding: 16px 20px;
-      background: var(--k-panel);
-      border: 1px solid var(--k-line);
-      border-radius: var(--k-radius-sm);
-      font-size: 12px;
-      color: var(--k-text-muted);
-      line-height: 1.65;
-    }
-    .arch-note h3 {
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--k-text-faint);
-      margin-bottom: 10px;
-    }
-    .arch-note p + p { margin-top: 10px; }
-    .arch-note code {
-      font-family: "JetBrains Mono", "Fira Code", monospace;
-      font-size: 11px;
-      color: var(--k-active);
-      background: color-mix(in srgb, var(--k-active) 10%, transparent);
+    .panel-foot { margin-top: 10px; line-height: 1.5; color: var(--muted); }
+    .panel-foot code, .refuse-reason code {
+      font-family: var(--mono);
+      font-size: 0.86em;
+      background: rgba(31,111,136,0.12);
+      color: var(--cobalt);
       padding: 1px 4px;
       border-radius: 3px;
     }
-    .arch-note strong { color: var(--k-text); }
+    .panel-absent {
+      font-size: 13px;
+      color: var(--muted);
+      background: rgba(31,111,136,0.05);
+      border: 1px dashed rgba(31,111,136,0.3);
+      border-radius: 6px;
+      padding: 12px 14px;
+      line-height: 1.5;
+    }
+    surface-trust-panel { display: block; }
 
-    /* ── Theme toggle ────────────────────────────────────────────────────────── */
-    .theme-toggle {
-      background: var(--k-panel-raised);
-      border: 1px solid var(--k-line);
-      border-radius: var(--k-radius-sm);
-      color: var(--k-text-muted);
-      cursor: pointer;
+    /* ── Colophon ─────────────────────────────────────────────────── */
+    .colophon {
+      max-width: 1320px;
+      margin: 32px auto 0;
+      padding: 28px 48px;
+    }
+    .colophon h3 {
+      font-family: var(--mono);
       font-size: 12px;
-      padding: 4px 10px;
-      margin-top: 4px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 12px;
     }
-    .theme-toggle:hover { color: var(--k-text); border-color: var(--k-line-strong); }
-
-    /* ── Source badge ────────────────────────────────────────────────────────── */
-    .source-ref {
-      font-family: "JetBrains Mono", "Fira Code", monospace;
-      font-size: 10px;
-      color: var(--k-active);
-      background: color-mix(in srgb, var(--k-active) 10%, transparent);
-      padding: 1px 5px;
+    .colophon p { font-size: 13px; color: var(--muted); max-width: 92ch; }
+    .colophon p + p { margin-top: 10px; }
+    .colophon code {
+      font-family: var(--mono);
+      font-size: 0.86em;
+      background: rgba(20,163,122,0.10);
+      color: var(--mint);
+      padding: 1px 4px;
       border-radius: 3px;
-      word-break: break-all;
     }
+    .colophon strong { color: var(--ink); }
   </style>
 </head>
 <body>
-  <header class="demo-header">
-    <span class="demo-header-logo">Kontour</span>
-    <span class="demo-header-title">Structural Grounding Demo</span>
-    <div class="demo-header-subtitle">
-      <div>Query-driven grounding refuses instead of confabulating</div>
-      <button class="theme-toggle" onclick="toggleTheme()">Toggle theme</button>
-    </div>
+  <header class="masthead">
+    <div class="brand">Kontour</div>
+    <h1>Structural grounding beats a <em>good</em> RAG&nbsp;+&nbsp;fact-check pipeline.</h1>
+    <p class="dek">
+      Five questions. Three lanes each. The <strong>RAG&nbsp;+&nbsp;fact-check</strong> lane is a
+      <strong>real, fair baseline</strong> &mdash; a deterministic cosine retriever over a chunk
+      corpus and an entailment-style checker that confirms the answer against retrieved evidence.
+      In every scenario it <strong>honestly passes</strong> the wrong answer. The
+      <strong>Kontour</strong> lane grounds each claim with the real
+      <code>buildSurveyTrustBundle()</code> and refuses through a structural gate that binds the
+      value to its <strong>qualifier, freshness, join, and locator</strong>.
+    </p>
   </header>
 
-  <div class="thesis-strip">
-    <strong>Thesis:</strong> The conducted path uses a real grounding loop
-    (conductor &rarr; lab &rarr; <code>buildSurveyTrustBundle()</code> &rarr; <code>buildTrustReport()</code>).
-    When the source isn&rsquo;t there, it <strong>structurally refuses</strong> &mdash;
-    the code path literally cannot emit a verified answer without a grounding record.
-    The raw path returns a number regardless.
-  </div>
-
-  <!-- ── Query 1: Alpha Corp Q3-2025 (DATA EXISTS) ─────────────────────────── -->
-  <div class="query-section">
-    <div class="query-label">Query 1 of 2 &mdash; source exists</div>
-    <div class="query-text">What are Alpha Corp&rsquo;s Q3-2025 sales?</div>
-  </div>
-
-  <div class="comparison-grid">
-    <!-- LEFT: Raw / ungrounded -->
-    <div class="path-card">
-      <div class="path-card-header">
-        <span class="path-badge raw">Raw</span>
-        <span class="path-title">Ungrounded Path</span>
-        <span class="path-desc">No grounding loop &bull; No provenance</span>
-      </div>
-      <div class="path-card-body">
-        <div class="answer-amount raw">${formatAmount(rawAlpha.amount)}</div>
-        <div class="provenance-row none">
-          &#9888; No provenance &mdash; retrieve-then-hope
-        </div>
-        <div style="font-size:12px;color:var(--k-text-faint)">
-          This query has a backing record, but the raw path has no grounding
-          loop and no structural gate &mdash; it returns a number regardless of
-          whether a source exists.
-        </div>
-      </div>
+  <div class="thesis">
+    <div class="metric rag">
+      <span class="num">5 / 5</span>
+      <span class="lbl">scenarios where the fair RAG + fact-check lane shipped the wrong answer</span>
     </div>
-
-    <!-- RIGHT: Conducted / grounded -->
-    <div class="path-card">
-      <div class="path-card-header">
-        <span class="path-badge grounded">Grounded</span>
-        <span class="path-title">Conducted Path</span>
-        <span class="path-desc">Real @kontourai/survey bundle &bull; Chain of custody</span>
-      </div>
-      <div class="path-card-body">
-        ${conductedAlpha.kind === "grounded" ? `
-        <div class="answer-amount grounded">${formatAmount(conductedAlpha.amount)}</div>
-        <div class="provenance-row present">
-          &#10003; Claim status: <strong>verified</strong>
-          &bull; <span class="source-ref">internal://sales-system/docs/sales-doc-2025-Q3-alpha</span>
-        </div>
-        <div class="trust-panel-wrapper">
-          <div class="trust-panel-label">Surface Trust Panel &mdash; real chain of custody</div>
-          <surface-trust-panel id="trust-panel-alpha"></surface-trust-panel>
-        </div>
-        ` : ""}
-      </div>
+    <div class="metric kontour">
+      <span class="num">5 / 5</span>
+      <span class="lbl">scenarios where Kontour structurally refused the wrong answer</span>
+    </div>
+    <div class="note">
+      The point is not that the checker is bad &mdash; it is competent and subject-aware. The point
+      is that a <strong>post-hoc text check cannot see binding</strong>: whether the number answers
+      the exact question asked. Structural grounding can.
     </div>
   </div>
 
-  <hr class="query-divider">
+  ${results.map(scenarioBlock).join("\n")}
 
-  <!-- ── Query 2: Omega Ltd Q3-2025 (NO DATA — STRUCTURAL REFUSAL) ─────────── -->
-  <div class="query-section">
-    <div class="query-label">Query 2 of 2 &mdash; no source (the key proof)</div>
-    <div class="query-text">What are Omega Ltd&rsquo;s Q3-2025 sales?</div>
-  </div>
-
-  <div class="comparison-grid">
-    <!-- LEFT: Raw / ungrounded — RETURNS A NUMBER (the problem) -->
-    <div class="path-card">
-      <div class="path-card-header">
-        <span class="path-badge raw">Raw</span>
-        <span class="path-title">Ungrounded Path</span>
-        <span class="path-desc">No grounding loop &bull; No provenance</span>
-      </div>
-      <div class="path-card-body">
-        <div class="answer-amount raw">${formatAmount(rawOmega.amount)}</div>
-        <div class="provenance-row none">
-          &#9888; No provenance &mdash; no source exists
-        </div>
-        <div class="confabulation-warn">
-          &#9889; This number has <strong>NO backing record</strong>. The raw path
-          returned it anyway &mdash; no structural gate, no refusal mechanism.
-          This is the confabulation risk: a confident number with no chain of custody.
-        </div>
-      </div>
-    </div>
-
-    <!-- RIGHT: Conducted — STRUCTURAL REFUSAL (the proof) -->
-    <div class="path-card">
-      <div class="path-card-header">
-        <span class="path-badge refused">Refused</span>
-        <span class="path-title">Conducted Path</span>
-        <span class="path-desc">Structural refusal &mdash; no fabrication</span>
-      </div>
-      <div class="path-card-body">
-        ${conductedOmega.kind === "refused" ? `
-        <div class="refusal-card">
-          <div class="refusal-title">&#8856; Structural Refusal</div>
-          <div class="refusal-message">&ldquo;${conductedOmega.reason}&rdquo;</div>
-          <div class="refusal-structural">
-            <strong>Why structural?</strong>
-            The conductor calls <code>groundClaim(claimRequest, record)</code>.
-            When <code>record</code> is <code>undefined</code> (no source found),
-            <code>groundClaim</code> returns <code>undefined</code>.
-            The conductor gates on this: it returns a <code>Refusal</code> &mdash;
-            the TypeScript discriminated union <code>GroundedAnswer | Refusal</code>
-            makes it impossible to access <code>.bundle</code> or <code>.amount</code>
-            without first checking <code>.kind === &ldquo;grounded&rdquo;</code>.
-            <br><br>
-            Not a heuristic. Not a confidence threshold. A deterministic gate:
-            no grounding record &rarr; no <code>GroundedAnswer</code>.
-          </div>
-        </div>
-        ` : ""}
-      </div>
-    </div>
-  </div>
-
-  <hr class="query-divider">
-
-  <!-- Architecture note -->
-  <div class="arch-note">
-    <h3>Architecture &mdash; what is real vs mocked</h3>
+  <section class="colophon">
+    <h3>What is real vs. mocked</h3>
     <p>
-      <strong>Mocked (the sales system):</strong> an in-memory dataset of a few accounts with Q3 records.
-      <code>retrieveSalesRecord(accountId, period)</code> does a simple array lookup.
-      The absence of Omega Ltd Q3-2025 data is intentional &mdash; it drives the structural refusal.
+      <strong>Mocked:</strong> the in-memory sales corpus (structured records + free-text chunks) and
+      the deterministic content hashes (modelled like HTTP ETags). The same underlying facts feed
+      both the chunks the RAG lane retrieves and the structured records the Kontour lane grounds &mdash;
+      the baseline is not handed a degraded corpus.
     </p>
     <p>
-      <strong>Real (the grounding):</strong> the lab calls the real <code>buildSurveyTrustBundle(surveyInput)</code>
-      from <code>@kontourai/survey</code> &mdash; not a stub. That function asserts producer discipline:
-      a claim cannot be &ldquo;verified&rdquo; without a review outcome with an <code>actor</code> and <code>reviewedAt</code>.
-      Then <code>buildTrustReport(bundle)</code> from <code>@kontourai/surface</code> derives the TrustReport.
-      The chain of custody in the trust panel above is the real output of those real calls.
+      <strong>Real:</strong> the RAG lane is a genuine cosine retriever + entailment-style fact-checker
+      (no network, no API, no LLM). The Kontour lane calls the real
+      <code>buildSurveyTrustBundle()</code> from <code>@kontourai/survey</code> &mdash; which throws if a
+      claim is &ldquo;verified&rdquo; without a review actor + <code>reviewedAt</code> + locator &mdash; and
+      <code>buildTrustReport()</code> from <code>@kontourai/surface</code>. The trust panels above are the
+      real output of those calls.
     </p>
     <p>
-      <strong>Structural gate:</strong> <code>answer(query)</code> returns
-      <code>ConductedAnswer = GroundedAnswer | Refusal</code>.
-      The <code>GroundedAnswer</code> branch is only reachable when <code>groundClaim()</code>
-      returns a real <code>GroundingResult</code>. <code>groundClaim()</code> only returns a result
-      when it receives a real <code>SalesRecord</code> and successfully calls
-      <code>buildSurveyTrustBundle()</code>. TypeScript&rsquo;s exhaustive union check means
-      no caller can access <code>.amount</code> or <code>.bundle</code> without first
-      checking <code>.kind === &ldquo;grounded&rdquo;</code>.
+      <strong>Structural gate:</strong> each lane verdict is a discriminated <code>GateOutcome</code>
+      (<code>pass</code> | <code>block</code>) computed by comparing the request against the binding facts
+      in the real bundle &mdash; qualifier, integrity-ref snapshot, sub-claim periods, cited locator. No
+      confidence threshold. A <code>block</code> carries no passable value, so no code path can emit a
+      verified answer when the binding fails.
     </p>
-  </div>
+  </section>
 
-  <!-- Feed the trust report to the panel after the component is defined -->
   <script type="module">
-    const alphaReport = ${alphaReport ?? "null"};
-    if (alphaReport) {
-      // customElements.whenDefined ensures the element class is registered
-      // before we set the property.
-      customElements.whenDefined("surface-trust-panel").then(() => {
-        const panel = document.getElementById("trust-panel-alpha");
-        if (panel) panel.report = alphaReport;
-      });
-    }
-
-    function toggleTheme() {
-      const current = document.documentElement.getAttribute("data-theme");
-      document.documentElement.setAttribute("data-theme", current === "light" ? "dark" : "light");
-    }
-    window.toggleTheme = toggleTheme;
+    const reports = ${JSON.stringify(panelReports)};
+    customElements.whenDefined("surface-trust-panel").then(() => {
+      for (const [id, report] of Object.entries(reports)) {
+        const el = document.getElementById(id);
+        if (el) el.report = report;
+      }
+    });
   </script>
 </body>
 </html>`;
 
 writeFileSync(join(outDir, "index.html"), html, "utf8");
 
-console.log(`\nDemo page built:`);
+console.log(`\nThree-lane gallery built:`);
 console.log(`  HTML:  ${join(outDir, "index.html")}`);
 console.log(`  Panel: ${join(outDir, "surface-trust-panel.js")}`);
-console.log(`\nServe the dist/ directory to view (file:// also works):`);
-console.log(`  npx serve ${outDir}`);
-console.log(`  or: open file://${join(outDir, "index.html")}\n`);
+console.log(`\nServe: npx serve ${outDir}  ·  or open file://${join(outDir, "index.html")}\n`);
