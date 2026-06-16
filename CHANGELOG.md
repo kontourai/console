@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/kontourai/console/compare/v1.5.0...v1.6.0) (2026-06-16)
+
+
+### Features
+
+* bridge reads Flow trust.bundle evidence into the trust panel ([#72](https://github.com/kontourai/console/issues/72)) ([9a1d976](https://github.com/kontourai/console/commit/9a1d976c52826eb1b63cf7cd0337b7a8f9fbaa64))
+* **console-ui:** migrate to @kontourai/ui and adopt Console product mark ([#68](https://github.com/kontourai/console/issues/68)) ([0c4d362](https://github.com/kontourai/console/commit/0c4d362a37376802163b0e577718ba6b156e00e1))
+
 ## [1.5.0](https://github.com/kontourai/console/compare/v1.4.0...v1.5.0) (2026-06-15)
 
 
