@@ -614,6 +614,7 @@ addStep("close", "step-dark step-center", `
         </div>
       </div>
     </div>
+    <p class="close-mcp">Even <strong>Agent + Tools (MCP)</strong> &mdash; the strongest, most authoritative baseline &mdash; shipped wrong on every trap it faced (${mcpShippedTraps}/${nTrapsMcp}): a real, live tool call with <strong>no binding, no gate, no portable proof</strong>.</p>
     <p class="close-line"><strong>Answered exactly when it could. Refused exactly when it couldn&rsquo;t.
       RAG + fact-check couldn&rsquo;t tell the two apart.</strong></p>
     <h2 class="close-tag">AI answers you can stand behind.</h2>
@@ -928,6 +929,9 @@ const html = `<!DOCTYPE html>
     .close-line { font-size: clamp(16px, 2vw, 22px); color: rgba(245,244,239,0.82); max-width: 52ch;
       margin: 0 auto 30px; }
     .close-line strong { color: var(--paper); }
+    .close-mcp { font-size: clamp(13px, 1.5vw, 16px); color: rgba(245,244,239,0.6); max-width: 58ch;
+      margin: 0 auto 18px; }
+    .close-mcp strong { color: rgba(245,244,239,0.9); }
     .close-tag { font-family: var(--serif); font-weight: 600; font-style: italic;
       font-size: clamp(34px, 5vw, 62px); color: var(--mint); letter-spacing: -0.01em; }
 

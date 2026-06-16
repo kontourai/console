@@ -25,7 +25,7 @@ execSync("node --import tsx demo/grounded-answer/build-present.ts", { cwd: root,
 // Reconstruct the step order the build uses, so filenames stay in sync with the deck.
 runAll(SCENARIOS); // ensure the harness is exercised (parity with the build)
 // Arc: title, setup, opening win, hero precision pair (w1 then s1), remaining traps, close.
-const stepNames: string[] = ["title", "setup", "win-open"];
+const stepNames: string[] = ["title", "setup", "ladder", "win-open"];
 stepNames.push("w1-question", "w1-reveal", "s1-question", "s1-reveal");
 const REMAINING_TRAP_ORDER = ["s2", "s4", "s3", "s0"];
 for (const id of REMAINING_TRAP_ORDER) {
