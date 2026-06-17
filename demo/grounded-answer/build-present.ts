@@ -25,11 +25,11 @@
  * Usage: npm run demo:grounded:present  →  demo/grounded-answer/dist/present.html
  */
 
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAll } from "./harness.js";
-import { SCENARIOS, WIN_SCENARIOS, TRAP_SCENARIOS, OKF_WIN, OKF_TRAP } from "./scenarios.js";
+import { SCENARIOS, OKF_WIN, OKF_TRAP } from "./scenarios.js";
 import type { LaneResults } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +41,13 @@ copyFileSync(
   join(root, "console-ui", "public", "surface-trust-panel.js"),
   join(outDir, "surface-trust-panel.js")
 );
+// Inline the panel module so the deck renders the trust panel even when opened as a
+// plain file:// page (browsers block <script type="module" src> over file:// via CORS).
+// Escape any "</script" so the inline tag can't be closed early by the source's comments.
+const panelInlineJs = readFileSync(
+  join(root, "console-ui", "public", "surface-trust-panel.js"),
+  "utf8"
+).replaceAll("</script", "<\\/script");
 
 const results = runAll(SCENARIOS);
 const byId = (id: string) => results.find((r) => r.scenario.id === id)!;
@@ -50,8 +57,11 @@ const heroWin = byId("w1"); // Alpha Q2 — answerable
 const heroTrap = byId("s1"); // Alpha Q3 — the trap twin
 // The opening win establishes "the product is a trustworthy answer" before any trap.
 const openWin = byId("w0");
-// Remaining traps after the hero pair: strong SUPPORTED (s2, s4) then the abstains (s3, s0).
-const REMAINING_TRAP_ORDER = ["s2", "s4", "s3", "s0"];
+// Keep the deck tight — we don't parade every refusal. One more trap after the hero pair
+// (citation: SUPPORTED on a wrong answer); the OKF freshness trap is shown separately on
+// real Google data. The harness still TESTS all traps (s2/s3/s0) — they're just not all
+// walked through on stage.
+const REMAINING_TRAP_ORDER = ["s4"];
 const remainingTraps = REMAINING_TRAP_ORDER.map(byId);
 
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
@@ -70,8 +80,12 @@ function esc(s: string): string {
 // The story is discrimination, not a refusal count: across answerable AND trap
 // questions, Kontour answered exactly when it could and refused exactly when it
 // couldn't; RAG matched it on the answerable ones and shipped wrong on every trap.
-const wins = runAll(WIN_SCENARIOS);
-const traps = runAll(TRAP_SCENARIOS);
+// Score only the scenarios the deck actually shows on stage, so the board matches the
+// beats (the harness still runs/tests the full set for coverage).
+const shownWins = [openWin, heroWin, byId("wokf")];
+const shownTraps = [heroTrap, ...remainingTraps, byId("sokf")];
+const wins = shownWins;
+const traps = shownTraps;
 const nWins = wins.length;
 const nTraps = traps.length;
 const kontourAnsweredWins = wins.filter((r) => r.kontour.outcome === "pass").length;
@@ -640,7 +654,7 @@ const html = `<!DOCTYPE html>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,ital,wght@9..144,0,400;9..144,0,500;9..144,0,600;9..144,0,700;9..144,1,500;9..144,1,600&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script type="module" src="./surface-trust-panel.js"><\/script>
+  <script type="module">${panelInlineJs}<\/script>
   <style>
     :root {
       --paper: #f5f4ef;
