@@ -41,6 +41,10 @@ export interface SourceRecord {
    * The Kontour lane snapshots this at grounding time; a later mismatch == stale.
    */
   contentHash: string;
+  /** Optional verbatim text from the source the value was read from (a real excerpt, not a summary). */
+  sourceExcerpt?: string;
+  /** Optional fetchable URL whose content hashes to contentHash — powers the panel's in-browser Verify. */
+  verifyUrl?: string;
 }
 
 /** A retrievable free-text chunk — what the RAG lane searches over. */

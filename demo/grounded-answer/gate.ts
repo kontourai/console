@@ -98,7 +98,7 @@ export function gateFreshness(
           `Source ${grounded.docId} changed since grounding` +
           (currentHashOverride.restatedAt ? ` (${currentHashOverride.restatedAt})` : "") +
           (currentHashOverride.restatedTo ? `: ${currentHashOverride.restatedTo}` : "") +
-          `. OKF's bare timestamp cannot detect a content change; Hachure's integrity-ref does. ` +
+          `. A bare "last-changed" timestamp can't detect a content change; a content-hash integrity-ref does. ` +
           `Refusing to serve the cached value as fresh — pending re-grounding.`,
       };
     }

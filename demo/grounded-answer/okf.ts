@@ -157,9 +157,9 @@ export function countSchemaFields(concept: OkfConcept): number {
 /** The OKF concept's stable doc id (derived from its resource URI tail). */
 export function okfDocId(concept: OkfConcept): string {
   const r = concept.frontmatter.resource ?? "okf-concept";
-  // e.g. .../tables/blocks → "okf-blocks"
+  // e.g. .../tables/blocks → "bitcoin-blocks"
   const tail = r.replace(/\/+$/, "").split("/").pop() || "concept";
-  return `okf-${tail}`;
+  return `bitcoin-${tail}`;
 }
 
 /**
