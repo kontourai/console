@@ -195,6 +195,11 @@ function schemaTableExcerpt(concept: OkfConcept): string {
   return out.join("\n");
 }
 
+// The raw (fetchable, CORS-open) URL of the vendored OKF file — content-identical to the
+// fixture, so a SHA-256 of it equals currentIntegrityRef. Powers the panel's Verify button.
+const OKF_RAW_URL =
+  "https://raw.githubusercontent.com/GoogleCloudPlatform/knowledge-catalog/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/bundles/crypto_bitcoin/tables/blocks.md";
+
 export function okfSourceRecord(
   concept: OkfConcept,
   value: number,
@@ -219,6 +224,7 @@ export function okfSourceRecord(
     // For the freshness trap we ground a STALE snapshot instead of the current one.
     contentHash: opts?.snapshotHash ?? concept.currentIntegrityRef,
     sourceExcerpt: schemaTableExcerpt(concept),
+    verifyUrl: OKF_RAW_URL,
   };
 }
 

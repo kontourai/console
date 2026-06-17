@@ -198,6 +198,15 @@
     .footnote { margin: 0.85rem 0 0; color: var(--k-text-muted, #657267); font-size: 0.74rem; }
     .ot-link { color: var(--k-link, #1f6f88); text-decoration: none; font-weight: 600; }
     .ot-link:hover { text-decoration: underline; }
+    .link { color: var(--k-link, #1f6f88); text-decoration: none; overflow-wrap: anywhere; }
+    .link:hover { text-decoration: underline; }
+    .verify-btn { font: inherit; font-size: 0.72rem; font-weight: 600; color: var(--k-link, #1f6f88); background: var(--k-panel-raised, #fbf6e7); border: 1px solid var(--k-line, rgba(36, 68, 52, 0.3)); border-radius: 6px; padding: 0.02rem 0.4rem; margin-left: 0.4rem; cursor: pointer; white-space: nowrap; }
+    .verify-btn:hover:not(:disabled) { background: var(--k-panel, #fffcf1); }
+    .verify-btn:disabled { opacity: 0.6; cursor: default; }
+    .verify-out { font-size: 0.76rem; margin-left: 0.4rem; }
+    .verify-out.ok { color: var(--k-positive, #0f8f66); font-weight: 600; }
+    .verify-out.bad { color: var(--k-negative, #c24141); font-weight: 600; }
+    .verify-out.pending { color: var(--k-text-muted, #657267); }
   `;
     class SurfaceTrustPanel extends HTMLElement {
         static get observedAttributes() {
@@ -208,6 +217,50 @@
         constructor() {
             super();
             this.#shadow = this.attachShadow({ mode: "open" });
+            // Delegated handler for the in-panel "Verify" buttons (re-fetch + re-hash the source).
+            this.#shadow.addEventListener("click", (event) => {
+                const target = event.target;
+                const btn = target && target.closest ? target.closest(".verify-btn") : null;
+                if (btn)
+                    void this.#verify(btn);
+            });
+        }
+        async #verify(btn) {
+            const url = btn.dataset.url ?? "";
+            const expect = (btn.dataset.expect ?? "").toLowerCase();
+            const out = btn.nextElementSibling;
+            const setOut = (cls, text) => {
+                if (out) {
+                    out.className = "verify-out " + cls;
+                    out.textContent = text;
+                }
+            };
+            if (typeof crypto === "undefined" || !crypto.subtle) {
+                setOut("bad", "SHA-256 unavailable here — verify from a secure context");
+                return;
+            }
+            btn.disabled = true;
+            setOut("pending", "recomputing…");
+            try {
+                const res = await fetch(url);
+                if (!res.ok)
+                    throw new Error("HTTP " + res.status);
+                const buf = await res.arrayBuffer();
+                const digest = await crypto.subtle.digest("SHA-256", buf);
+                const hex = Array.from(new Uint8Array(digest))
+                    .map((b) => b.toString(16).padStart(2, "0"))
+                    .join("");
+                if (hex === expect)
+                    setOut("ok", "✓ re-hash matches the live source");
+                else
+                    setOut("bad", "✗ mismatch — the source has changed (" + hex.slice(0, 12) + "…)");
+            }
+            catch (err) {
+                setOut("bad", "couldn’t fetch source: " + (err instanceof Error ? err.message : String(err)));
+            }
+            finally {
+                btn.disabled = false;
+            }
         }
         connectedCallback() {
             // Re-apply a `report` set before the element was upgraded, so the
@@ -304,14 +357,22 @@
             const evidenceCards = evidence
                 .map((item) => {
                 const sourceName = asText((isObject(item.metadata) ? item.metadata.accountName : undefined) ?? item.sourceRef);
+                const locator = asText(item.sourceLocator);
+                const integ = asText(item.integrityRef);
+                const verifyUrl = asText(item.verifyUrl ?? (isObject(item.metadata) ? item.metadata.verifyUrl : ""));
+                const locatorCell = item.sourceLocator
+                    ? isUrl(locator)
+                        ? `<a class="v mono link" href="${escapeHtml(locator)}" target="_blank" rel="noopener" title="${escapeHtml(locator)}">${escapeHtml(truncMid(locator, 30, 12))} ↗</a>`
+                        : `<span class="v mono tip" title="${escapeHtml(locator)}">${escapeHtml(truncMid(locator, 30, 12))}</span>`
+                    : "";
+                const integrityCell = item.integrityRef
+                    ? `<span class="v"><span class="mono tip" title="sha256: ${escapeHtml(integ)}">sha256 ${escapeHtml(truncMid(integ, 10, 8))}</span>${verifyUrl ? ` <button class="verify-btn" type="button" data-url="${escapeHtml(verifyUrl)}" data-expect="${escapeHtml(integ)}">Verify ↻</button><span class="verify-out" aria-live="polite"></span>` : ""}</span>`
+                    : "";
                 const rows = [
                     `<div class="kv"><span class="k">Source</span><span class="v">${escapeHtml(sourceName)}</span></div>`,
-                    item.sourceLocator
-                        ? `<div class="kv"><span class="k">Located at</span><span class="v mono tip" title="${escapeHtml(asText(item.sourceLocator))}">${escapeHtml(truncMid(asText(item.sourceLocator), 30, 12))}</span></div>`
-                        : "",
-                    item.integrityRef
-                        ? `<div class="kv"><span class="k">Integrity</span><span class="v mono tip" title="sha256: ${escapeHtml(asText(item.integrityRef))}">sha256 ${escapeHtml(truncMid(asText(item.integrityRef), 10, 8))}</span></div>`
-                        : "",
+                    locatorCell ? `<div class="kv"><span class="k">Located at</span>${locatorCell}</div>` : "",
+                    integrityCell ? `<div class="kv"><span class="k">Integrity</span>${integrityCell}</div>` : "",
+                    verifyUrl ? `<div class="kv"><span class="k">Full source</span><a class="v link" href="${escapeHtml(verifyUrl)}" target="_blank" rel="noopener">open the record this value was read from ↗</a></div>` : "",
                 ].join("");
                 const excerpt = item.excerptOrSummary
                     ? `<div class="excerpt-label">Verbatim from the source</div><blockquote class="excerpt">${escapeHtml(asText(item.excerptOrSummary))}</blockquote>`
@@ -364,7 +425,7 @@
           <span class="result-value">${escapeHtml(formatValue(claim.value))}</span>
         </div>
         ${signals ? `<div class="section-label" title="How confident the producer was when recording this claim. Hover each chip for its scale. A self-reported basis, not a guarantee of correctness.">Confidence</div><div class="signals">${signals}</div>` : ""}
-        ${impact ? `<div class="impact-row"><span class="impact-k" title="How consequential this claim is if it turns out to be wrong — it drives how much scrutiny the claim deserves. This is NOT a measure of how trustworthy the claim is.">Impact</span><span class="chip" data-kind="${impactKind}">${escapeHtml(impact)}</span></div>` : ""}
+        ${impact ? `<div class="section-label" title="How consequential this claim is if it turns out to be wrong — it drives how much scrutiny the claim deserves. This is NOT a measure of how trustworthy the claim is.">Impact</div><div class="signals"><span class="chip" data-kind="${impactKind}">${escapeHtml(impact)}</span></div>` : ""}
         ${gapList ? `<div class="section-label gap-label">Transparency gaps</div><ul class="gaps">${gapList}</ul>` : ""}
         <details class="evidence"${expanded ? " open" : ""}>
           <summary>Show the evidence — source, integrity &amp; who verified</summary>
@@ -400,6 +461,9 @@
         if (text.length <= head + tail + 1)
             return text;
         return `${text.slice(0, head)}…${text.slice(-tail)}`;
+    }
+    function isUrl(text) {
+        return /^https?:\/\//i.test(text);
     }
     // Show just the date portion of an ISO timestamp; pass other strings through.
     function shortWhen(value) {

@@ -192,6 +192,14 @@ export function groundValue(
   // REAL call. Throws if producer discipline is violated (verified w/o actor+reviewedAt+locator).
   const bundle = buildSurveyTrustBundle(surveyInput);
 
+  // Attach a fetchable verify URL to evidence so the panel's Verify button can re-fetch +
+  // re-hash the real source in-browser and compare to the integrity ref (when one exists).
+  if (record.verifyUrl) {
+    for (const e of bundle.evidence ?? []) {
+      e.metadata = { ...(e.metadata ?? {}), verifyUrl: record.verifyUrl };
+    }
+  }
+
   // Freshness: if the caller supplied the source's CURRENT content hash and it no
   // longer matches the grounding snapshot, annotate the REAL bundle so Surface's own
   // deriveTrustStatus() resolves the claim to "stale". This is not a label we paint:
