@@ -392,10 +392,19 @@
                 return `<p class="custody" data-kind="${ekind}">&#10003; <strong>Verified by ${escapeHtml(asText(item.actor, "unknown actor"))}</strong> via ${escapeHtml(asText(item.method, "review"))}${when ? ` <span class="when">&middot; ${escapeHtml(shortWhen(when))}</span>` : ""}</p>`;
             })
                 .join("");
-            // 4 — transparency gaps (always visible)
+            // 4 — transparency gaps. Surfaced HIGH (right under the value) and flagged in the header
+            // so a refusal/limitation on a verified claim never reads as a clean pass.
             const gapList = gaps
                 .map((item) => `<li class="gap" data-severity="${escapeHtml(asText(item.severity))}">&#9888; ${escapeHtml(asText(item.type, "gap"))} — ${escapeHtml(asText(item.message))}</li>`)
                 .join("");
+            const hiSevGap = gaps.find((item) => {
+                const sev = asText(item.severity);
+                return sev === "high" || sev === "critical";
+            });
+            const gapMarker = hiSevGap
+                ? `<span class="badge" data-kind="negative" title="${escapeHtml(asText(hiSevGap.message))}">&#9888; ${escapeHtml(asText(hiSevGap.type, "gap"))}</span>`
+                : "";
+            const gapsBlock = gapList ? `<div class="section-label gap-label">Transparency gaps</div><ul class="gaps">${gapList}</ul>` : "";
             // 7 — technical details, deeper still
             const techRows = [
                 claim.id ? `<dt>Claim ID</dt><dd class="mono">${escapeHtml(asText(claim.id))}</dd>` : "",
@@ -415,6 +424,7 @@
             return `<div class="claim" data-kind="${kind}">
         <div class="claim-head">
           <span class="badge" data-kind="${kind}">${icon}${escapeHtml(STATUS_LABELS[status] ?? status)}</span>
+          ${gapMarker}
           <span class="claim-subject">${escapeHtml(subjectName)}</span>
           ${period ? `<span class="claim-period">${escapeHtml(shortWhen(period))}</span>` : ""}
         </div>
@@ -424,9 +434,9 @@
           <span class="result-eq">=</span>
           <span class="result-value">${escapeHtml(formatValue(claim.value))}</span>
         </div>
+        ${gapsBlock}
         ${signals ? `<div class="section-label" title="How confident the producer was when recording this claim. Hover each chip for its scale. A self-reported basis, not a guarantee of correctness.">Confidence</div><div class="signals">${signals}</div>` : ""}
         ${impact ? `<div class="section-label" title="How consequential this claim is if it turns out to be wrong — it drives how much scrutiny the claim deserves. This is NOT a measure of how trustworthy the claim is.">Impact</div><div class="signals"><span class="chip" data-kind="${impactKind}">${escapeHtml(impact)}</span></div>` : ""}
-        ${gapList ? `<div class="section-label gap-label">Transparency gaps</div><ul class="gaps">${gapList}</ul>` : ""}
         <details class="evidence"${expanded ? " open" : ""}>
           <summary>Show the evidence — source, integrity &amp; who verified</summary>
           ${evidenceInner}

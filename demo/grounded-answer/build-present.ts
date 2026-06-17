@@ -105,8 +105,30 @@ const mcpShippedTraps = trapsWithMcp.filter((r) => r.mcp!.shipped && !r.mcp!.cau
 // the non-absence blocks both carry a real bundle/report the panel renders.
 const panelReports: Record<string, unknown> = {};
 for (const r of results) {
-  const g = r.kontour.grounded;
-  if (g) panelReports[`panel-${r.scenario.id}`] = g.report;
+  const k = r.kontour;
+  const g = k.grounded;
+  if (!g) continue;
+  let report: unknown = g.report;
+  // On a BINDING refusal (qualifier/locator) the claim is genuinely verified — the evidence
+  // is real — but it does not answer the query. Surface that as a loud transparency gap so the
+  // panel doesn't just read "Verified" with no hint of the refusal. (Freshness already derives a
+  // stale status + gap; absence carries no report and is skipped above.)
+  if (k.outcome === "block" && k.mismatch !== "freshness") {
+    const rep = report as { claims?: Array<{ id?: string }>; transparencyGaps?: unknown[] };
+    report = {
+      ...(rep as object),
+      transparencyGaps: [
+        ...(rep.transparencyGaps ?? []),
+        {
+          claimId: rep.claims?.[0]?.id,
+          type: "binding mismatch",
+          severity: "high",
+          message: k.reason ?? "This claim is verified, but it does not answer what was asked.",
+        },
+      ],
+    };
+  }
+  panelReports[`panel-${r.scenario.id}`] = report;
 }
 
 const MISMATCH_LABEL: Record<string, string> = {
