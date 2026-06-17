@@ -510,45 +510,43 @@ const shortHash = (h: string) => `${h.slice(0, 12)}…${h.slice(-8)}`;
   const value = k.outcome === "pass" ? k.value : 0;
   addStep("okf-win", "step-center", `
     <div class="okf-wrap">
-      <div class="kicker mint">Not just our data &middot; real Google source</div>
-      <h2 class="okf-h">&ldquo;You wrote the data.&rdquo; So here&rsquo;s <em>Google&rsquo;s.</em></h2>
-      <p class="okf-lead">This is a real <strong>Open Knowledge Format</strong> concept file &mdash;
-        Google Cloud&rsquo;s vendor-neutral spec &mdash; vendored <strong>byte-for-byte</strong> from
-        their public repo. Kontour grounds an answer against it, and adds the
-        <strong>content-hash + freshness</strong> OKF deliberately has no field for.</p>
+      <div class="kicker mint">Not just our data &middot; a real public source</div>
+      <h2 class="okf-h">&ldquo;You wrote the data.&rdquo; <em>Not this one.</em></h2>
+      <p class="okf-lead">This is a <strong>real, public data source</strong>, vendored
+        <strong>byte-for-byte</strong> so a skeptic can diff it themselves. Kontour grounds an answer
+        against it and stamps a <strong>content-hash + freshness</strong> you can recompute yourself.</p>
       <div class="okf-card">
         <div class="okf-q">${esc(okfWin.scenario.query)}</div>
         <div class="okf-answer">
           <div class="okf-amount">${value}</div>
           <div class="okf-amount-unit">schema fields</div>
-          <div class="okf-verified">&#10003; Grounded against the real OKF source</div>
+          <div class="okf-verified">&#10003; Grounded against the real public source</div>
         </div>
         <div class="okf-prov">
-          <div class="okf-prov-row"><span class="okf-prov-k">OKF resource &rarr; sourceLocator</span>
+          <div class="okf-prov-row"><span class="okf-prov-k">Source locator</span>
             <span class="okf-prov-v">${esc(okfMeta.resourceUri)}</span></div>
-          <div class="okf-prov-row"><span class="okf-prov-k">OKF timestamp &rarr; freshness anchor</span>
+          <div class="okf-prov-row"><span class="okf-prov-k">Source last-changed &rarr; freshness anchor</span>
             <span class="okf-prov-v">${esc(okfMeta.okfTimestamp)}</span></div>
-          <div class="okf-prov-row added"><span class="okf-prov-k">+ Hachure integrity-ref (sha256)</span>
+          <div class="okf-prov-row added"><span class="okf-prov-k">+ Kontour integrity-ref (sha256)</span>
             <span class="okf-prov-v mono">${esc(shortHash(okfMeta.integrityRef))}</span></div>
-          <div class="okf-prov-row src"><span class="okf-prov-k">Provenance &mdash; diff it yourself</span>
+          <div class="okf-prov-row src"><span class="okf-prov-k">Public source &mdash; diff it yourself</span>
             <span class="okf-prov-v small">github.com/GoogleCloudPlatform/knowledge-catalog @
               <code>${esc(okfMeta.repoCommitSha.slice(0, 10))}</code></span></div>
         </div>
         <div class="okf-panel">
-          <div class="panel-label">Real Surface trust panel &mdash; grounded at the OKF resource</div>
+          <div class="panel-label">Real Surface trust panel &mdash; grounded at the source</div>
           <surface-trust-panel id="panel-${okfWin.scenario.id}" expanded></surface-trust-panel>
         </div>
       </div>
-      <p class="okf-foot">OKF tells the agent <em>what it knows</em>;
-        Hachure proves <strong>what the answer stood on</strong> &mdash; recomputable against Google&rsquo;s
-        own bytes by a skeptic who doesn&rsquo;t trust us.</p>
+      <p class="okf-foot">Recomputable against the real public source &mdash; a skeptic who doesn&rsquo;t
+        trust us can re-hash it themselves. Click <strong>Verify</strong> in the panel.</p>
     </div>`);
 }
 
 // (6b) OKF freshness trap — the gap OKF itself cannot cover
 addStep("okf-trap-reveal", "step-reveal", `
   <div class="reveal-head">
-    <div class="kicker cobalt">${okfTrap.scenario.id.toUpperCase()} &middot; ${esc(okfTrap.scenario.title)}</div>
+    <div class="kicker cobalt">Real source &middot; ${esc(okfTrap.scenario.title)}</div>
     <p class="reveal-query">${esc(okfTrap.scenario.query)}</p>
     <p class="reveal-truth"><strong>Truth:</strong> ${esc(okfTrap.scenario.correctAnswer)}</p>
   </div>
@@ -558,10 +556,10 @@ addStep("okf-trap-reveal", "step-reveal", `
     ${mcpLane(okfTrap)}
     ${kontourLane(okfTrap)}
   </div>
-  <p class="pair-bridge accent">OKF&rsquo;s only temporal field is <code>timestamp</code> &mdash; last
-    <em>changed</em>, not a content hash. When the source drifts past the grounding snapshot, an
-    OKF-trusting consumer can&rsquo;t notice and ships the stale fact. <strong>Hachure&rsquo;s
-    integrity-ref does notice &mdash; and refuses.</strong></p>`);
+  <p class="pair-bridge accent">A &ldquo;last-changed&rdquo; <code>timestamp</code> isn&rsquo;t a content
+    hash. When the source drifts past the grounding snapshot, a consumer trusting the timestamp
+    can&rsquo;t notice and ships the stale fact. <strong>Kontour&rsquo;s integrity-ref does notice
+    &mdash; and refuses.</strong></p>`);
 
 // Insight
 addStep("insight", "step-dark step-center", `

@@ -59,6 +59,28 @@ export interface GroundedClaim {
  * a locator that does not actually hold it. We still bind to the real source record's
  * value, but record the (mis)cited locator so the gate can detect the mismatch.
  */
+// Render the actual source record the value was read from — the full records[0], not a
+// one-line summary — so the panel's "Verbatim from the source" shows real context.
+function recordExcerpt(record: SourceRecord): string {
+  return [
+    "records[0] = {",
+    `  account_id:   ${JSON.stringify(record.accountId)},`,
+    `  account_name: ${JSON.stringify(record.accountName)},`,
+    `  period:       ${JSON.stringify(record.period)},`,
+    `  ${record.field}: ${record.value},`,
+    `  currency:     ${JSON.stringify(record.currency)}`,
+    "}",
+  ].join("\n");
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "public source";
+  }
+}
+
 export function groundValue(
   binding: ClaimBinding,
   record: SourceRecord,
@@ -123,7 +145,7 @@ export function groundValue(
         confidence: 0.98,
         // The cited locator — usually the real one, overridden in citation-theater.
         locator: citedLocator,
-        excerpt: record.sourceExcerpt ?? `${record.value} ${record.currency} for ${record.period}`,
+        excerpt: record.sourceExcerpt ?? recordExcerpt(record),
         extractor: "sales-system-extractor-v1",
         extractedAt: now,
         metadata: { currency: record.currency, period: record.period },
@@ -198,6 +220,14 @@ export function groundValue(
     for (const e of bundle.evidence ?? []) {
       e.metadata = { ...(e.metadata ?? {}), verifyUrl: record.verifyUrl };
     }
+  }
+
+  // How the source was retrieved (DB query / API call / public fetch) — shown by the panel.
+  const retrieval = record.verifyUrl
+    ? `HTTP GET · ${hostOf(record.verifyUrl)}`
+    : "Postgres query · internal-sales-system";
+  for (const e of bundle.evidence ?? []) {
+    e.metadata = { ...(e.metadata ?? {}), retrieval };
   }
 
   // Freshness: if the caller supplied the source's CURRENT content hash and it no

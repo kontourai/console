@@ -531,9 +531,9 @@ const winOkf: Scenario = {
   id: "wokf",
   unit: { noun: "schema fields" },
   slug: "wokf-okf-win",
-  title: "Grounded against a real Google OKF bundle",
+  title: "Grounded against a real public source",
   kind: "answerable",
-  query: "How many fields does the Bitcoin Blocks BigQuery table schema define (per the Google OKF bundle)?",
+  query: "How many fields does the Bitcoin Blocks BigQuery table schema define?",
   rawAnswer: okfFieldCount, // 12
   ragCandidate: okfFieldCount, // 12
   subjectTerms: ["Bitcoin", "blocks", "OKF"],
@@ -601,23 +601,23 @@ const okfStaleTrap: Scenario = {
   id: "sokf",
   unit: { noun: "schema fields" },
   slug: "sokf-okf-stale",
-  title: "OKF freshness gap (source changed, OKF can't notice)",
+  title: "Freshness gap (source changed, a timestamp can't notice)",
   kind: "trap",
-  query: "How many fields does the Bitcoin Blocks schema define (from the cached OKF grounding)?",
+  query: "How many fields does the Bitcoin Blocks schema define (from the cached grounding)?",
   rawAnswer: okfFieldCount, // 12 — the value the stale snapshot would serve
   ragCandidate: okfFieldCount,
   subjectTerms: ["Bitcoin", "blocks", "OKF"],
   shipOnAbstain: false,
   whyFactCheckPasses:
-    "The retriever reads the cached OKF chunk, which still states 12 fields, and the fact-checker " +
+    "The retriever reads the cached chunk, which still states 12 fields, and the fact-checker " +
     "confirms 12 appears in it — PASS. Both the answer and the evidence agree, because both are read " +
-    "from the cached OKF copy. OKF's only temporal field is `timestamp` (last meaningful change) — it " +
-    "is NOT a content hash, so neither the OKF consumer nor the post-hoc checker can tell the source " +
+    "from the cached copy. The source's only temporal field is a `timestamp` (last meaningful change) — " +
+    "it is NOT a content hash, so neither the consumer nor the post-hoc checker can tell the source " +
     "changed since this grounding was captured. There is no freshness boundary to cross.",
   correctAnswer:
-    "The grounding snapshot's integrity-ref no longer matches the OKF file's current content hash — " +
-    "the source changed since it was grounded. OKF's bare `timestamp` provides no invalidation; " +
-    "Hachure's content-hash integrity-ref does. The cached value must be re-grounded before serving.",
+    "The grounding snapshot's integrity-ref no longer matches the source file's current content hash — " +
+    "the source changed since it was grounded. A bare `timestamp` provides no invalidation; " +
+    "Kontour's content-hash integrity-ref does. The cached value must be re-grounded before serving.",
   groundAndGate: () => {
     const b = okfBinding(OKF_TIMESTAMP);
     // Ground against a STALE integrity-ref snapshot (captured before the source changed).
@@ -631,7 +631,7 @@ const okfStaleTrap: Scenario = {
     // stale snapshot no longer matches it → freshness fires (content-change invalidation).
     return gateFreshness(b, grounded, {
       current: OKF_INTEGRITY_REF,
-      restatedTo: "the upstream OKF concept's content hash advanced past the grounding snapshot",
+      restatedTo: "the source's content hash advanced past the grounding snapshot",
       restatedAt: "since the cached grounding was captured",
     });
   },
@@ -647,14 +647,14 @@ const okfStaleTrap: Scenario = {
       value: okfFieldCount,
       returnedPeriod: "cached",
       fromCache: true,
-      note: `Tool read the cached OKF grounding for ${OKF_RESOURCE} and returned ${okfFieldCount} fields.`,
+      note: `Tool read the cached grounding for ${OKF_RESOURCE} and returned ${okfFieldCount} fields.`,
     },
     shipped: true,
     gap: "freshness",
     caught: false,
     note:
-      "The tool read the cached OKF grounding and returned 12 fields. With no content-hash boundary, " +
-      "the agent can't see the upstream concept advanced past the grounding snapshot, so it ships the " +
+      "The tool read the cached grounding and returned 12 fields. With no content-hash boundary, " +
+      "the agent can't see the source advanced past the grounding snapshot, so it ships the " +
       "stale count. Querying a cached source through a tool does not make it fresh.",
   }),
   okf: {
