@@ -860,3 +860,10 @@ export type {
   FlowBridgeEvent,
   FlowBridgeScopeOptions,
 } from "./flow-bridge";
+
+export {
+  handleFlowIngest,
+  validateFlowIngestRequest,
+  wrapFlowIngestRecord,
+} from "./flow-ingest";
+export type { FlowIngestResult } from "./flow-ingest";
