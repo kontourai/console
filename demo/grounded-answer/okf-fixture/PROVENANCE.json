@@ -1,0 +1,29 @@
+{
+  "$comment": "Provenance for the vendored Open Knowledge Format (OKF) concept file. This is the un-riggable part of the OKF scenario: a skeptic can diff okf-fixture/blocks.md against Google's public repo at the recorded commit and recompute the sha256. We did NOT edit the vendored file's content.",
+  "fixtureFile": "blocks.md",
+  "upstreamRepo": "GoogleCloudPlatform/knowledge-catalog",
+  "upstreamPath": "okf/bundles/crypto_bitcoin/tables/blocks.md",
+  "upstreamUrlAtCommit": "https://raw.githubusercontent.com/GoogleCloudPlatform/knowledge-catalog/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/bundles/crypto_bitcoin/tables/blocks.md",
+  "upstreamHtmlUrl": "https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/bundles/crypto_bitcoin/tables/blocks.md",
+  "repoCommitSha": "ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a",
+  "gitBlobSha1": "feea27640af8ee01b435e557af2a80aeeaa24549",
+  "sha256": "2e110091dd19ae94c2e095e7d6559061e29ef6b094a52d690779873d3b188d77",
+  "byteLength": 733,
+  "vendoredAt": "2026-06-16",
+  "vendoredBy": "grounded-answer-demo OKF interop scenario",
+  "okfSpecVersion": "0.1",
+  "okfSpecPublished": "2026-06-12",
+  "okfReservedFrontmatter": ["type", "title", "description", "resource", "tags", "timestamp"],
+  "groundedFact": {
+    "claim": "The Bitcoin Blocks BigQuery table schema defines 12 fields.",
+    "value": 12,
+    "appearsIn": "The '# Schema' markdown table body lists 12 field rows (hash, size, stripped_size, weight, number, version, merkle_root, timestamp, nonce, bits, coinbase_param, transaction_count).",
+    "resourceUri": "https://bigquery.googleapis.com/v2/projects/bigquery-public-data/datasets/crypto_bitcoin/tables/blocks",
+    "okfTimestamp": "2026-05-28T22:43:59+00:00"
+  },
+  "verify": [
+    "curl -sSL https://raw.githubusercontent.com/GoogleCloudPlatform/knowledge-catalog/ee67a5ca27044ebe7c38385f5b6cffc2305a9c1a/okf/bundles/crypto_bitcoin/tables/blocks.md | shasum -a 256",
+    "expect: 2e110091dd19ae94c2e095e7d6559061e29ef6b094a52d690779873d3b188d77",
+    "git hash-object okf-fixture/blocks.md  # expect feea27640af8ee01b435e557af2a80aeeaa24549"
+  ]
+}

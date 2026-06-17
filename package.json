@@ -44,13 +44,22 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontourai/console-core run typecheck && npm --workspace @kontourai/console run typecheck && npm --workspace @kontourai/console-ui run typecheck",
     "check:content-boundary": "node --import tsx scripts/check-content-boundary.ts",
     "setup:repo-hooks": "node --import tsx scripts/setup-repo-hooks.ts",
-    "validate:repo-hooks": "node --import tsx scripts/validate-repo-hooks.ts"
+    "validate:repo-hooks": "node --import tsx scripts/validate-repo-hooks.ts",
+    "demo:grounded": "node --import tsx demo/grounded-answer/run.ts",
+    "test:demo:grounded": "node --import tsx --test demo/grounded-answer/conductor.test.ts demo/grounded-answer/gallery.test.ts",
+    "demo:grounded:build": "node --import tsx demo/grounded-answer/build-page.ts",
+    "demo:grounded:serve": "node --import tsx demo/grounded-answer/build-page.ts && npx serve demo/grounded-answer/dist -p 9876",
+    "demo:grounded:screenshot": "node --import tsx demo/grounded-answer/screenshot.ts",
+    "demo:grounded:present": "node --import tsx demo/grounded-answer/build-present.ts",
+    "demo:grounded:present:serve": "node --import tsx demo/grounded-answer/build-present.ts && npx serve demo/grounded-answer/dist -p 9877",
+    "demo:grounded:present:screenshot": "node --import tsx demo/grounded-answer/screenshot-present.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "devDependencies": {
     "@kontourai/surface": "^1.0.1",
+    "@kontourai/survey": "file:../survey",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.1",
     "tsx": "^4.22.4",

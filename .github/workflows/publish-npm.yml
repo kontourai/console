@@ -13,7 +13,7 @@ permissions:
 # Tag-push and the release workflow dispatch can both fire for one tag;
 # serialize so the already-published guard skips cleanly (flow v0.1.20 race).
 concurrency:
-  group: publish-npm-${{ github.ref }}
+  group: publish-npm
   cancel-in-progress: false
 
 jobs:
