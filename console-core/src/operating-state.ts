@@ -147,6 +147,23 @@ export interface OperatingState {
   links?: ConsoleLink[];
   timeline?: TimelineItem[];
   pipeline?: import("./pipeline").Pipeline;
+  /**
+   * Flow's already-derived console projection for the active run, passed through
+   * read-only so the UI can mount <flow-run-panel>. Typed `unknown` here (like
+   * `PipelineGateExpect.trustReport`) so console-core takes no dependency on
+   * `@kontourai/flow`; console-ui narrows it to `FlowConsoleProjection` at the
+   * UI boundary where the type-only Flow contract import lives. Console never
+   * derives this — it only renders what Flow's projector produced.
+   */
+  flowProjection?: unknown;
+  /**
+   * Optional pre-fetched child-run projections keyed by child run_id, so a
+   * parent run that references a child is drillable to the child's panel without
+   * an in-browser re-derivation (read-through, not re-derivation). When a
+   * referenced child is absent here, the UI leaves a TODO for the live fetch
+   * from the hosted ingest endpoint rather than faking a projection.
+   */
+  flowChildProjections?: Record<string, unknown>;
 }
 
 export interface RecordAcceptedEvent {

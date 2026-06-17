@@ -149,6 +149,142 @@ const hubState = {
     ],
     edges: [],
   },
+  // Flow's already-derived console projection for the active run. Passed through
+  // read-only; the console mounts <flow-run-panel> from it (no in-browser
+  // derivation). The evidence carries a pre-derived bundle_report so the panel
+  // nests a <surface-trust-panel>, and an external_link references a child run
+  // so the drill-in can surface the child's own <flow-run-panel>.
+  flowProjection: {
+    schema_version: "1",
+    run: {
+      run_id: "run-parent-1",
+      definition_id: "checkout-retry-banner",
+      definition_version: "1",
+      subject: "checkout-retry-banner (parent run)",
+      status: "running",
+      current_step: "implement",
+      updated_at: "2026-06-08T15:00:00.000Z",
+      params: {},
+    },
+    definition: { id: "checkout-retry-banner", version: "1", title: "Checkout retry banner", description: null, raw: {} },
+    steps: [
+      { id: "design", index: 0, label: "design", next: "implement", gates: ["design-gate"], raw: {} },
+      { id: "implement", index: 1, label: "implement", next: null, gates: ["parent-implement-gate"], raw: {} },
+    ],
+    current_step: "implement",
+    open_gates: ["parent-implement-gate"],
+    gates: [
+      {
+        id: "design-gate", step_id: "design", status: "pass", summary: "Design approved", is_open: false,
+        expectations: [], evidence_refs: [], evidence: [], missing: [], optional_missing: [],
+        matched_expectations: [], raw: {},
+      },
+      {
+        id: "parent-implement-gate", step_id: "implement", status: "waiting", summary: "Awaiting scoped diff evidence", is_open: true,
+        expectations: [
+          { id: "parent-impl-diff", gate_id: "parent-implement-gate", kind: "trust.bundle", required: true, description: "Implementation scoped diff", raw: {} },
+        ],
+        evidence_refs: ["ev-parent-impl-diff"],
+        evidence: [
+          {
+            id: "ev-parent-impl-diff",
+            gate_id: "parent-implement-gate",
+            kind: "trust.bundle",
+            requested_kind: "trust.bundle",
+            status: "verified",
+            expectation_ids: ["parent-impl-diff"],
+            producer: "ci/main",
+            authority_trace: null,
+            authority_traces: [],
+            stored_path: null,
+            original_path: null,
+            route_reason: null,
+            claim: null,
+            trust_artifact: null,
+            diagnostics: null,
+            // Pre-derived Surface TrustReport — the panel mounts <surface-trust-panel>.
+            bundle_report: {
+              schemaVersion: 3,
+              id: "parent-surface-report",
+              generatedAt: "2026-06-08T15:00:00.000Z",
+              source: "ci/main",
+              claims: [
+                {
+                  id: "parent-impl-diff", subjectType: "artifact", subjectId: "checkout-retry-banner", surface: "ci/main",
+                  claimType: "implementation.scoped-diff", fieldOrBehavior: "implementation.scoped-diff", value: true,
+                  status: "verified", createdAt: "2026-06-08T15:00:00.000Z", updatedAt: "2026-06-08T15:00:00.000Z", impactLevel: "high",
+                },
+              ],
+              evidence: [
+                {
+                  id: "ev-parent-bundle-1", claimId: "parent-impl-diff", evidenceType: "test_output", method: "validation",
+                  sourceRef: "ci/main", excerptOrSummary: "Scoped diff: 14 files changed, all within the checkout module.",
+                  observedAt: "2026-06-08T15:00:00.000Z", collectedBy: "ci/main", passing: true, supportStrength: "entails",
+                },
+              ],
+              policies: [], events: [], identityLinks: [], claimGroups: [], authorityTrace: [],
+              evidenceRequirementsByClaimId: {}, transparencyGaps: [], changeRecords: [], subjectGroups: [], claimGroupRollups: [],
+              summary: {
+                totalClaims: 1,
+                byStatus: { unknown: 0, proposed: 0, assumed: 0, verified: 1, stale: 0, disputed: 0, superseded: 0, rejected: 0 },
+                bySurface: { "ci/main": 1 },
+                confidenceBasis: { sourceQuality: {}, reviewerAuthority: {}, evidenceStrength: {}, corroboratedClaims: 0, averageExtractionConfidence: null, freshnessAtRisk: [], conflictedClaims: [] },
+                transparencyGapsByType: { contradiction: 0, provenance_gap: 0, policy_violation: 0, freshness_breach: 0, corroboration_absent: 0, unsupported_inference: 0 },
+                highImpactUnsupported: [], staleClaims: [], disputedClaims: [], recomputeNeededClaims: [],
+              },
+            },
+            // External link referencing a CHILD run — drives the drill-down.
+            external_links: [
+              { id: "run-child-1", kind: "artifact", label: "Child run: dependency upgrade", source: "flow", target_id: "run-child-1" },
+            ],
+            raw: {},
+          },
+        ],
+        missing: ["parent-impl-diff"], optional_missing: [], matched_expectations: [], raw: {},
+      },
+    ],
+    expectations: [],
+    evidence: [],
+    exceptions: [],
+    transitions: [],
+    route_backs: [],
+    external_links: [],
+    next_action: "Attach the scoped-diff evidence bundle to parent-implement-gate.",
+    continuation: "",
+    report: null,
+  },
+  // Pre-fetched child-run projection (read-through), keyed by child run_id. Its
+  // status is "stale" so the drill-in surfaces a child going stale on the parent.
+  flowChildProjections: {
+    "run-child-1": {
+      schema_version: "1",
+      run: {
+        run_id: "run-child-1",
+        definition_id: "dependency-upgrade",
+        definition_version: "1",
+        subject: "dependency upgrade (child run)",
+        status: "stale",
+        current_step: "verify",
+        updated_at: "2026-06-08T14:30:00.000Z",
+        params: {},
+      },
+      definition: { id: "dependency-upgrade", version: "1", title: "Dependency upgrade", description: null, raw: {} },
+      steps: [
+        { id: "verify", index: 0, label: "verify", next: null, gates: ["child-verify-gate"], raw: {} },
+      ],
+      current_step: "verify",
+      open_gates: [],
+      gates: [
+        {
+          id: "child-verify-gate", step_id: "verify", status: "stale", summary: "Child evidence went stale", is_open: false,
+          expectations: [], evidence_refs: [], evidence: [], missing: [], optional_missing: [],
+          matched_expectations: [], raw: {},
+        },
+      ],
+      expectations: [], evidence: [], exceptions: [], transitions: [], route_backs: [],
+      external_links: [], next_action: null, continuation: "", report: null,
+    },
+  },
 };
 
 const telemetryState = {
@@ -776,6 +912,69 @@ test("renders embedded surface-trust-panel in the gate drill-in for a surface.cl
     return (el as HTMLElement & { report?: unknown }).report !== undefined;
   });
   expect(hasReport).toBe(true);
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("embeds flow-run-panel rendering the run graph, gates, evidence, and drilling into a referenced child", async ({ page }) => {
+  const consoleErrors = await loadConsole(page);
+
+  // The <flow-run-panel> custom element mounts in the operate view from the
+  // pre-derived projection (no click needed — it sits below the stepper).
+  const panel = page.locator("flow-run-panel").first();
+  await expect(panel).toBeVisible();
+
+  const tagName = await panel.evaluate((el) => el.tagName.toLowerCase());
+  expect(tagName).toBe("flow-run-panel");
+
+  // The .projection property was set imperatively via the ref.
+  const hasProjection = await panel.evaluate(
+    (el) => (el as HTMLElement & { projection?: unknown }).projection !== undefined &&
+      (el as HTMLElement & { projection?: unknown }).projection !== null,
+  );
+  expect(hasProjection).toBe(true);
+
+  // The element renders into a shadow root. Reach in to assert graph + gates +
+  // the nested <surface-trust-panel> from the pre-derived bundle_report.
+  const shadow = await panel.evaluate((el) => {
+    const root = (el as HTMLElement).shadowRoot;
+    if (!root) return null;
+    return {
+      status: root.querySelector('[data-testid="flow-run-panel-status"]')?.textContent ?? "",
+      nodeCount: root.querySelectorAll('[data-testid="flow-console-node"]').length,
+      gateCount: root.querySelectorAll('[data-testid="flow-run-panel-gate"]').length,
+      hasSurfacePanel: Boolean(root.querySelector("surface-trust-panel")),
+      text: root.textContent ?? "",
+    };
+  });
+  expect(shadow).not.toBeNull();
+  expect(shadow!.status).toContain("running");
+  expect(shadow!.nodeCount).toBe(2); // design + implement steps (process graph)
+  expect(shadow!.gateCount).toBe(2); // design-gate + parent-implement-gate
+  expect(shadow!.hasSurfacePanel).toBe(true); // nested surface trust panel per bundle
+  expect(shadow!.text).toContain("implement");
+  expect(shadow!.text).toContain("Attach the scoped-diff evidence bundle"); // next action
+
+  // Drill-down parent → child: the referenced child run is listed and drillable.
+  const childToggle = page.locator("[data-child-run-id='run-child-1']").first();
+  await expect(childToggle).toBeVisible();
+  await childToggle.click();
+
+  // A SECOND <flow-run-panel> mounts for the child, fed the child projection
+  // (read-through, not re-derivation). The child's stale status surfaces here.
+  const childDetail = page.locator("[data-child-detail-for='run-child-1']");
+  await expect(childDetail).toBeVisible();
+  const childPanel = childDetail.locator("flow-run-panel").first();
+  await expect(childPanel).toBeVisible();
+  const childShadowText = await childPanel.evaluate((el) => {
+    const root = (el as HTMLElement).shadowRoot;
+    return {
+      status: root?.querySelector('[data-testid="flow-run-panel-status"]')?.textContent ?? "",
+      text: root?.textContent ?? "",
+    };
+  });
+  expect(childShadowText.status).toContain("stale"); // child going stale surfaces on the parent
+  expect(childShadowText.text).toContain("verify");
 
   expect(consoleErrors).toEqual([]);
 });
