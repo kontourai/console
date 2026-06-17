@@ -123,7 +123,7 @@ export function groundValue(
         confidence: 0.98,
         // The cited locator — usually the real one, overridden in citation-theater.
         locator: citedLocator,
-        excerpt: `${record.value} ${record.currency} for ${record.period}`,
+        excerpt: record.sourceExcerpt ?? `${record.value} ${record.currency} for ${record.period}`,
         extractor: "sales-system-extractor-v1",
         extractedAt: now,
         metadata: { currency: record.currency, period: record.period },

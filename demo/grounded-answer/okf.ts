@@ -173,6 +173,28 @@ export function okfDocId(concept: OkfConcept): string {
  * `snapshotHash` lets the freshness-trap scenario ground against a STALE integrity-ref
  * snapshot whose hash no longer matches the fixture's current content hash.
  */
+// The actual schema-table text from the OKF file — the verbatim source the
+// field count was read from, not a synthesized summary.
+function schemaTableExcerpt(concept: OkfConcept): string {
+  const lines = concept.body.split("\n");
+  const out: string[] = [];
+  let inSchema = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (/^#{1,6}\s+schema\b/i.test(line)) {
+      inSchema = true;
+      out.push(line);
+      continue;
+    }
+    if (inSchema) {
+      if (/^#{1,6}\s/.test(line) && !/schema/i.test(line)) break;
+      if (line) out.push(line);
+    }
+  }
+  if (out.length <= 1) return lines.map((l) => l.trim()).filter((l) => l.startsWith("|")).join("\n");
+  return out.join("\n");
+}
+
 export function okfSourceRecord(
   concept: OkfConcept,
   value: number,
@@ -196,6 +218,7 @@ export function okfSourceRecord(
     // sha256 of the file's bytes — the integrity-ref OKF deliberately omits.
     // For the freshness trap we ground a STALE snapshot instead of the current one.
     contentHash: opts?.snapshotHash ?? concept.currentIntegrityRef,
+    sourceExcerpt: schemaTableExcerpt(concept),
   };
 }
 

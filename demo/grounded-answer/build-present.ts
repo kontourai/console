@@ -356,7 +356,7 @@ addStep("ladder", "step-center", `
         </div>
         <div class="winopen-panel">
           <div class="panel-label">Real Surface trust panel &mdash; recomputable, auditable</div>
-          <surface-trust-panel id="panel-${s.id}"></surface-trust-panel>
+          <surface-trust-panel id="panel-${s.id}" expanded></surface-trust-panel>
         </div>
       </div>
       <p class="winopen-foot">This is the product: <strong>a trustworthy answer.</strong> Every
@@ -500,7 +500,7 @@ const shortHash = (h: string) => `${h.slice(0, 12)}…${h.slice(-8)}`;
         </div>
         <div class="okf-panel">
           <div class="panel-label">Real Surface trust panel &mdash; grounded at the OKF resource</div>
-          <surface-trust-panel id="panel-${okfWin.scenario.id}"></surface-trust-panel>
+          <surface-trust-panel id="panel-${okfWin.scenario.id}" expanded></surface-trust-panel>
         </div>
       </div>
       <p class="okf-foot">OKF tells the agent <em>what it knows</em>;
