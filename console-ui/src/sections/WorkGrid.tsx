@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Panel } from "@kontourai/ui/react";
+import type { FlowConsoleProjection } from "@kontourai/flow/console-contract";
 import { PipelineStepper } from "../components/PipelineStepper";
+import { FlowRunPanel } from "../components/FlowRunPanel";
 import { ProcessView } from "../components/ProcessView";
 import { ActionRow, ClaimRow, GateRow, LearningRow } from "../components/Rows";
 import { DesignedEmpty } from "../components/DesignedEmpty";
@@ -25,6 +27,12 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
 
   // Build a safe Pipeline from state.pipeline if present
   const pipeline = statePipeline(state);
+
+  // Flow's already-derived run projection (read-only pass-through). When present
+  // we mount <flow-run-panel> alongside the stepper; the panel itself nests
+  // <surface-trust-panel> per evidence bundle. Console never derives this.
+  const flowProjection = stateFlowProjection(state);
+  const flowChildProjections = stateFlowChildProjections(state);
 
   function selectByEntityId(kind: string, id: string) {
     const nodeId = `${kind}:${id}`;
@@ -58,6 +66,10 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
             command="flow start <definition.json> && kontour-flow-bridge"
           />
         )}
+
+        {flowProjection ? (
+          <FlowRunPanel projection={flowProjection} childProjections={flowChildProjections} />
+        ) : null}
       </section>
 
       <div className="side-stack">
@@ -164,4 +176,21 @@ function statePipeline(state: OperatingState): Pipeline | null {
   // Minimal shape check
   if (!Array.isArray((raw as Pipeline).stages)) return null;
   return raw as Pipeline;
+}
+
+// Narrow the read-only Flow projection from OperatingState. console-core carries
+// it as `unknown` (no Flow dependency there); the UI boundary owns the type-only
+// Flow contract import and validates the minimal shape before mounting the panel.
+function stateFlowProjection(state: OperatingState): FlowConsoleProjection | null {
+  const raw = state.flowProjection;
+  if (!raw || typeof raw !== "object") return null;
+  const candidate = raw as FlowConsoleProjection;
+  if (!Array.isArray(candidate.steps) || !Array.isArray(candidate.gates)) return null;
+  return candidate;
+}
+
+function stateFlowChildProjections(state: OperatingState): Record<string, FlowConsoleProjection> {
+  const raw = state.flowChildProjections;
+  if (!raw || typeof raw !== "object") return {};
+  return raw as Record<string, FlowConsoleProjection>;
 }

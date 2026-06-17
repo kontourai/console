@@ -2462,3 +2462,72 @@ surface-trust-panel {
 .pipeline-expect-item .trust-panel-no-data {
   grid-column: 1 / -1;
 }
+
+/* ── <flow-run-panel> embed ─────────────────────────────────────────────────
+   Mounts Flow's run panel below the stepper. The custom element themes itself
+   from the host --k-* tokens (already defined by the console), and nests
+   <surface-trust-panel> per evidence bundle inside its own shadow root. */
+.flow-run-panel-embed {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+flow-run-panel {
+  display: block;
+}
+
+.flow-run-children {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.flow-run-children-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.flow-run-child-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.flow-run-child-toggle:hover,
+.flow-run-child-toggle--open {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.flow-run-child-toggle-icon {
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.flow-run-child-toggle-via {
+  color: var(--dim);
+}
+
+.flow-run-child-detail {
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.flow-run-child-pending {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
