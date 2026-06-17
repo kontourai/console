@@ -7,6 +7,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 import { buildPipeline } from "@kontourai/console-core";
 import type { Pipeline, PipelineGateExpect } from "@kontourai/console-core";
+// Flow OWNS its console projection contract. The bridge consumes Flow's
+// EXPORTED types (from the stable `@kontourai/flow/console-contract` subpath)
+// instead of redefining run/transition/route-back shapes. Type-only imports —
+// the bridge stays read-only over Flow-owned files and pulls in no Flow runtime
+// (authority stays put: Flow owns process, Console aggregates).
+import type {
+  FlowConsoleTransitionProjection,
+  FlowConsoleRunIdentity,
+} from "@kontourai/flow/console-contract" with { "resolution-mode": "import" };
 
 export interface FlowBridgeEvent {
   schema: "kontour.console.event";
@@ -28,22 +37,29 @@ export interface FlowBridgeScopeOptions {
   scopeLabel?: string;
 }
 
+// Run state read from Flow's own state.json. The transition shape is taken from
+// Flow's EXPORTED contract type (`FlowConsoleTransitionProjection`) rather than
+// redefined inline; the identity fields are documented against Flow's
+// `FlowConsoleRunIdentity`. We loosen the transition with Partial because the
+// on-disk state.json is a predecessor/superset of the projection and the bridge
+// reads it read-only, needing only a subset of fields.
+type FlowTransitionOnDisk = Partial<
+  Pick<
+    FlowConsoleTransitionProjection,
+    "type" | "status" | "from_step" | "to_step" | "at" | "gate_id" | "route_reason"
+  >
+>;
+
+// Documented against Flow's contract: `run_id`, `subject`, `status`,
+// `current_step`, `updated_at` are Flow's own `FlowConsoleRunIdentity` fields.
 interface FlowRunState {
-  run_id: string;
+  run_id: FlowConsoleRunIdentity["run_id"];
   subject?: string;
   status: string;
   current_step: string;
   next_action?: string;
   updated_at?: string;
-  transitions?: Array<{
-    type?: string;
-    status?: string;
-    from_step?: string;
-    to_step?: string | null;
-    at?: string;
-    gate_id?: string;
-    route_reason?: string;
-  }>;
+  transitions?: FlowTransitionOnDisk[];
 }
 
 function consoleStatus(state: FlowRunState): string {
