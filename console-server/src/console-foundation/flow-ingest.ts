@@ -1,24 +1,48 @@
 // Hosted-console ingest stub for the Flow ingest contract v1 (provisional).
 //
-// Implements `POST /ingest/flow`: validates a request body against Flow's
-// EXPORTED `FlowIngestRequest` envelope (Flow OWNS the payload), then wraps the
-// `payload` (a `FlowConsoleProjection`) into console's own `kontour.console.event`
-// envelope and returns `202 { recordId }`. A bad contractVersion/shape returns
-// `4xx { error }`.
+// Implements `POST /ingest/flow`: validates a request body against console's
+// `FlowIngestRequest` envelope, whose `payload` is a Flow-OWNED
+// `FlowConsoleProjection`, then wraps the `payload` into console's own
+// `kontour.console.event` envelope and returns `202 { recordId }`. A bad
+// contractVersion/shape returns `4xx { error }`.
 //
-// Dependency direction is console -> flow: we import Flow's contract type from
-// the stable `@kontourai/flow/console-contract` subpath, TYPE-ONLY (mirroring how
-// flow-bridge already imports Flow's projection types). Console pulls in NO Flow
-// runtime; the import erases at compile time. Console stays read-only — it owns
-// no authoritative trust/process state; it only records.
+// Ownership split: Flow owns the projection PAYLOAD (imported type-only below);
+// CONSOLE owns the ingest ENVELOPE (contractVersion/source/type/idempotencyKey/
+// occurredAt around the payload), because console owns ingest. We therefore
+// define `FlowIngestRequest` here rather than importing it — Flow's exported
+// `@kontourai/flow/console-contract` only exposes the projection types, not the
+// ingest envelope. We still import `FlowConsoleProjection` TYPE-ONLY from the
+// stable subpath (mirroring how flow-bridge consumes Flow's projection types):
+// the dependency arrow stays console -> flow, console pulls in NO Flow runtime,
+// and the import erases at compile time. Console stays read-only — it owns no
+// authoritative trust/process state; it only records.
 //
 // This is a focused, tested stub. It is NOT wired into the production HTTP
 // server with real auth middleware yet — see the TODO at the bottom.
 import type {
-  FlowIngestRequest,
   FlowConsoleProjection,
 } from "@kontourai/flow/console-contract" with { "resolution-mode": "import" };
 import type { ConsoleEventRecord } from "./types";
+
+/**
+ * Console's Flow-ingest envelope v1. Console owns this shape (it owns ingest);
+ * Flow owns only the `payload` (a `FlowConsoleProjection`). A POST to
+ * `/ingest/flow` carries this body.
+ */
+export interface FlowIngestRequest {
+  /** The only contract version this handler accepts. */
+  contractVersion: "1";
+  /** Producing product — must be `"flow"`. */
+  source: "flow";
+  /** Console event type, e.g. `"flow.console.projection.0.1"`. */
+  type: string;
+  /** Re-POST dedup key; the wrapped record id derives from it. */
+  idempotencyKey: string;
+  /** ISO timestamp the projection was produced. */
+  occurredAt: string;
+  /** The Flow-owned projection this ingest records, read-only. */
+  payload: FlowConsoleProjection;
+}
 
 /** Status + JSON body the stub returns. The caller maps this onto the response. */
 export interface FlowIngestResult {
@@ -30,10 +54,10 @@ export interface FlowIngestResult {
 const CONTRACT_VERSION = "1" as const;
 
 /**
- * Validate an unknown request body against Flow's `FlowIngestRequest` envelope.
- * Returns the typed request on success, or a human-readable error string. We do
- * shape validation here (the dependency-correct place: console owns ingest); the
- * exported Flow type is the source of truth for the shape.
+ * Validate an unknown request body against console's `FlowIngestRequest`
+ * envelope. Returns the typed request on success, or a human-readable error
+ * string. We do shape validation here (the dependency-correct place: console
+ * owns ingest); the `payload` must be a Flow-owned `FlowConsoleProjection`.
  */
 export function validateFlowIngestRequest(
   body: unknown,
@@ -74,7 +98,7 @@ export function validateFlowIngestRequest(
   }
 
   // Type assertion is safe: the runtime checks above mirror the FlowIngestRequest
-  // contract whose authoritative shape lives in @kontourai/flow.
+  // envelope (console-owned) whose `payload` is a Flow-owned FlowConsoleProjection.
   return { ok: true, request: body as FlowIngestRequest };
 }
 
