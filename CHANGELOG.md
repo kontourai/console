@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/kontourai/console/compare/v1.7.0...v1.8.0) (2026-06-18)
+
+
+### Features
+
+* **console:** mount hosted Flow ingest endpoint + live child drill-in fetch ([#78](https://github.com/kontourai/console/issues/78)) ([63f864d](https://github.com/kontourai/console/commit/63f864d45ad7aac087787f273fe802728e64d538))
+
 ## [1.7.0](https://github.com/kontourai/console/compare/v1.6.0...v1.7.0) (2026-06-17)
 
 
