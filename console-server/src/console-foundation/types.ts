@@ -378,6 +378,14 @@ export interface ConsoleHubServerOptions extends LocalConsoleHubOptions {
   telemetryFlowAgentsRoot?: string;
   telemetrySinkRoot?: string;
   telemetryToken?: string;
+  /**
+   * Per-product bearer token guarding `POST /ingest/flow` (the hosted Flow
+   * ingest contract v1). When absent (and `CONSOLE_INGEST_TOKEN` is unset) the
+   * ingest endpoint is DISABLED and returns 404 — console never accepts
+   * unauthenticated writes. Mirrors Flow-side: its HostedConsoleSink disables
+   * when no token is configured, so an authenticated request is always expected.
+   */
+  ingestToken?: string;
   serveUi?: boolean;
 }
 

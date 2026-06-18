@@ -64,6 +64,29 @@ export async function getTelemetry(hubUrl: string, auth: HubAuthOptions = {}, qu
   return getJson<ConsoleTelemetryResponse>(hubUrl, telemetryPath(query), auth);
 }
 
+/**
+ * GET /ingest/flow/:runId — read-only fetch of a stored FlowConsoleProjection
+ * for a referenced child run (hosted Flow ingest contract v1). Returns the raw
+ * projection as `unknown` (the type-only Flow contract import lives at the
+ * UI/panel boundary; this layer stays Flow-dependency-free). Returns null when
+ * the run has no recorded projection (404) or on any non-OK response — callers
+ * must render an honest empty/error state and never fabricate a projection.
+ */
+export async function getFlowRunProjection(
+  hubUrl: string,
+  runId: string,
+  auth: HubAuthOptions = {}
+): Promise<unknown | null> {
+  const response = await fetch(hubApiUrl(hubUrl, `/ingest/flow/${encodeURIComponent(runId)}`), {
+    headers: {
+      ...authHeaders(auth),
+      accept: "application/json"
+    }
+  });
+  if (!response.ok) return null;
+  return response.json() as Promise<unknown>;
+}
+
 export async function postRecord(hubUrl: string, record: ConsoleRecordsRequest, auth: HubAuthOptions = {}): Promise<ConsoleRecordsResponse> {
   const response = await fetch(hubApiUrl(hubUrl, "/records"), {
     method: "POST",

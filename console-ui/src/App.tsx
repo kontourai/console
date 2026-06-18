@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { DEFAULT_HUB_URL, IS_SAME_ORIGIN, getTelemetry, getSession, postSessionLogout } from "./hubClient";
+import { DEFAULT_HUB_URL, IS_SAME_ORIGIN, getTelemetry, getSession, getFlowRunProjection, postSessionLogout } from "./hubClient";
 import { useHubConnection } from "./hooks/useHubConnection";
 import { useTheme } from "./hooks/useTheme";
 import type { ConsoleTelemetryResponse, TelemetryQueryInput } from "./serverApiTypes";
@@ -170,6 +170,7 @@ export default function App() {
             state={state}
             selectedNodeId={selectedNodeId}
             onNodeSelect={setSelectedNodeId}
+            fetchChildProjection={(runId) => getFlowRunProjection(hubUrl, runId, auth)}
           />
           <TimelineSection state={state} lastAccepted={lastAccepted} />
         </>
