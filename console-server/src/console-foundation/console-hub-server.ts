@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 import { assertConsoleRuntimeConfig, resolveConsoleRuntimeConfig, type ConsoleRuntimeConfig } from "./config";
 import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./sse-stream";
 import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
+import { validateFlowIngestRequest, wrapFlowIngestRecord } from "./flow-ingest";
 import type {
   ConsoleEventRecord,
   ConsoleRecord,
@@ -30,7 +31,10 @@ const { LocalConsoleHub } = require("./console-hub");
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/api/telemetry", "/api/telemetry/records", "/healthz", "/readyz", "/session", "/session/logout"];
+const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/healthz", "/readyz", "/session", "/session/logout"];
+
+/** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
+const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
 const DEFAULT_ALLOWED_ORIGINS = [
   "http://127.0.0.1:5173",
   "http://localhost:5173"
@@ -103,6 +107,17 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
   const localEvents = createSseBroker();
   const hostedHubs = new Map<string, Hub>();
   const hostedEvents = new Map<string, SseBroker>();
+  // Flow ingest in-memory dedup + read store, scoped to this server instance.
+  // `ingestSeen` maps idempotencyKey -> the recordId returned the first time, so
+  // a re-POST is a no-op that returns the same recordId (no second append).
+  // `ingestProjections` maps runId -> the most recently ingested
+  // FlowConsoleProjection, backing the read-only GET /ingest/flow/:runId.
+  // In-memory is fine for v1; persistence (Postgres) is a follow-up — the hub
+  // already persists the wrapped records, so a restart loses only the read cache.
+  const ingestState: FlowIngestServerState = {
+    seen: new Map<string, string>(),
+    projections: new Map<string, unknown>()
+  };
   const telemetry = createTelemetryStore(options);
   // Resolve the SQL client once so it can be shared between telemetry and the
   // core-records persistence layer.  In hosted mode the postgres adapter is
@@ -125,6 +140,7 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
       hostedHubs,
       hostedEvents,
       telemetry,
+      ingestState,
       options,
       runtimeConfig,
       coreSqlClient,
@@ -153,12 +169,25 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
   };
 }
 
+/**
+ * Per-server in-memory state backing the Flow ingest endpoint.
+ *   - `seen`: idempotencyKey -> recordId returned on first accept (dedup).
+ *   - `projections`: runId -> latest ingested FlowConsoleProjection (read cache).
+ * The wrapped records themselves are persisted by the hub; this is the v1
+ * read/dedup cache only. Persistence is a documented follow-up.
+ */
+interface FlowIngestServerState {
+  seen: Map<string, string>;
+  projections: Map<string, unknown>;
+}
+
 async function routeRequest(input: {
   localHub: Hub;
   localEvents: SseBroker;
   hostedHubs: Map<string, Hub>;
   hostedEvents: Map<string, SseBroker>;
   telemetry: TelemetryStore;
+  ingestState: FlowIngestServerState;
   options: ConsoleHubServerOptions;
   runtimeConfig: ConsoleRuntimeConfig;
   coreSqlClient?: ConsoleSqlClient;
@@ -166,7 +195,7 @@ async function routeRequest(input: {
   request: IncomingMessage;
   response: ServerResponse;
 }): Promise<void> {
-  const { telemetry, options, runtimeConfig, coreSqlClient, uiDistDir, request, response } = input;
+  const { telemetry, ingestState, options, runtimeConfig, coreSqlClient, uiDistDir, request, response } = input;
   const url = new URL(request.url || "/", `http://${request.headers.host || DEFAULT_HOST}`);
   if (!applyCorsPolicy(request, response, runtimeConfig)) return;
 
@@ -204,6 +233,22 @@ async function routeRequest(input: {
 
     if (request.method === "POST" && url.pathname === "/session/logout") {
       handleSessionLogout(response);
+      return;
+    }
+
+    // Flow hosted-ingest contract v1 (POST /ingest/flow, GET /ingest/flow/:runId).
+    // Guarded by its OWN per-product bearer token (CONSOLE_INGEST_TOKEN), NOT the
+    // hosted-auth tokens or the browser session — Flow's HostedConsoleSink pushes
+    // with a dedicated token. Handled before the general auth gate and static
+    // serving. When no ingest token is configured the endpoint is DISABLED (404).
+    if (url.pathname === "/ingest/flow" || url.pathname.startsWith(INGEST_FLOW_RUN_PREFIX)) {
+      const ingestHub = runtimeConfig.mode === "hosted"
+        ? hostedHubForTenant(input.hostedHubs, options, runtimeConfig.defaultTenantId, coreSqlClient)
+        : input.localHub;
+      const ingestEvents = runtimeConfig.mode === "hosted"
+        ? hostedEventsForTenant(input.hostedEvents, runtimeConfig.defaultTenantId)
+        : input.localEvents;
+      await handleFlowIngestRoute(url, request, response, runtimeConfig, ingestHub, ingestEvents, ingestState);
       return;
     }
 
@@ -718,6 +763,113 @@ async function handleRecords(hub: Hub, events: SseBroker, request: IncomingMessa
     state: hub.currentOperatingState()
   });
   writeJson(response, 202, result);
+}
+
+/**
+ * Flow hosted-ingest endpoint (contract v1):
+ *   POST /ingest/flow         — validate -> wrap -> append -> broadcast -> 202 { recordId }
+ *   GET  /ingest/flow/:runId  — read-only stored FlowConsoleProjection -> 200 / 404
+ *
+ * Auth: a single per-product bearer token (`runtimeConfig.ingestToken`). When no
+ * token is configured the endpoint is DISABLED and every method returns 404
+ * (we do not disclose the route, and never accept unauthenticated writes).
+ * Missing/invalid bearer ⇒ 401. Bad request shape ⇒ 400 { error }.
+ *
+ * Idempotency: dedup on `idempotencyKey`. A repeat POST returns 202 with the
+ * SAME recordId and does NOT append a second record.
+ *
+ * Console stays read-only re: authority — it records Flow's payload and projects
+ * it; Flow owns the process/projection.
+ */
+async function handleFlowIngestRoute(
+  url: URL,
+  request: IncomingMessage,
+  response: ServerResponse,
+  runtimeConfig: ConsoleRuntimeConfig,
+  hub: Hub,
+  events: SseBroker,
+  ingestState: FlowIngestServerState
+): Promise<void> {
+  // Disabled when no ingest token is configured — return 404 consistently for
+  // every method so the route's existence is not disclosed.
+  if (!runtimeConfig.ingestToken) {
+    writeApiError(response, 404, "NOT_FOUND", "route was not found");
+    return;
+  }
+
+  // Bearer auth (constant-time compare), independent of the session/tenant gate.
+  const token = bearerToken(request);
+  if (!token || !tokenMatches(runtimeConfig.ingestToken, token)) {
+    writeApiError(response, 401, "UNAUTHORIZED", "ingest authorization token is required");
+    return;
+  }
+
+  // GET /ingest/flow/:runId — read-only projection fetch.
+  if (request.method === "GET" && url.pathname.startsWith(INGEST_FLOW_RUN_PREFIX)) {
+    const runId = safeDecodePath(url.pathname.slice(INGEST_FLOW_RUN_PREFIX.length - 1))?.replace(/^\//, "");
+    if (!runId) {
+      writeApiError(response, 400, "INVALID_RUN_ID", "run id is required");
+      return;
+    }
+    const projection = ingestState.projections.get(runId);
+    if (projection === undefined) {
+      writeApiError(response, 404, "NOT_FOUND", "no projection recorded for run");
+      return;
+    }
+    writeJson(response, 200, projection);
+    return;
+  }
+
+  // POST /ingest/flow — accept a FlowIngestRequest envelope.
+  if (request.method === "POST" && url.pathname === "/ingest/flow") {
+    let body: unknown;
+    try {
+      body = await readJsonBody(request);
+    } catch {
+      writeApiError(response, 400, "INVALID_JSON", "invalid JSON body");
+      return;
+    }
+
+    const validation = validateFlowIngestRequest(body);
+    if (!validation.ok) {
+      writeApiError(response, 400, "INVALID_INGEST_REQUEST", validation.error);
+      return;
+    }
+
+    const idempotencyKey = validation.request.idempotencyKey;
+    const existingRecordId = ingestState.seen.get(idempotencyKey);
+    if (existingRecordId !== undefined) {
+      // Idempotent replay: same recordId, no second append/broadcast.
+      writeJson(response, 202, { recordId: existingRecordId });
+      return;
+    }
+
+    const record = wrapFlowIngestRecord(validation.request);
+    const result = await hub.append(record);
+    if (result.outcome !== "accepted") {
+      writeApiError(response, 500, result.errorCode || "SINK_DELIVERY_FAILED", result.safeMessage || "record delivery failed");
+      return;
+    }
+
+    // Mark seen and cache the projection for the read-only GET only AFTER a
+    // successful append, so a failed delivery can be retried.
+    ingestState.seen.set(idempotencyKey, record.id);
+    const projection = validation.request.payload as { run?: { run_id?: unknown } };
+    const runId = projection?.run?.run_id;
+    if (typeof runId === "string" && runId) {
+      ingestState.projections.set(runId, projection);
+    }
+
+    events.broadcast("record.accepted", {
+      delivery: result,
+      state: hub.currentOperatingState()
+    });
+    writeJson(response, 202, { recordId: record.id });
+    return;
+  }
+
+  // Known ingest path but unsupported method.
+  handleKnownRouteMethodError(response);
 }
 
 async function handleTelemetryRecords(telemetry: TelemetryStore, events: SseBroker, request: IncomingMessage, response: ServerResponse, context: ConsoleRequestContext): Promise<void> {

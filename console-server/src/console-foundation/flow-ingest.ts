@@ -136,14 +136,19 @@ export async function handleFlowIngest(
   return { status: 202, body: { recordId: record.id } };
 }
 
-// TODO(console-infra): mount this stub on the production HTTP server.
-//   1. Add `POST /ingest/flow` to console-hub-server's router (next to
-//      `POST /records`), reading the JSON body via the existing `readJsonBody`.
-//   2. Add REAL auth middleware: require `Authorization: Bearer <per-product
-//      token>` and reject (401) when absent/invalid. The token is per-product
-//      and env-configured (the Flow side disables its HostedConsoleSink when no
-//      token is set, so an authenticated request is always expected here).
-//   3. Wire `onRecord` to the hub (`hub.appendEvent(record)`) and broadcast
-//      `record.accepted` over the SSE stream, mirroring `handleRecords`.
-//   4. Honor idempotency: dedup re-POSTs on `idempotencyKey` (the wrapped record
-//      id is derived from it; hub projections already dedup by id).
+// MOUNTED: `console-hub-server.ts` now wires this contract onto the production
+// HTTP server (`handleFlowIngestRoute`):
+//   1. `POST /ingest/flow` reads the JSON body via `readJsonBody`, validates
+//      with `validateFlowIngestRequest`, wraps via `wrapFlowIngestRecord`,
+//      appends to the hub, broadcasts `record.accepted` over SSE, and returns
+//      `202 { recordId }` (`400 { error }` on a bad shape).
+//   2. Real auth: a per-product `Authorization: Bearer <token>` checked against
+//      `CONSOLE_INGEST_TOKEN` (constant-time). Missing/invalid ⇒ 401. When no
+//      token is configured the endpoint is DISABLED ⇒ 404 (never accepts
+//      unauthenticated writes).
+//   3. Idempotency: a per-server in-memory `idempotencyKey -> recordId` map
+//      makes re-POSTs return the same `recordId` with no second append. (The
+//      wrapped record id is also derived from the key; persistence of the
+//      dedup/read cache across restarts is a documented follow-up.)
+//   4. `GET /ingest/flow/:runId` returns the stored `FlowConsoleProjection`
+//      read-only (the console UI drill-in fetches it).

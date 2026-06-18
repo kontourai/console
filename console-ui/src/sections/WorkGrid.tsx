@@ -12,9 +12,14 @@ interface WorkGridProps {
   state: OperatingState;
   selectedNodeId: string | null;
   onNodeSelect(id: string | null): void;
+  /**
+   * Live read-through fetch for a referenced child run's projection
+   * (GET /ingest/flow/:runId). Passed to <FlowRunPanel> for drill-in fetch.
+   */
+  fetchChildProjection?: (runId: string) => Promise<unknown | null>;
 }
 
-export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps) {
+export function WorkGrid({ state, selectedNodeId, onNodeSelect, fetchChildProjection }: WorkGridProps) {
   const flow = buildProcessFlow(state);
   const activeProcessLearnings = flow.activeProcess
     ? selectLearningsBySubjectRef(state, processRef(flow.activeProcess))
@@ -68,7 +73,11 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect }: WorkGridProps)
         )}
 
         {flowProjection ? (
-          <FlowRunPanel projection={flowProjection} childProjections={flowChildProjections} />
+          <FlowRunPanel
+            projection={flowProjection}
+            childProjections={flowChildProjections}
+            fetchChildProjection={fetchChildProjection}
+          />
         ) : null}
       </section>
 

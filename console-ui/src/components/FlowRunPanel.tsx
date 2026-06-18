@@ -13,9 +13,11 @@
 // Recursion / drill-down: a parent run whose evidence references a child run is
 // drillable to the child's own <flow-run-panel>. Child references are read from
 // the projection's external_links (read-through — NOT re-derivation). When a
-// pre-fetched child projection is available it renders inline; otherwise we
-// leave a clear TODO for the live child-projection fetch and do NOT fabricate a
-// projection.
+// pre-fetched child projection is available it renders inline; otherwise the
+// panel LIVE-FETCHES the child's FlowConsoleProjection from the hosted-ingest
+// read endpoint (GET /ingest/flow/:runId, surfaced via `fetchChildProjection`)
+// and renders it once available. We never fabricate a projection — loading,
+// empty (not recorded yet), and error states are surfaced honestly.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   FlowConsoleProjection,
@@ -95,23 +97,91 @@ function FlowRunPanelMount({ projection, heading }: FlowRunPanelMountProps) {
   return <flow-run-panel ref={panelRef} heading={heading} />;
 }
 
+/** Live-fetch outcome for a referenced child run's projection. */
+type ChildFetchState =
+  | { status: "loading" }
+  /** Fetch resolved but no projection is recorded for the run (404 / null). */
+  | { status: "empty" }
+  | { status: "error"; message: string }
+  | { status: "loaded"; projection: FlowConsoleProjection };
+
+/**
+ * Minimal shape guard for a fetched child projection. The fetch returns
+ * `unknown` (the read endpoint is Flow-payload-owned, the console validates
+ * before mounting). We require the fields <flow-run-panel> reads.
+ */
+function asChildProjection(raw: unknown): FlowConsoleProjection | null {
+  if (!raw || typeof raw !== "object") return null;
+  const candidate = raw as FlowConsoleProjection;
+  if (!candidate.run || typeof candidate.run.run_id !== "string") return null;
+  if (!Array.isArray(candidate.steps) || !Array.isArray(candidate.gates)) return null;
+  return candidate;
+}
+
 interface FlowRunPanelProps {
   /** The active run's pre-derived projection (passed through, never derived). */
   projection: FlowConsoleProjection;
   /**
    * Optional pre-fetched child-run projections keyed by child run_id. Absent
-   * children fall back to a TODO placeholder for the live fetch.
+   * children are live-fetched via `fetchChildProjection`.
    */
   childProjections?: Record<string, FlowConsoleProjection>;
+  /**
+   * Live read-through fetch for a referenced child run's projection (the hosted
+   * GET /ingest/flow/:runId endpoint). Returns the raw projection, or null when
+   * none is recorded for the run. Omit to disable live fetch (the reference then
+   * renders as "not fetched yet"). The console never derives — it only reads.
+   */
+  fetchChildProjection?: (runId: string) => Promise<unknown | null>;
 }
 
-export function FlowRunPanel({ projection, childProjections }: FlowRunPanelProps) {
+export function FlowRunPanel({ projection, childProjections, fetchChildProjection }: FlowRunPanelProps) {
   const [openChildId, setOpenChildId] = useState<string | null>(null);
+  // Live-fetched child projections keyed by child run_id (populated on drill-in
+  // when no pre-fetched projection is available).
+  const [fetched, setFetched] = useState<Record<string, ChildFetchState>>({});
 
   const childRefs = useMemo(() => collectChildRunRefs(projection), [projection]);
 
-  const openChild = openChildId ? childProjections?.[openChildId] : undefined;
+  const preFetchedChild = openChildId ? childProjections?.[openChildId] : undefined;
   const openChildRef = childRefs.find((r) => r.childRunId === openChildId) ?? null;
+  const liveChild = openChildId ? fetched[openChildId] : undefined;
+
+  // When a child is opened that has no pre-fetched projection, live-fetch it
+  // once via the read endpoint. Guarded so we don't refetch on every render.
+  useEffect(() => {
+    if (!openChildId) return;
+    if (childProjections?.[openChildId]) return; // pre-fetched — no fetch needed
+    if (!fetchChildProjection) return; // live fetch disabled
+    if (fetched[openChildId]) return; // already fetched (or in flight)
+
+    let cancelled = false;
+    setFetched((prev) => ({ ...prev, [openChildId]: { status: "loading" } }));
+    fetchChildProjection(openChildId)
+      .then((raw) => {
+        if (cancelled) return;
+        const childProjection = asChildProjection(raw);
+        setFetched((prev) => ({
+          ...prev,
+          [openChildId]: childProjection
+            ? { status: "loaded", projection: childProjection }
+            : { status: "empty" }
+        }));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setFetched((prev) => ({
+          ...prev,
+          [openChildId]: { status: "error", message: err instanceof Error ? err.message : "fetch failed" }
+        }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [openChildId, childProjections, fetchChildProjection, fetched]);
+
+  // The child projection to render: pre-fetched takes precedence, else live-fetched.
+  const openChild = preFetchedChild ?? (liveChild?.status === "loaded" ? liveChild.projection : undefined);
 
   return (
     <div className="flow-run-panel-embed" aria-label="Flow run panel">
@@ -150,19 +220,28 @@ export function FlowRunPanel({ projection, childProjections }: FlowRunPanelProps
                   projection={openChild}
                   heading={openChildRef?.label ?? openChildId}
                 />
-              ) : (
-                // TODO(live-child-fetch): wire a live fetch of the child run's
-                // FlowConsoleProjection (hosted ingest endpoint
-                // `GET <console-base>/ingest/flow/<runId>` per
-                // docs/design/hosted-console-ingest-contract.md, or the local
-                // bridge for file mode) keyed by `openChildId`, then feed it to
-                // FlowRunPanelMount. Until that seam is stood up we render the
-                // reference honestly rather than fabricating a projection.
+              ) : liveChild?.status === "loading" ? (
+                <p className="flow-run-child-loading" role="status" aria-live="polite">
+                  Loading projection for child run <code>{openChildId}</code>…
+                </p>
+              ) : liveChild?.status === "error" ? (
+                <p className="flow-run-child-error" role="alert">
+                  Could not load child run <code>{openChildId}</code>: {liveChild.message}.
+                </p>
+              ) : liveChild?.status === "empty" || !fetchChildProjection ? (
+                // Either the read endpoint has no projection recorded for this run
+                // yet, or live fetch is disabled. Render the reference honestly —
+                // never fabricate a projection.
                 <p className="flow-run-child-pending" role="note">
                   Child run <code>{openChildId}</code> is referenced but its
                   projection has not been fetched yet. The drill-in renders once
                   the child projection is available (read-through, not
                   re-derivation).
+                </p>
+              ) : (
+                // Brief gap before the fetch effect sets "loading".
+                <p className="flow-run-child-loading" role="status" aria-live="polite">
+                  Loading projection for child run <code>{openChildId}</code>…
                 </p>
               )}
             </div>

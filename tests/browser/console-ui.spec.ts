@@ -248,7 +248,11 @@ const hubState = {
     exceptions: [],
     transitions: [],
     route_backs: [],
-    external_links: [],
+    // A SECOND child reference that is deliberately NOT pre-fetched, so the
+    // drill-in must LIVE-FETCH it from GET /ingest/flow/run-child-2.
+    external_links: [
+      { id: "run-child-2", kind: "artifact", label: "Child run: live-fetched", source: "flow", target_id: "run-child-2" },
+    ],
     next_action: "Attach the scoped-diff evidence bundle to parent-implement-gate.",
     continuation: "",
     report: null,
@@ -285,6 +289,39 @@ const hubState = {
       external_links: [], next_action: null, continuation: "", report: null,
     },
   },
+};
+
+// Projection served by the mocked GET /ingest/flow/run-child-2 (the live-fetch
+// path). It is NOT pre-fetched in hubState.flowChildProjections, so the panel
+// must fetch it on drill-in. Its current step "publish" lets the test assert the
+// nested child panel rendered from the fetched (not pre-derived) projection.
+const liveFetchedChildProjection = {
+  schema_version: "1",
+  run: {
+    run_id: "run-child-2",
+    definition_id: "release-publish",
+    definition_version: "1",
+    subject: "release publish (live-fetched child)",
+    status: "running",
+    current_step: "publish",
+    updated_at: "2026-06-08T14:45:00.000Z",
+    params: {},
+  },
+  definition: { id: "release-publish", version: "1", title: "Release publish", description: null, raw: {} },
+  steps: [
+    { id: "publish", index: 0, label: "publish", next: null, gates: ["child-publish-gate"], raw: {} },
+  ],
+  current_step: "publish",
+  open_gates: ["child-publish-gate"],
+  gates: [
+    {
+      id: "child-publish-gate", step_id: "publish", status: "waiting", summary: "Awaiting publish approval", is_open: true,
+      expectations: [], evidence_refs: [], evidence: [], missing: [], optional_missing: [],
+      matched_expectations: [], raw: {},
+    },
+  ],
+  expectations: [], evidence: [], exceptions: [], transitions: [], route_backs: [],
+  external_links: [], next_action: null, continuation: "", report: null,
 };
 
 const telemetryState = {
@@ -762,10 +799,29 @@ async function installHubMock(page: Page): Promise<void> {
 
     window.EventSource = MockEventSource as unknown as typeof EventSource;
     const telemetryResponse = state.telemetry;
+    const childProjections = state.childProjections;
+    window.__kontourIngestRequests = [];
     const nativeFetch = window.fetch.bind(window);
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const parsedUrl = new URL(url, window.location.href);
+      // Mock the read-only Flow ingest projection endpoint (live child fetch).
+      const ingestMatch = parsedUrl.pathname.match(/\/ingest\/flow\/(.+)$/);
+      if (ingestMatch) {
+        const runId = decodeURIComponent(ingestMatch[1]);
+        window.__kontourIngestRequests?.push(runId);
+        const projection = window.__kontourIngestForce404 ? undefined : childProjections[runId];
+        if (!projection) {
+          return Promise.resolve(new Response(JSON.stringify({ error: "NOT_FOUND" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          }));
+        }
+        return Promise.resolve(new Response(JSON.stringify(projection), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }));
+      }
       if (parsedUrl.pathname.endsWith("/api/telemetry")) {
         const filters = parsedUrl.searchParams.getAll("filter");
         window.__kontourTelemetryRequests?.push({
@@ -862,7 +918,7 @@ async function installHubMock(page: Page): Promise<void> {
       const singular = facetId.endsWith("s") ? facetId.slice(0, -1) : facetId;
       return [...(valuesByFacet[facetId] || []), attributes[facetId], attributes[singular]].filter((value): value is string => typeof value === "string");
     }
-  }, { hubState, telemetry: telemetryState });
+  }, { hubState, telemetry: telemetryState, childProjections: { "run-child-2": liveFetchedChildProjection } });
 }
 
 async function lastTelemetryRequest(page: Page): Promise<Window["__kontourTelemetryRequests"][number] | undefined> {
@@ -979,6 +1035,62 @@ test("embeds flow-run-panel rendering the run graph, gates, evidence, and drilli
   expect(consoleErrors).toEqual([]);
 });
 
+test("drilling into a non-pre-fetched child live-fetches its projection from the ingest read endpoint", async ({ page }) => {
+  const consoleErrors = await loadConsole(page);
+
+  await expect(page.locator("flow-run-panel").first()).toBeVisible();
+
+  // run-child-2 is referenced but NOT pre-fetched — drilling in must live-fetch
+  // GET /ingest/flow/run-child-2.
+  const childToggle = page.locator("[data-child-run-id='run-child-2']").first();
+  await expect(childToggle).toBeVisible();
+  await childToggle.click();
+
+  const childDetail = page.locator("[data-child-detail-for='run-child-2']");
+  await expect(childDetail).toBeVisible();
+
+  // The mocked read endpoint was actually hit for this run id.
+  await expect
+    .poll(() => page.evaluate(() => window.__kontourIngestRequests ?? []))
+    .toContain("run-child-2");
+
+  // Once fetched, a nested <flow-run-panel> mounts for the child, fed the
+  // LIVE-FETCHED projection (read-through, not re-derivation).
+  const childPanel = childDetail.locator("flow-run-panel").first();
+  await expect(childPanel).toBeVisible();
+  const childShadowText = await childPanel.evaluate((el) => {
+    const root = (el as HTMLElement).shadowRoot;
+    return {
+      status: root?.querySelector('[data-testid="flow-run-panel-status"]')?.textContent ?? "",
+      text: root?.textContent ?? "",
+    };
+  });
+  expect(childShadowText.status).toContain("running");
+  expect(childShadowText.text).toContain("publish"); // from the live-fetched projection
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("a referenced child with no recorded projection shows an honest empty state (never fabricated)", async ({ page }) => {
+  // Override the ingest read endpoint to return 404 for run-child-2.
+  await page.addInitScript(() => {
+    window.__kontourIngestForce404 = true;
+  });
+  const consoleErrors = await loadConsole(page);
+
+  await expect(page.locator("flow-run-panel").first()).toBeVisible();
+  const childToggle = page.locator("[data-child-run-id='run-child-2']").first();
+  await childToggle.click();
+
+  const childDetail = page.locator("[data-child-detail-for='run-child-2']");
+  await expect(childDetail).toBeVisible();
+  // 404 → empty state: the reference is shown honestly, no child panel mounts.
+  await expect(childDetail).toContainText("has not been fetched yet");
+  await expect(childDetail.locator("flow-run-panel")).toHaveCount(0);
+
+  expect(consoleErrors).toEqual([]);
+});
+
 async function assertTokenStylesResolved(page: Page): Promise<void> {
   const styles = await page.locator("body").evaluate((body) => {
     const computed = getComputedStyle(body);
@@ -998,6 +1110,8 @@ declare global {
   interface Window {
     __kontourConsoleEventSourceUrls?: string[];
     __kontourConsoleXss?: boolean;
+    __kontourIngestRequests?: string[];
+    __kontourIngestForce404?: boolean;
     __kontourTelemetryRequests?: Array<{
       preset?: string;
       q?: string;

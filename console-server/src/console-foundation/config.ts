@@ -12,6 +12,11 @@ export interface ConsoleRuntimeConfig {
   hostedTenantIds: string[];
   hostedAuthTokens: ConsoleHostedAuthToken[];
   localAuthToken?: string;
+  /**
+   * Bearer token guarding `POST /ingest/flow`. Absent ⇒ the ingest endpoint is
+   * disabled (returns 404). See `ConsoleHubServerOptions.ingestToken`.
+   */
+  ingestToken?: string;
   telemetryStorageAdapter: TelemetryStorageAdapterName;
   telemetryDatabaseUrl?: string;
   validation: ConsoleConfigValidationIssue[];
@@ -29,6 +34,7 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
   const hostedTenantIds = options.hostedTenantIds || parseCsv(env.CONSOLE_TENANT_ALLOWLIST);
   const hostedAuthTokens = normalizeAuthTokens(options.hostedAuthTokens || parseHostedAuthTokens(env, defaultTenantId));
   const localAuthToken = options.telemetryToken || env.CONSOLE_AUTH_TOKEN || env.CONSOLE_TELEMETRY_TOKEN;
+  const ingestToken = options.ingestToken || env.CONSOLE_INGEST_TOKEN;
   const allowedOrigins = options.allowedOrigins || parseCsv(env.CONSOLE_ALLOWED_ORIGINS);
   const telemetryStorageAdapter = resolveTelemetryStorageAdapter(options, env);
   const telemetryDatabaseUrl = options.telemetryDatabaseUrl || env.CONSOLE_DATABASE_URL || env.CONSOLE_TELEMETRY_DATABASE_URL;
@@ -80,6 +86,7 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
     hostedTenantIds,
     hostedAuthTokens,
     localAuthToken,
+    ingestToken,
     telemetryStorageAdapter,
     telemetryDatabaseUrl,
     validation
@@ -108,6 +115,7 @@ export function redactConsoleRuntimeConfig(config: ConsoleRuntimeConfig) {
       token: token.token ? "[redacted]" : ""
     })),
     localAuthToken: config.localAuthToken ? "[redacted]" : undefined,
+    ingestToken: config.ingestToken ? "[redacted]" : undefined,
     telemetryStorageAdapter: config.telemetryStorageAdapter,
     telemetryDatabaseUrl: config.telemetryDatabaseUrl ? "[redacted]" : undefined,
     validation: config.validation
