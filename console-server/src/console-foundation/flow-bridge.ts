@@ -5,6 +5,8 @@
 // re-bridging is state-safe; the bin also tracks sent ids across watch passes.
 const fs = require("node:fs");
 const path = require("node:path");
+const { LocalFileSink, CompositeSink, ApiSink } = require("./emitter");
+import type { ConsoleRecord, DeliveryResult, Sink } from "./types";
 import { buildPipeline } from "@kontourai/console-core";
 import type { Pipeline, PipelineGateExpect } from "@kontourai/console-core";
 // Flow OWNS its console projection contract. The bridge consumes Flow's
@@ -324,19 +326,80 @@ export interface FlowBridgeDelivery {
   failed: number;
 }
 
+// Translation (Flow run → ConsoleRecord) stays in deriveFlowRunEvents above.
+// Delivery is now generic: the bridge hands records to a configured Sink and
+// is agnostic about where they land (local disk, hosted API, memory). The Sink
+// layer is the ONLY place that knows destinations — see issue #73.
+
+export interface FlowBridgeSinkConfig extends FlowBridgeScopeOptions {
+  /** Local mirror root (.kontour by default). Pass null to disable local. */
+  localRoot?: string | null;
+  /** Hosted console base URL. When set, an ApiSink is added to the fanout. */
+  hubUrl?: string;
+  /** Hosted console auth token (Bearer / x-console-api-token). */
+  authToken?: string;
+  /** Tenant routed to the hosted console via x-console-tenant(-id). */
+  tenantId?: string;
+}
+
 /**
- * Derives and POSTs one run's events to a hub /records endpoint. Pass a
- * shared `sentIds` set to skip already-delivered events across passes (the
- * hub's projections also deduplicate by id, so re-sending is state-safe but
- * grows sink storage).
+ * Builds the CompositeSink the bridge delivers through. Local-vs-hosted is pure
+ * configuration: a LocalFileSink mirror is always present (unless localRoot is
+ * null), and an ApiSink is appended whenever a hubUrl is configured. The shared
+ * sentIds set is threaded into the ApiSink so re-delivery is idempotent across
+ * watch passes.
+ */
+export function buildFlowBridgeSink(config: FlowBridgeSinkConfig = {}, sentIds?: Set<string>): Sink {
+  const sinks: Sink[] = [];
+  if (config.localRoot !== null) {
+    sinks.push(new LocalFileSink({ root: config.localRoot ?? ".kontour" }));
+  }
+  if (config.hubUrl) {
+    sinks.push(new ApiSink(config.hubUrl, config.authToken ?? "", {
+      tenantId: config.tenantId,
+      sentIds,
+    }));
+  }
+  if (sinks.length === 0) {
+    throw new TypeError("buildFlowBridgeSink requires at least one destination (localRoot or hubUrl)");
+  }
+  if (sinks.length === 1) return sinks[0];
+  return new CompositeSink(sinks);
+}
+
+function countDelivery(delivery: FlowBridgeDelivery, result: DeliveryResult, recordId: string, sentIds?: Set<string>): void {
+  // A composite "accepted" means every active child accepted (LocalFileSink and,
+  // when configured, ApiSink). "skipped" surfaces from the ApiSink dedup path.
+  if (result.outcome === "skipped") {
+    delivery.duplicates += 1;
+    return;
+  }
+  if (result.outcome === "accepted") {
+    delivery.accepted += 1;
+    sentIds?.add(recordId);
+    return;
+  }
+  delivery.failed += 1;
+}
+
+/**
+ * Derives one run's events and delivers them through the configured Sink. The
+ * second argument is either a Sink (preferred) or a hub URL string (legacy
+ * convenience — a default LocalFileSink-less ApiSink targeting that hub is
+ * built for you). Pass a shared `sentIds` set to skip already-delivered events
+ * across passes; the hub also dedups by id, so re-sending is state-safe.
  */
 export async function bridgeFlowRun(
   runDir: string,
-  hubUrl: string,
+  sinkOrHubUrl: Sink | string,
   options: FlowBridgeScopeOptions = {},
   sentIds?: Set<string>,
 ): Promise<FlowBridgeDelivery> {
   const events = await deriveFlowRunEvents(runDir, options);
+  const sink: Sink = typeof sinkOrHubUrl === "string"
+    ? new ApiSink(sinkOrHubUrl, "", { sentIds })
+    : sinkOrHubUrl;
+
   const delivery: FlowBridgeDelivery = {
     runId: events[0]?.producer.runId ?? path.basename(runDir),
     events: events.length,
@@ -344,22 +407,17 @@ export async function bridgeFlowRun(
     duplicates: 0,
     failed: 0,
   };
+
   for (const event of events) {
+    // Honour the caller's sentIds even when the sink doesn't (e.g. local-only),
+    // so watch passes report duplicates rather than re-counting accepts.
     if (sentIds?.has(event.id)) {
       delivery.duplicates += 1;
       continue;
     }
-    const response = await fetch(`${hubUrl.replace(/\/$/, "")}/records`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(event),
-    });
-    if (response.ok) {
-      delivery.accepted += 1;
-      sentIds?.add(event.id);
-    } else {
-      delivery.failed += 1;
-    }
+    const result = await sink.deliver(event as unknown as ConsoleRecord);
+    countDelivery(delivery, result, event.id, sentIds);
   }
+
   return delivery;
 }
