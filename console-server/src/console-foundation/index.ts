@@ -842,6 +842,7 @@ module.exports = {
   LocalFileSink: emitter.LocalFileSink,
   CompositeSink: emitter.CompositeSink,
   InMemorySink: emitter.InMemorySink,
+  ApiSink: emitter.ApiSink,
   classifyRecord: emitter.classifyRecord,
   formatDeliveryResult: emitter.formatDeliveryResult,
   surfaceClaimStateToProjection: surfaceClaimHelper.surfaceClaimStateToProjection,
@@ -852,6 +853,7 @@ module.exports = {
 
 export {
   bridgeFlowRun,
+  buildFlowBridgeSink,
   deriveFlowRunEvents,
   listFlowRunDirs,
 } from "./flow-bridge";
@@ -859,6 +861,7 @@ export type {
   FlowBridgeDelivery,
   FlowBridgeEvent,
   FlowBridgeScopeOptions,
+  FlowBridgeSinkConfig,
 } from "./flow-bridge";
 
 export {

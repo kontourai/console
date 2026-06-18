@@ -1,6 +1,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 import type {
+  ApiSinkFetch,
+  ApiSinkOptions,
   ClassifiedRecord,
   CompositeSinkOptions,
   ConsoleRecord,
@@ -208,6 +210,162 @@ class InMemorySink {
   }
 }
 
+// Hosted delivery sink: the only network-aware Sink. The flow-bridge and any
+// other producer reach the hosted console by composing this into a
+// CompositeSink, so local-vs-hosted is configuration, not code. Idempotent via
+// a shared sentIds set (re-uses the bridge's event-id dedup); transient (5xx /
+// network) failures are retried with linear backoff; auth + tenant travel in
+// headers the hub already understands.
+class ApiSink {
+  hubUrl: string;
+  token: string;
+  sinkId: string;
+  sinkRole: string;
+  tenantId?: string;
+  maxAttempts: number;
+  retryBackoffMs: number;
+  sentIds?: Set<string>;
+  private fetchImpl: ApiSinkFetch;
+  private sleep: (ms: number) => Promise<void>;
+
+  constructor(hubUrl: string, token: string = "", options: ApiSinkOptions = {}) {
+    if (typeof hubUrl !== "string" || !hubUrl) {
+      throw new TypeError("ApiSink requires a hubUrl");
+    }
+    // Token is optional: a hub may run unauthenticated on loopback. When set,
+    // it travels as both a Bearer header and x-console-api-token.
+    this.hubUrl = hubUrl.replace(/\/$/, "");
+    this.token = typeof token === "string" ? token : "";
+    this.sinkId = options.sinkId || "api";
+    this.sinkRole = options.sinkRole || "ApiSink";
+    this.tenantId = options.tenantId;
+    this.maxAttempts = Number.isFinite(options.maxAttempts) && (options.maxAttempts as number) > 0
+      ? Math.floor(options.maxAttempts as number)
+      : 3;
+    this.retryBackoffMs = Number.isFinite(options.retryBackoffMs) && (options.retryBackoffMs as number) >= 0
+      ? (options.retryBackoffMs as number)
+      : 100;
+    this.sentIds = options.sentIds;
+    const injectedFetch = options.fetch;
+    if (injectedFetch) {
+      this.fetchImpl = injectedFetch;
+    } else if (typeof globalThis.fetch === "function") {
+      this.fetchImpl = ((input, init) => (globalThis.fetch as Function)(input, init)) as ApiSinkFetch;
+    } else {
+      throw new TypeError("ApiSink requires a fetch implementation");
+    }
+    this.sleep = options.sleep || ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+  }
+
+  private headers(): Record<string, string> {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+    if (this.token) {
+      headers.authorization = `Bearer ${this.token}`;
+      // Also send the dedicated header so the hub authorizes either way.
+      headers["x-console-api-token"] = this.token;
+    }
+    if (this.tenantId) {
+      // Issue sketch names x-console-tenant; the hub reads x-console-tenant-id.
+      // Send both so the sink is correct against the current and sketched hub.
+      headers["x-console-tenant"] = this.tenantId;
+      headers["x-console-tenant-id"] = this.tenantId;
+    }
+    return headers;
+  }
+
+  async deliver(record: ConsoleRecord): Promise<DeliveryResult> {
+    const classified = classifyRecord(record);
+    if (classified.validation.some((item) => item.severity === "error")) {
+      return formatDeliveryResult({
+        sinkId: this.sinkId,
+        sinkRole: this.sinkRole,
+        outcome: "failed",
+        recordId: classified.recordId,
+        recordKind: classified.recordKind,
+        errorCode: "INVALID_RECORD",
+        safeMessage: classified.validation.find((item) => item.severity === "error")!.message
+      });
+    }
+
+    // Idempotent: a record already delivered through this sink is skipped, not
+    // re-POSTed. The hub also dedups by id, so this is purely to avoid churn.
+    if (this.sentIds && this.sentIds.has(classified.recordId)) {
+      return formatDeliveryResult({
+        sinkId: this.sinkId,
+        sinkRole: this.sinkRole,
+        outcome: "skipped",
+        status: "skipped",
+        recordId: classified.recordId,
+        recordKind: classified.recordKind
+      });
+    }
+
+    const body = JSON.stringify(record);
+    const url = `${this.hubUrl}/records`;
+    let lastErrorCode = "SINK_DELIVERY_FAILED";
+    let lastStatus: number | undefined;
+
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      try {
+        const response = await this.fetchImpl(url, {
+          method: "POST",
+          headers: this.headers(),
+          body
+        });
+        if (response.ok) {
+          this.sentIds?.add(classified.recordId);
+          return formatDeliveryResult({
+            sinkId: this.sinkId,
+            sinkRole: this.sinkRole,
+            outcome: "accepted",
+            recordId: classified.recordId,
+            recordKind: classified.recordKind,
+            destination: url
+          });
+        }
+        lastStatus = response.status;
+        lastErrorCode = `HTTP_${response.status}`;
+        // 4xx is not transient — surface immediately without retrying.
+        if (response.status < 500) {
+          return formatDeliveryResult({
+            sinkId: this.sinkId,
+            sinkRole: this.sinkRole,
+            outcome: "failed",
+            recordId: classified.recordId,
+            recordKind: classified.recordKind,
+            retryable: false,
+            errorCode: lastErrorCode,
+            safeMessage: `hosted console rejected the record (status ${response.status})`
+          });
+        }
+      } catch {
+        // Network / fetch error — transient, retry below.
+        lastErrorCode = "SINK_DELIVERY_FAILED";
+        lastStatus = undefined;
+      }
+
+      if (attempt < this.maxAttempts) {
+        await this.sleep(this.retryBackoffMs * attempt);
+      }
+    }
+
+    return formatDeliveryResult({
+      sinkId: this.sinkId,
+      sinkRole: this.sinkRole,
+      outcome: "failed",
+      recordId: classified.recordId,
+      recordKind: classified.recordKind,
+      retryable: true,
+      errorCode: lastErrorCode,
+      safeMessage: lastStatus !== undefined
+        ? `hosted console delivery failed after ${this.maxAttempts} attempts (status ${lastStatus})`
+        : `hosted console delivery failed after ${this.maxAttempts} attempts`
+    });
+  }
+}
+
 function classifyRecord(record: ConsoleRecord): ClassifiedRecord {
   const { validateEvent, validateProjection } = require("./index");
   const recordKind = record && record.schema === "kontour.console.projection" ? "projection" : "event";
@@ -407,6 +565,7 @@ module.exports = {
   LocalFileSink,
   CompositeSink,
   InMemorySink,
+  ApiSink,
   classifyRecord,
   formatDeliveryResult
 };

@@ -264,6 +264,39 @@ export interface InMemorySinkOptions {
   sinkRole?: string;
 }
 
+export type ApiSinkFetch = (
+  input: string,
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body: string;
+  }
+) => Promise<{
+  ok: boolean;
+  status: number;
+  text(): Promise<string>;
+}>;
+
+export interface ApiSinkOptions {
+  sinkId?: string;
+  sinkRole?: string;
+  /** Tenant routed via the x-console-tenant / x-console-tenant-id headers. */
+  tenantId?: string;
+  /** Max delivery attempts on transient (5xx / network) failures. Default 3. */
+  maxAttempts?: number;
+  /** Base backoff in milliseconds between retries. Default 100. */
+  retryBackoffMs?: number;
+  /** Injectable fetch (defaults to global fetch) — keeps the sink testable. */
+  fetch?: ApiSinkFetch;
+  /** Sleep hook between retries (defaults to setTimeout) — testable backoff. */
+  sleep?: (ms: number) => Promise<void>;
+  /**
+   * Shared set of already-delivered record ids. Re-uses the bridge's event-id
+   * dedup so re-delivering an accepted record is a no-op (idempotent).
+   */
+  sentIds?: Set<string>;
+}
+
 export interface InspectOptions {
   rootDir?: string;
 }

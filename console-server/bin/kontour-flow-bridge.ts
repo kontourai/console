@@ -6,12 +6,17 @@
 const path = require("node:path");
 const {
   bridgeFlowRun,
+  buildFlowBridgeSink,
   listFlowRunDirs,
 } = require("../src/console-foundation/flow-bridge");
+import type { Sink } from "../src/console-foundation/types";
 
 interface BridgeOptions {
   flowRoot: string;
   hubUrl: string;
+  localRoot: string | null;
+  authToken?: string;
+  tenantId?: string;
   watch: boolean;
   intervalMs: number;
   scopeId?: string;
@@ -21,25 +26,34 @@ interface BridgeOptions {
 function printUsage(): void {
   process.stdout.write(
     "Usage: kontour-flow-bridge [--flow-root .flow] [--hub http://127.0.0.1:3737]\n" +
-    "                           [--watch] [--interval-ms 2000] [--scope <id>] [--scope-label <label>]\n",
+    "                           [--local-root .kontour] [--no-local] [--tenant <id>]\n" +
+    "                           [--watch] [--interval-ms 2000] [--scope <id>] [--scope-label <label>]\n" +
+    "\n" +
+    "Auth: set CONSOLE_AUTH_TOKEN to authenticate against a hosted console.\n",
   );
 }
 
-function parseOptions(argv: string[]): BridgeOptions {
+function parseOptions(argv: string[], env: NodeJS.ProcessEnv = process.env): BridgeOptions {
   const options: BridgeOptions = {
     flowRoot: ".flow",
     hubUrl: "http://127.0.0.1:3737",
+    localRoot: ".kontour",
+    authToken: env.CONSOLE_AUTH_TOKEN || env.CONSOLE_TELEMETRY_TOKEN,
+    tenantId: env.CONSOLE_TENANT_ID,
     watch: false,
     intervalMs: 2000,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--watch") { options.watch = true; continue; }
+    if (arg === "--no-local") { options.localRoot = null; continue; }
     if (arg === "--help" || arg === "-h") { printUsage(); process.exit(0); }
     const value = argv[index + 1];
     if (value === undefined) throw new Error(`${arg} requires a value`);
     if (arg === "--flow-root") options.flowRoot = value;
     else if (arg === "--hub") options.hubUrl = value;
+    else if (arg === "--local-root") options.localRoot = value;
+    else if (arg === "--tenant") options.tenantId = value;
     else if (arg === "--interval-ms") options.intervalMs = Number(value);
     else if (arg === "--scope") options.scopeId = value;
     else if (arg === "--scope-label") options.scopeLabel = value;
@@ -54,7 +68,19 @@ function parseOptions(argv: string[]): BridgeOptions {
 
 const sentIds = new Set<string>();
 
-async function bridgeOnce(options: BridgeOptions): Promise<void> {
+function bridgeSink(options: BridgeOptions): Sink {
+  // Resolve config once, applied to whichever sinks are active. Local mirror is
+  // always on (unless --no-local); the hosted ApiSink is added only when a hub
+  // is configured — local-only work is unchanged when no token/hub is set.
+  return buildFlowBridgeSink({
+    localRoot: options.localRoot === null ? null : path.resolve(process.cwd(), options.localRoot),
+    hubUrl: options.hubUrl,
+    authToken: options.authToken,
+    tenantId: options.tenantId,
+  }, sentIds);
+}
+
+async function bridgeOnce(options: BridgeOptions, sink: Sink): Promise<void> {
   const flowRoot = path.resolve(process.cwd(), options.flowRoot);
   const runDirs = listFlowRunDirs(flowRoot);
   if (runDirs.length === 0) {
@@ -62,7 +88,7 @@ async function bridgeOnce(options: BridgeOptions): Promise<void> {
     return;
   }
   for (const runDir of runDirs) {
-    const delivery = await bridgeFlowRun(runDir, options.hubUrl, {
+    const delivery = await bridgeFlowRun(runDir, sink, {
       scopeId: options.scopeId,
       scopeLabel: options.scopeLabel,
     }, sentIds);
@@ -75,13 +101,14 @@ async function bridgeOnce(options: BridgeOptions): Promise<void> {
 
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
-  await bridgeOnce(options);
+  const sink = bridgeSink(options);
+  await bridgeOnce(options, sink);
   if (!options.watch) return;
   process.stdout.write(`watching ${options.flowRoot} every ${options.intervalMs}ms; Ctrl+C to stop\n`);
   // Poll instead of fs.watch: Flow rewrites state.json atomically and the hub
   // dedupes, so a periodic full rescan is simple and correct.
   setInterval(() => {
-    bridgeOnce(options).catch((error: Error) => {
+    bridgeOnce(options, sink).catch((error: Error) => {
       process.stderr.write(`bridge pass failed: ${error.message}\n`);
     });
   }, options.intervalMs);

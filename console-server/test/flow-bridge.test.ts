@@ -3,8 +3,10 @@ const { test } = require("node:test");
 const { mkdtempSync, mkdirSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
-const { deriveFlowRunEvents, listFlowRunDirs, bridgeFlowRun } = require("../src/console-foundation/flow-bridge");
+const { deriveFlowRunEvents, listFlowRunDirs, bridgeFlowRun, buildFlowBridgeSink } = require("../src/console-foundation/flow-bridge");
 const { createConsoleHubServer } = require("../src/console-foundation/console-hub-server");
+const { InMemorySink } = require("../src/console-foundation");
+const { existsSync } = require("node:fs");
 
 function writeRun(flowRoot: string, runId: string, state: Record<string, unknown>): string {
   const runDir = join(flowRoot, "runs", runId);
@@ -78,6 +80,57 @@ test("bridges a run into a live hub and skips sent ids on the second pass", asyn
   } finally {
     await new Promise((resolve: any) => app.close(resolve));
   }
+});
+
+test("bridges a run through a configured Sink (no hardcoded POST)", async () => {
+  const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-sink-"));
+  const runDir = writeRun(flowRoot, "dev-7", sampleState);
+
+  // Translation (Flow → ConsoleRecord) is decoupled from delivery: the bridge
+  // hands records to whatever Sink it's given. Here an InMemorySink stands in
+  // for the local/api fanout — no network, no hardcoded fetch.
+  const memory = new InMemorySink({ sinkId: "bridge-memory" });
+  const sent = new Set<string>();
+
+  const first = await bridgeFlowRun(runDir, memory, {}, sent);
+  assert.equal(first.accepted, 5);
+  assert.equal(first.failed, 0);
+  assert.equal(memory.records.length, 5);
+  assert.equal(memory.records[0].id, "evt-flowbridge-dev-7-1");
+
+  // Idempotent across passes: sentIds dedups so nothing is re-delivered.
+  const second = await bridgeFlowRun(runDir, memory, {}, sent);
+  assert.equal(second.accepted, 0);
+  assert.equal(second.duplicates, 5);
+  assert.equal(memory.records.length, 5);
+});
+
+test("buildFlowBridgeSink local-only: LocalFileSink, no ApiSink, no network", async () => {
+  const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-local-"));
+  const runDir = writeRun(flowRoot, "dev-7", sampleState);
+  const kontourRoot = mkdtempSync(join(tmpdir(), "flow-bridge-local-root-"));
+
+  // No hubUrl → a lone LocalFileSink, not a CompositeSink, and no ApiSink.
+  const sink = buildFlowBridgeSink({ localRoot: kontourRoot });
+  assert.equal(sink.sinkRole, "LocalFileSink");
+
+  const delivery = await bridgeFlowRun(runDir, sink, {}, new Set<string>());
+  assert.equal(delivery.accepted, 5);
+  assert.equal(delivery.failed, 0);
+
+  // Events landed on local disk under the configured root.
+  const eventDir = join(kontourRoot, "events", "flow-bridge");
+  assert.equal(existsSync(eventDir), true);
+});
+
+test("buildFlowBridgeSink composes Local + Api when a hub is configured", () => {
+  const kontourRoot = mkdtempSync(join(tmpdir(), "flow-bridge-composite-"));
+  const sink = buildFlowBridgeSink({ localRoot: kontourRoot, hubUrl: "https://console.kontourai.io", authToken: "tok" });
+
+  assert.equal(sink.sinkRole, "CompositeSink");
+  assert.equal(sink.sinks.length, 2);
+  assert.equal(sink.sinks[0].sinkRole, "LocalFileSink");
+  assert.equal(sink.sinks[1].sinkRole, "ApiSink");
 });
 
 test("attachTrustReports: trust.bundle evidence in manifest produces trustReport on gate-expect", async () => {
