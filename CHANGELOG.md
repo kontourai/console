@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/kontourai/console/compare/v1.6.0...v1.7.0) (2026-06-17)
+
+
+### Features
+
+* typed flow-bridge — consume Flow's exported console-contract ([#76](https://github.com/kontourai/console/issues/76)) ([19b4135](https://github.com/kontourai/console/commit/19b4135168a842edc8739de4aac5a801817ebe6b))
+
 ## [1.6.0](https://github.com/kontourai/console/compare/v1.5.0...v1.6.0) (2026-06-16)
 
 
