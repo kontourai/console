@@ -278,7 +278,7 @@ function PipelineStageDrawer({ stage, onClose }: PipelineStageDrawerProps) {
                     <span className={`pipeline-expect-required ${expect.required ? "pipeline-expect-required--yes" : ""}`}>
                       {expect.required ? "required" : "optional"}
                     </span>
-                    {(expect.trustReport !== undefined || expect.verifyUrl !== undefined || expect.kind === "surface.claim") && <TrustPanelRow expect={expect} />}
+                    {(expect.trustReport !== undefined || expect.verifyUrl !== undefined) && <TrustPanelRow expect={expect} />}
                   </li>
                 ))}
               </ul>

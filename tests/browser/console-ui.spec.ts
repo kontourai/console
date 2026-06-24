@@ -67,7 +67,7 @@ const hubState = {
       producer: { product: "survey" },
     },
   ],
-  // Pipeline with a surface.claim expect that carries a trustReport
+  // Pipeline with a trust.bundle expect that carries a trustReport
   pipeline: {
     runId: "run-dag-demo-1",
     runLabel: "checkout-retry-banner (dag-demo-1)",
@@ -85,7 +85,13 @@ const hubState = {
               id: "impl-diff",
               label: "Implementation scoped diff",
               required: true,
-              kind: "surface.claim",
+              kind: "trust.bundle",
+              bundle_claim: {
+                claimType: "implementation.scoped-diff",
+                subjectType: "flow-step",
+                subjectId: "builder.implement",
+                accepted_statuses: ["verified"],
+              },
               trustReport: {
                 schemaVersion: 3,
                 id: "surface-test-report",
@@ -930,7 +936,7 @@ function localDateTimeToIso(value: string): string {
   return new Date(value).toISOString();
 }
 
-test("renders embedded surface-trust-panel in the gate drill-in for a surface.claim expect with trustReport", async ({ page }) => {
+test("renders embedded surface-trust-panel in the gate drill-in for a trust.bundle expect with trustReport", async ({ page }) => {
   const consoleErrors = await loadConsole(page);
 
   // The default view is "operate" which shows the pipeline.
@@ -948,7 +954,7 @@ test("renders embedded surface-trust-panel in the gate drill-in for a surface.cl
   // It appears in both the "needs" section and the gate detail section; .first() is fine.
   await expect(page.locator("[data-claim-id='impl-diff']").first()).toBeVisible();
 
-  // The "view trust panel" toggle button should be present for surface.claim expects with trustReport
+  // The "view trust panel" toggle button should be present for trust.bundle expects with trustReport
   const trustToggle = page.locator(".trust-panel-toggle").first();
   await expect(trustToggle).toBeVisible();
 

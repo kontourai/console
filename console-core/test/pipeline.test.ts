@@ -2,6 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildPipeline } from "../src/pipeline";
 
+const trustBundleExpect = (id: string, claimType: string, description: string, required = true) => ({
+  id,
+  kind: "trust.bundle",
+  required,
+  description,
+  bundle_claim: {
+    claimType,
+    subjectType: "flow-step",
+    subjectId: `builder.${id}`,
+    accepted_statuses: ["verified"],
+  },
+});
+
 const sampleDefinition = {
   spec: {
     steps: [
@@ -13,19 +26,19 @@ const sampleDefinition = {
       "plan-gate": {
         step: "plan",
         expects: [
-          { id: "acceptance-criteria", kind: "surface.claim", required: true, description: "Acceptance criteria ready" },
+          trustBundleExpect("acceptance-criteria", "builder.acceptance", "Acceptance criteria ready"),
         ],
       },
       "implement-gate": {
         step: "implement",
         expects: [
-          { id: "scoped-diff", kind: "surface.claim", required: true, description: "Scoped diff ready" },
+          trustBundleExpect("scoped-diff", "implementation.scoped-diff", "Scoped diff ready"),
         ],
       },
       "verify-gate": {
         step: "verify",
         expects: [
-          { id: "tests-passed", kind: "surface.claim", required: true, description: "Tests passed" },
+          trustBundleExpect("tests-passed", "quality.tests", "Tests passed"),
         ],
       },
     },
@@ -126,7 +139,7 @@ test("buildPipeline: gate grouping under their step", () => {
   assert.equal(plan.gates[0].expects.length, 1);
   assert.equal(plan.gates[0].expects[0].id, "acceptance-criteria");
   assert.equal(plan.gates[0].expects[0].required, true);
-  assert.equal(plan.gates[0].expects[0].kind, "surface.claim");
+  assert.equal(plan.gates[0].expects[0].kind, "builder.acceptance");
 });
 
 test("buildPipeline: gate status from gate_outcomes", () => {
@@ -198,11 +211,11 @@ const dagDefinition = {
       { id: "publish", next: null },
     ],
     gates: {
-      "plan-gate": { step: "plan", expects: [{ id: "plan-done", kind: "surface.claim", required: true, description: "Plan ready" }] },
-      "shape-gate": { step: "shape", expects: [{ id: "shape-done", kind: "surface.claim", required: true, description: "Shape ready" }] },
-      "implement-gate": { step: "implement", expects: [{ id: "impl-done", kind: "surface.claim", required: true, description: "Implementation done" }] },
-      "verify-gate": { step: "verify", expects: [{ id: "tests-passed", kind: "surface.claim", required: true, description: "Tests passed" }] },
-      "publish-gate": { step: "publish", expects: [{ id: "publish-ready", kind: "surface.claim", required: false, description: "Publish readiness" }] },
+      "plan-gate": { step: "plan", expects: [trustBundleExpect("plan-done", "builder.acceptance", "Plan ready")] },
+      "shape-gate": { step: "shape", expects: [trustBundleExpect("shape-done", "builder.acceptance", "Shape ready")] },
+      "implement-gate": { step: "implement", expects: [trustBundleExpect("impl-done", "implementation.scoped-diff", "Implementation done")] },
+      "verify-gate": { step: "verify", expects: [trustBundleExpect("tests-passed", "quality.tests", "Tests passed")] },
+      "publish-gate": { step: "publish", expects: [trustBundleExpect("publish-ready", "release.readiness", "Publish readiness", false)] },
     },
   },
 };
@@ -348,7 +361,7 @@ test("buildPipeline: reason=In progress for current with no gate and no waiting"
       gates: {
         "plan-gate": {
           step: "plan",
-          expects: [{ id: "acceptance-criteria", kind: "surface.claim", required: true, description: "Acceptance criteria ready" }],
+          expects: [trustBundleExpect("acceptance-criteria", "builder.acceptance", "Acceptance criteria ready")],
         },
       },
     },
@@ -403,8 +416,8 @@ test("buildPipeline: configWarning set for non-terminal gateless stage", () => {
         { id: "verify", next: null },
       ],
       gates: {
-        "plan-gate": { step: "plan", expects: [{ id: "ac", kind: "surface.claim", required: true, description: "AC" }] },
-        "verify-gate": { step: "verify", expects: [{ id: "tests", kind: "surface.claim", required: true, description: "Tests" }] },
+        "plan-gate": { step: "plan", expects: [trustBundleExpect("ac", "builder.acceptance", "AC")] },
+        "verify-gate": { step: "verify", expects: [trustBundleExpect("tests", "quality.tests", "Tests")] },
       },
     },
   };
@@ -425,7 +438,7 @@ test("buildPipeline: no configWarning for terminal gateless stage", () => {
         { id: "publish", next: null },  // terminal, no gate — fine
       ],
       gates: {
-        "plan-gate": { step: "plan", expects: [{ id: "ac", kind: "surface.claim", required: true, description: "AC" }] },
+        "plan-gate": { step: "plan", expects: [trustBundleExpect("ac", "builder.acceptance", "AC")] },
       },
     },
   };
