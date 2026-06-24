@@ -439,6 +439,13 @@ async function main() {
     // Construct minimal honest pipeline from the steps exercised
     say("definition.json not found; constructing minimal pipeline from exercised steps");
     const finalState = runState(dir);
+    const trustBundleExpect = (id: string, claimType: string, description: string, required = true) => ({
+      id,
+      kind: "trust.bundle",
+      required,
+      description,
+      bundle_claim: { claimType, subjectType: "flow-step", subjectId: `builder.${id}`, accepted_statuses: ["verified"] },
+    });
     const minimalDefinition = {
       spec: {
         steps: [
@@ -448,10 +455,10 @@ async function main() {
           { id: "publish", next: null },
         ],
         gates: {
-          "plan-gate": { step: "plan", expects: [{ id: "acceptance-criteria", kind: "surface.claim", required: true, description: "Acceptance criteria ready" }] },
-          "implement-gate": { step: "implement", expects: [{ id: "scoped-diff", kind: "surface.claim", required: true, description: "Implementation scoped diff" }] },
-          "verify-gate": { step: "verify", expects: [{ id: "tests-passed", kind: "surface.claim", required: true, description: "Tests passed" }] },
-          "publish-gate": { step: "publish", expects: [{ id: "publish-ready", kind: "surface.claim", required: false, description: "Publish readiness" }] },
+          "plan-gate": { step: "plan", expects: [trustBundleExpect("acceptance-criteria", "builder.acceptance", "Acceptance criteria ready")] },
+          "implement-gate": { step: "implement", expects: [trustBundleExpect("scoped-diff", "implementation.scoped-diff", "Implementation scoped diff")] },
+          "verify-gate": { step: "verify", expects: [trustBundleExpect("tests-passed", "quality.tests", "Tests passed")] },
+          "publish-gate": { step: "publish", expects: [trustBundleExpect("publish-ready", "release.readiness", "Publish readiness", false)] },
         }
       }
     };
