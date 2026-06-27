@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.9.0](https://github.com/kontourai/console/compare/v1.8.0...v1.9.0) (2026-06-24)
+
+
+### Features
+
+* **console:** add authenticated ApiSink + route flow-bridge through the Sink layer ([#80](https://github.com/kontourai/console/issues/80)) ([4a8e13b](https://github.com/kontourai/console/commit/4a8e13bea4d9d49b3f47183efe6fc0f4130c3bf6))
+
+
+### Bug Fixes
+
+* **console-server:** define console-owned FlowIngestRequest envelope (typecheck gate) ([#81](https://github.com/kontourai/console/issues/81)) ([6ad56b9](https://github.com/kontourai/console/commit/6ad56b909baa6bf68fb5f0d36cfea07f565999db))
+
 ## [1.8.0](https://github.com/kontourai/console/compare/v1.7.0...v1.8.0) (2026-06-18)
 
 
