@@ -114,17 +114,23 @@ jobs:
         run: npm publish --access public --provenance
         working-directory: console
 
-      # Standalone publish of the shared contract package so other repos
-      # (e.g. flow-agents) can depend on @kontourai/console-telemetry from npm.
-      # Versioned independently of the root; the guard makes this idempotent, so
-      # it publishes only when console-telemetry/package.json version is new.
-      - name: Publish console-telemetry
+      # Best-effort standalone publish of the shared contract package so other
+      # repos (e.g. flow-agents) can depend on @kontourai/console-telemetry from
+      # npm. Versioned independently of the root; the guard makes it idempotent.
+      #
+      # The FIRST publish of a new scoped package must be bootstrapped once by an
+      # npm-org admin — CI tokens cannot create new packages (npm returns E404).
+      # So this step is non-fatal: it warns with bootstrap instructions instead
+      # of failing the release. Once bootstrapped, it publishes cleanly on bumps.
+      - name: Publish console-telemetry (best-effort)
         run: |
           NAME=$(node -p "require('./console-telemetry/package.json').name")
           VERSION=$(node -p "require('./console-telemetry/package.json').version")
           if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
             echo "${NAME}@${VERSION} already published; skipping."
+          elif npm publish -w "${NAME}" --access public --provenance; then
+            echo "Published ${NAME}@${VERSION}."
           else
-            npm publish -w "${NAME}" --access public --provenance
+            echo "::warning::Could not publish ${NAME}@${VERSION} — likely the first publish of a new package (npm E404: CI tokens cannot create packages). Bootstrap once from an npm-org admin account: 'npm publish -w ${NAME} --access public', after which CI keeps it updated."
           fi
         working-directory: console
