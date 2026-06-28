@@ -34,6 +34,11 @@ export interface ConsoleTelemetryRecentEvent {
   toolName?: string;
   title?: string;
   taskSlug?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  estimatedCostUsd?: number;
   attributes?: Record<string, string>;
   status?: string;
   outcome?: string;
@@ -110,9 +115,24 @@ export interface ConsoleTelemetryPaginationSummary {
   hasMore?: boolean;
 }
 
+export interface ConsoleTelemetryUsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+}
+
+export interface ConsoleTelemetryUsageBreakdown extends ConsoleTelemetryUsageTotals {
+  key: string;
+  label: string;
+}
+
 export interface ConsoleTelemetryAnalyticsSummary {
   facets: ConsoleTelemetryFacetSummary[];
   flows: ConsoleTelemetryFlowSummary[];
+  usageByModel: ConsoleTelemetryUsageBreakdown[];
 }
 
 export interface ConsoleTelemetryResponse {
@@ -123,6 +143,7 @@ export interface ConsoleTelemetryResponse {
     sessionCount: number;
     eventTypeCounts: Record<string, number>;
     productRecordCount: number;
+    usage: ConsoleTelemetryUsageTotals;
   };
   analytics: ConsoleTelemetryAnalyticsSummary;
   query?: ConsoleTelemetryQuerySummary;

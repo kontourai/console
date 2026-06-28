@@ -501,6 +501,12 @@ export interface TelemetryRecordSummary {
   toolName?: string;
   taskSlug?: string;
   title?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  estimatedCostUsd?: number;
+  usageByModel?: TelemetryUsageBreakdown[];
   attributes?: Record<string, string>;
   path?: string;
 }
@@ -569,9 +575,24 @@ export interface TelemetryFlowSummary {
   items: TelemetryFlowItem[];
 }
 
+export interface TelemetryUsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number;
+}
+
+export interface TelemetryUsageBreakdown extends TelemetryUsageTotals {
+  key: string;
+  label: string;
+}
+
 export interface TelemetryAnalyticsSummary {
   facets: TelemetryFacetSummary[];
   flows: TelemetryFlowSummary[];
+  usageByModel: TelemetryUsageBreakdown[];
 }
 
 export interface TelemetrySourceSummary {
@@ -591,6 +612,7 @@ export interface TelemetrySummary {
     sessionCount: number;
     eventTypeCounts: Record<string, number>;
     productRecordCount: number;
+    usage: TelemetryUsageTotals;
   };
   analytics: TelemetryAnalyticsSummary;
   records: TelemetryRecordSummary[];
