@@ -16,9 +16,12 @@ import type {
   TelemetryRecordSummary,
   TelemetrySourceSummary,
   TelemetrySummary,
+  TelemetryUsageTotals,
+  TelemetryUsageBreakdown,
   ValidationIssue
 } from "./types";
 import { resolveTelemetryStorageAdapter } from "./config";
+import { costForModel } from "./telemetry-pricing";
 
 const MAX_JSONL_LINES_PER_FILE = 5000;
 const MAX_TELEMETRY_READ_BYTES = 1024 * 1024;
@@ -568,7 +571,8 @@ function summarizeTelemetry(input: {
       recordCount: matchedRecords.length,
       sessionCount: new Set(matchedRecords.map((record: TelemetryRecordSummary) => record.sessionId).filter(Boolean)).size,
       eventTypeCounts: countBy(matchedRecords, "eventType"),
-      productRecordCount: productRecords.records.length
+      productRecordCount: productRecords.records.length,
+      usage: usageTotals(matchedRecords)
     },
     analytics: buildAnalytics(matchedRecords, descriptor),
     records: paginatedRecords,
@@ -624,6 +628,7 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
   const toolName = nestedString(record, ["tool", "normalized_name"]) || nestedString(record, ["tool", "name"]);
   const status = nestedString(record, ["status"]) || hookEventName;
   const outcome = nestedString(record, ["outcome"]) || nestedString(record, ["tool", "status"]);
+  const usage = parseRecordUsage(nestedValue(record, ["usage"]), model);
   return {
     sourceId,
     sourceKind: "runtime",
@@ -645,6 +650,12 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
     cwd,
     delegationTarget: delegation,
     toolName,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    cacheCreationInputTokens: usage.cacheCreationInputTokens,
+    cacheReadInputTokens: usage.cacheReadInputTokens,
+    estimatedCostUsd: usage.estimatedCostUsd,
+    usageByModel: usage.usageByModel,
     attributes: compactStringRecord({
       sourceKind: "runtime",
       eventType: record.event_type,
@@ -835,7 +846,8 @@ function buildAnalytics(records: TelemetryRecordSummary[], descriptor: Telemetry
       label: facet.label || facet.id,
       counts: topAttributeCounts(records, facet.attribute, facet.limit || 12)
     })),
-    flows: (descriptor.flows || []).map((flow: TelemetryFlowDescriptor) => summarizeDescriptorFlow(records, flow))
+    flows: (descriptor.flows || []).map((flow: TelemetryFlowDescriptor) => summarizeDescriptorFlow(records, flow)),
+    usageByModel: usageByModelBreakdown(records)
   };
 }
 
@@ -1399,6 +1411,127 @@ function nestedValue(data: unknown, keys: string[]): unknown {
     current = current[key];
   }
   return current;
+}
+
+function num(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function round6(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+// Parse a session.usage record's `usage` block into token totals + a per-model
+// breakdown. Cost is recomputed authoritatively from the pricing table (tokens
+// are source of truth) so pricing updates apply retroactively.
+function parseRecordUsage(node: unknown, modelHint?: string): {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
+  estimatedCostUsd?: number;
+  usageByModel?: TelemetryUsageBreakdown[];
+} {
+  if (!isOpenRecord(node)) return {};
+  // Price against the version stamped at emit (historical accuracy). Falls back
+  // to the registry's current version when the event predates version stamping.
+  const pricingVersion = typeof node.pricing_version === "string" ? node.pricing_version : undefined;
+  const inputTokens = node.input_tokens;
+  const outputTokens = node.output_tokens;
+  const cacheCreationInputTokens = node.cache_creation_input_tokens;
+  const cacheReadInputTokens = node.cache_read_input_tokens;
+  const hasTokens = [inputTokens, outputTokens, cacheCreationInputTokens, cacheReadInputTokens].some(
+    (v) => typeof v === "number"
+  );
+  if (!hasTokens) return {};
+
+  const flat = {
+    inputTokens: num(inputTokens),
+    outputTokens: num(outputTokens),
+    cacheCreationInputTokens: num(cacheCreationInputTokens),
+    cacheReadInputTokens: num(cacheReadInputTokens)
+  };
+
+  let usageByModel: TelemetryUsageBreakdown[] | undefined;
+  if (Array.isArray(node.by_model)) {
+    usageByModel = node.by_model.filter(isOpenRecord).map((entry: OpenRecord) => {
+      const model = typeof entry.model === "string" ? entry.model : "unknown";
+      const tokens = {
+        inputTokens: num(entry.input_tokens),
+        outputTokens: num(entry.output_tokens),
+        cacheCreationInputTokens: num(entry.cache_creation_input_tokens),
+        cacheReadInputTokens: num(entry.cache_read_input_tokens)
+      };
+      return {
+        key: model,
+        label: model,
+        ...tokens,
+        totalTokens:
+          tokens.inputTokens + tokens.outputTokens + tokens.cacheCreationInputTokens + tokens.cacheReadInputTokens,
+        estimatedCostUsd: costForModel(model, tokens, pricingVersion)
+      };
+    });
+  }
+
+  const estimatedCostUsd = usageByModel
+    ? round6(usageByModel.reduce((sum, m) => sum + m.estimatedCostUsd, 0))
+    : costForModel(modelHint, flat, pricingVersion);
+
+  return { ...flat, estimatedCostUsd, usageByModel };
+}
+
+function emptyUsageTotals(): TelemetryUsageTotals {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
+    totalTokens: 0,
+    estimatedCostUsd: 0
+  };
+}
+
+function usageTotals(records: TelemetryRecordSummary[]): TelemetryUsageTotals {
+  const totals = emptyUsageTotals();
+  for (const record of records) {
+    totals.inputTokens += num(record.inputTokens);
+    totals.outputTokens += num(record.outputTokens);
+    totals.cacheCreationInputTokens += num(record.cacheCreationInputTokens);
+    totals.cacheReadInputTokens += num(record.cacheReadInputTokens);
+    totals.estimatedCostUsd += num(record.estimatedCostUsd);
+  }
+  totals.totalTokens =
+    totals.inputTokens + totals.outputTokens + totals.cacheCreationInputTokens + totals.cacheReadInputTokens;
+  totals.estimatedCostUsd = round6(totals.estimatedCostUsd);
+  return totals;
+}
+
+function usageByModelBreakdown(records: TelemetryRecordSummary[]): TelemetryUsageBreakdown[] {
+  const byModel = new Map<string, TelemetryUsageBreakdown>();
+  for (const record of records) {
+    for (const entry of record.usageByModel || []) {
+      const current = byModel.get(entry.key) || {
+        key: entry.key,
+        label: entry.label,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
+        totalTokens: 0,
+        estimatedCostUsd: 0
+      };
+      current.inputTokens += entry.inputTokens;
+      current.outputTokens += entry.outputTokens;
+      current.cacheCreationInputTokens += entry.cacheCreationInputTokens;
+      current.cacheReadInputTokens += entry.cacheReadInputTokens;
+      current.totalTokens += entry.totalTokens;
+      current.estimatedCostUsd += entry.estimatedCostUsd;
+      byModel.set(entry.key, current);
+    }
+  }
+  return Array.from(byModel.values())
+    .map((entry) => ({ ...entry, estimatedCostUsd: round6(entry.estimatedCostUsd) }))
+    .sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd);
 }
 
 function projectNameFromCwd(cwd: string | undefined): string | undefined {
