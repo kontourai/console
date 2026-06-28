@@ -14,14 +14,48 @@ import { WorkGrid } from "./sections/WorkGrid";
 
 type AppView = "operate" | "telemetry" | "environment";
 
+const CONNECTION_STORAGE_KEY = "kontour.console.connection.v1";
+
+interface StoredConnection {
+  hubUrl?: string;
+  token?: string;
+  tenantId?: string;
+}
+
+// Persist the token-auth connection so an operator connects once instead of
+// re-entering the hub URL/tenant/token on every reload. Token auth only — the
+// hosted HttpOnly cookie session (same-origin) remains the more secure path and
+// is never written here. Tradeoff: a token in localStorage is readable by XSS;
+// acceptable for a self-hosted operator console, and the suite's strict CSP +
+// telemetry redaction limit that surface.
+function loadStoredConnection(): StoredConnection {
+  try {
+    const raw = window.localStorage.getItem(CONNECTION_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as StoredConnection;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveStoredConnection(value: StoredConnection): void {
+  try {
+    window.localStorage.setItem(CONNECTION_STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // Ignore storage failures (private mode / quota); the session still works in-memory.
+  }
+}
+
 export default function App() {
   const initialRoute = parseTelemetryRoute(window.location.pathname, window.location.search);
-  const [hubUrl, setHubUrl] = useState(DEFAULT_HUB_URL);
-  const [draftHubUrl, setDraftHubUrl] = useState(DEFAULT_HUB_URL);
-  const [authToken, setAuthToken] = useState("");
-  const [draftAuthToken, setDraftAuthToken] = useState("");
-  const [tenantId, setTenantId] = useState("");
-  const [draftTenantId, setDraftTenantId] = useState("");
+  const [storedConnection] = useState(loadStoredConnection);
+  const [hubUrl, setHubUrl] = useState(storedConnection.hubUrl || DEFAULT_HUB_URL);
+  const [draftHubUrl, setDraftHubUrl] = useState(storedConnection.hubUrl || DEFAULT_HUB_URL);
+  const [authToken, setAuthToken] = useState(storedConnection.token || "");
+  const [draftAuthToken, setDraftAuthToken] = useState(storedConnection.token || "");
+  const [tenantId, setTenantId] = useState(storedConnection.tenantId || "");
+  const [draftTenantId, setDraftTenantId] = useState(storedConnection.tenantId || "");
   const [view, setView] = useState<AppView>(() => viewFromPath(window.location.pathname));
   const [telemetryRoute, setTelemetryRoute] = useState<TelemetryRouteState>(initialRoute);
   const [telemetryQuery, setTelemetryQuery] = useState<TelemetryQueryInput>(() => viewFromPath(window.location.pathname) === "telemetry" ? initialRoute.query : DEFAULT_TELEMETRY_QUERY);
@@ -94,9 +128,14 @@ export default function App() {
 
   function submitHubUrl(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setHubUrl(draftHubUrl.trim() || DEFAULT_HUB_URL);
-    setAuthToken(draftAuthToken.trim());
-    setTenantId(draftTenantId.trim());
+    const nextHubUrl = draftHubUrl.trim() || DEFAULT_HUB_URL;
+    const nextToken = draftAuthToken.trim();
+    const nextTenant = draftTenantId.trim();
+    setHubUrl(nextHubUrl);
+    setAuthToken(nextToken);
+    setTenantId(nextTenant);
+    // Persist so the operator connects once instead of re-entering on every reload.
+    saveStoredConnection({ hubUrl: nextHubUrl, token: nextToken, tenantId: nextTenant });
   }
 
   async function handleSignOut() {

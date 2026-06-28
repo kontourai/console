@@ -41,6 +41,7 @@
     "serve": "npm --workspace @kontourai/console run serve --",
     "test": "npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontourai/console-core test && npm --workspace @kontourai/console test && npm --workspace @kontourai/console-ui test && npm --workspace @kontourai/console-ui run typecheck && npm run test:dev-local && npm run test:browser",
     "test:browser": "playwright test",
+    "smoke:ui:hosted": "node scripts/hosted-ui-smoke.mjs",
     "test:dev-local": "node --import tsx --test scripts/dev-local.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontourai/console-core run typecheck && npm --workspace @kontourai/console run typecheck && npm --workspace @kontourai/console-ui run typecheck",
     "check:content-boundary": "node --import tsx scripts/check-content-boundary.ts",
