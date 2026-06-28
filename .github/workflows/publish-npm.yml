@@ -113,3 +113,18 @@ jobs:
         if: steps.published.outputs.published != 'true'
         run: npm publish --access public --provenance
         working-directory: console
+
+      # Standalone publish of the shared contract package so other repos
+      # (e.g. flow-agents) can depend on @kontourai/console-telemetry from npm.
+      # Versioned independently of the root; the guard makes this idempotent, so
+      # it publishes only when console-telemetry/package.json version is new.
+      - name: Publish console-telemetry
+        run: |
+          NAME=$(node -p "require('./console-telemetry/package.json').name")
+          VERSION=$(node -p "require('./console-telemetry/package.json').version")
+          if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
+            echo "${NAME}@${VERSION} already published; skipping."
+          else
+            npm publish -w "${NAME}" --access public --provenance
+          fi
+        working-directory: console
