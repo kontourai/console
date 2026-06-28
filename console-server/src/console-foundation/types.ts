@@ -593,6 +593,9 @@ export interface TelemetryAnalyticsSummary {
   facets: TelemetryFacetSummary[];
   flows: TelemetryFlowSummary[];
   usageByModel: TelemetryUsageBreakdown[];
+  usageByProject: TelemetryUsageBreakdown[];
+  usageByAgent: TelemetryUsageBreakdown[];
+  usageByRuntime: TelemetryUsageBreakdown[];
 }
 
 export interface TelemetrySourceSummary {
