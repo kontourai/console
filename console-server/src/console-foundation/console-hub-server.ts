@@ -7,6 +7,7 @@ import { assertConsoleRuntimeConfig, resolveConsoleRuntimeConfig, type ConsoleRu
 import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./sse-stream";
 import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
 import { validateFlowIngestRequest, wrapFlowIngestRecord } from "./flow-ingest";
+import { getRegistry } from "@kontourai/console-telemetry";
 import type {
   ConsoleEventRecord,
   ConsoleRecord,
@@ -31,7 +32,7 @@ const { LocalConsoleHub } = require("./console-hub");
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/healthz", "/readyz", "/session", "/session/logout"];
+const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -321,6 +322,13 @@ async function routeRequest(input: {
     if (request.method === "GET" && url.pathname === "/api/telemetry") {
       const telemetryQuery = parseTelemetryQuery(url.searchParams);
       writeJson(response, 200, await telemetry.summarize(context, telemetryQuery));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/telemetry/pricing") {
+      // Console is the pricing distribution hub: serve the live versioned
+      // registry (the TELEMETRY_PRICING_URL target for runtimes + the UI).
+      writeJson(response, 200, getRegistry());
       return;
     }
 

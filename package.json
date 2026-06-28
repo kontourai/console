@@ -14,6 +14,7 @@
   },
   "workspaces": [
     "console-core",
+    "console-telemetry",
     "console-server",
     "console-ui"
   ],
