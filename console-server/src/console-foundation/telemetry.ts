@@ -847,7 +847,10 @@ function buildAnalytics(records: TelemetryRecordSummary[], descriptor: Telemetry
       counts: topAttributeCounts(records, facet.attribute, facet.limit || 12)
     })),
     flows: (descriptor.flows || []).map((flow: TelemetryFlowDescriptor) => summarizeDescriptorFlow(records, flow)),
-    usageByModel: usageByModelBreakdown(records)
+    usageByModel: usageByModelBreakdown(records),
+    usageByProject: usageByDimensionBreakdown(records, (r) => r.project),
+    usageByAgent: usageByDimensionBreakdown(records, (r) => r.agentName),
+    usageByRuntime: usageByDimensionBreakdown(records, (r) => r.runtime)
   };
 }
 
@@ -1531,6 +1534,44 @@ function usageByModelBreakdown(records: TelemetryRecordSummary[]): TelemetryUsag
   }
   return Array.from(byModel.values())
     .map((entry) => ({ ...entry, estimatedCostUsd: round6(entry.estimatedCostUsd) }))
+    .sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd);
+}
+
+// Sum record-level usage (tokens + cost) grouped by an arbitrary dimension
+// (project / agent / runtime). Only records that carry usage — i.e. session.usage
+// events — contribute. Answers "what is expensive / what needs work".
+function usageByDimensionBreakdown(
+  records: TelemetryRecordSummary[],
+  keyOf: (record: TelemetryRecordSummary) => string | undefined
+): TelemetryUsageBreakdown[] {
+  const byKey = new Map<string, TelemetryUsageBreakdown>();
+  for (const record of records) {
+    if (record.estimatedCostUsd === undefined && record.inputTokens === undefined) continue;
+    const key = (keyOf(record) || "unknown").trim() || "unknown";
+    const current = byKey.get(key) || {
+      key,
+      label: key,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+      totalTokens: 0,
+      estimatedCostUsd: 0
+    };
+    current.inputTokens += num(record.inputTokens);
+    current.outputTokens += num(record.outputTokens);
+    current.cacheCreationInputTokens += num(record.cacheCreationInputTokens);
+    current.cacheReadInputTokens += num(record.cacheReadInputTokens);
+    current.estimatedCostUsd += num(record.estimatedCostUsd);
+    byKey.set(key, current);
+  }
+  return Array.from(byKey.values())
+    .map((entry) => ({
+      ...entry,
+      totalTokens:
+        entry.inputTokens + entry.outputTokens + entry.cacheCreationInputTokens + entry.cacheReadInputTokens,
+      estimatedCostUsd: round6(entry.estimatedCostUsd)
+    }))
     .sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd);
 }
 

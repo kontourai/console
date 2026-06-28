@@ -133,6 +133,9 @@ export interface ConsoleTelemetryAnalyticsSummary {
   facets: ConsoleTelemetryFacetSummary[];
   flows: ConsoleTelemetryFlowSummary[];
   usageByModel: ConsoleTelemetryUsageBreakdown[];
+  usageByProject: ConsoleTelemetryUsageBreakdown[];
+  usageByAgent: ConsoleTelemetryUsageBreakdown[];
+  usageByRuntime: ConsoleTelemetryUsageBreakdown[];
 }
 
 export interface ConsoleTelemetryResponse {
