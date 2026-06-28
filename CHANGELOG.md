@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.10.0](https://github.com/kontourai/console/compare/v1.9.0...v1.10.0) (2026-06-28)
+
+
+### Features
+
+* **telemetry:** @kontourai/console-telemetry contract package + pricing API ([#86](https://github.com/kontourai/console/issues/86)) ([73bbec2](https://github.com/kontourai/console/commit/73bbec282664605adccc3372049a4af762cfd6df))
+* **telemetry:** aggregate token usage + cost, cost-by-model dashboard ([#84](https://github.com/kontourai/console/issues/84)) ([67cb698](https://github.com/kontourai/console/commit/67cb6980380d7ab6e8687fcb8d83ca96ee06952b))
+
 ## [1.9.0](https://github.com/kontourai/console/compare/v1.8.0...v1.9.0) (2026-06-24)
 
 
