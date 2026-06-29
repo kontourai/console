@@ -28,13 +28,14 @@ import type {
 import { CoreRecordsRepository } from "./core-records";
 import { looksLikeJwt, verifyAccessToken, protectedResourceMetadata } from "./oauth-resource";
 import { buildAuthorizeRedirect, exchangeCodeForToken, signLoginState, verifyLoginState } from "./oidc-login";
+import { handleMcpRequest } from "./mcp-server";
 
 const { LocalConsoleHub } = require("./console-hub");
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback"];
+const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -335,6 +336,26 @@ async function routeRequest(input: {
     }
     const hub = runtimeConfig.mode === "hosted" ? hostedHubForTenant(input.hostedHubs, options, context.tenantId, coreSqlClient) : input.localHub;
     const events = runtimeConfig.mode === "hosted" ? hostedEventsForTenant(input.hostedEvents, context.tenantId) : input.localEvents;
+
+    // MCP server (ADR 0003, Phase 3): JSON-RPC over POST, behind the auth gate +
+    // telemetry:read scope. Tools are tenant-scoped via the request context.
+    if (request.method === "POST" && url.pathname === "/mcp") {
+      let message: unknown;
+      try {
+        message = await readJsonBody(request);
+      } catch {
+        writeJson(response, 200, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } });
+        return;
+      }
+      const mcpResponse = await handleMcpRequest(message, { telemetry, requestContext: context });
+      if (mcpResponse === null) {
+        response.writeHead(202, { "cache-control": "no-store" });
+        response.end();
+        return;
+      }
+      writeJson(response, 200, mcpResponse);
+      return;
+    }
 
     if (request.method === "GET" && (url.pathname === "/stream" || url.pathname === "/events")) {
       // Await the initial Postgres load so SSE late-join state reflects full history.
@@ -1187,6 +1208,7 @@ function requiredScopeForRoute(method: string, pathname: string): string | undef
     return m === "POST" ? "telemetry:write" : "telemetry:read";
   }
   if (pathname === "/records") return "records:write"; // only POST is handled at /records
+  if (pathname === "/mcp") return "telemetry:read"; // MCP tools expose telemetry/cost analytics
   if (pathname === "/state" || pathname === "/inspect" || pathname === "/events" || pathname === "/stream") {
     return "records:read";
   }
