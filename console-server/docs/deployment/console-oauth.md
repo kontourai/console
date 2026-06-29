@@ -97,13 +97,22 @@ tokens are not scope-gated):
 3. Once all posters use JWTs, remove the static `hostedAuthTokens` (and unset
    `CONSOLE_AUTH_TOKENS_JSON`). Rollback = restore them / unset `CONSOLE_OAUTH_*`.
 
-> Note: OIDC-issued UI sessions currently reuse the existing signed session cookie and
-> therefore require the resolved tenant to have a provisioned `hostedAuthToken` (the
-> session signing anchor). Keep at least one hosted token per tenant until a dedicated
-> session secret is introduced.
+## Session signing (`CONSOLE_SESSION_SECRET`)
+
+Set **`CONSOLE_SESSION_SECRET`** (32+ random bytes, e.g. `openssl rand -base64 32`) to sign
+session cookies with a dedicated key independent of auth tokens. With it set:
+- rotating a tenant's auth token no longer invalidates everyone's session;
+- OIDC-issued sessions no longer require the tenant to have a `hostedAuthToken` — the tenant
+  just needs to be in `CONSOLE_TENANT_ALLOWLIST`.
+
+If unset, sessions fall back to a per-tenant-token key (back-compat): OIDC sessions then
+require a hosted token for the tenant, and rotating that token logs its sessions out.
+Rotating `CONSOLE_SESSION_SECRET` invalidates all sessions (a global logout). Recommended
+for hosted deployments.
 
 ## Production checklist
 
 - Serve over HTTPS (cookies are `Secure`); terminate TLS at the edge.
+- Set `CONSOLE_SESSION_SECRET` (dedicated session signing key).
 - Set `CONSOLE_ALLOWED_ORIGINS` for the console UI origin(s).
 - Confirm `aud` binding: the provider must mint access tokens scoped to `CONSOLE_OAUTH_AUDIENCE`.

@@ -257,3 +257,65 @@ test("callback: id_token at_hash mismatch → 401 (access-token substitution blo
     assert.equal(cb.status, 401);
   } finally { await closeApp(app); }
 });
+
+// #104: a dedicated session secret decouples session signing from per-tenant tokens,
+// so OIDC sessions no longer require the tenant to have a hosted auth token.
+function makeHostedSecret() {
+  return createConsoleHubServer({
+    rootDir: tempRoot(), port: 0, runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres", telemetryDatabaseUrl: "postgres://u:p@invalid/db",
+    telemetrySqlClient: new FakeSql(), coreSqlClient: new FakeSql(),
+    sessionSecret: "console-session-secret-test-0123456789abcdef",
+    hostedTenantIds: ["tenant-a", "tenant-secret"],
+    hostedAuthTokens: [{ token: "opaque-tok", tenantId: "tenant-a" }] // note: no token for tenant-secret
+  });
+}
+
+test("#104 OIDC with session secret: tenant without a hosted token gets a working session", async () => {
+  const app = makeHostedSecret(); await listen(app);
+  try {
+    const base = urlOf(app);
+    const { state, nonce, stateCookie } = await startLogin(base);
+    const access = await mintAccess("tenant-secret"); // no hosted token for this tenant
+    stubTokenEndpoint(access, await mintIdToken(nonce, access));
+    const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
+    assert.equal(cb.status, 302);
+    const session = cookieFrom(cb.headers["set-cookie"], "console_session")!;
+    assert.ok(session, "session issued without a hosted token");
+    const check = await req("GET", `${base}/session`, { cookie: `console_session=${session}` });
+    assert.equal(check.status, 200);
+    assert.equal(JSON.parse(check.body).tenantId, "tenant-secret");
+  } finally { await closeApp(app); }
+});
+
+test("#104 OIDC with session secret: tenant outside the allowlist is rejected (403)", async () => {
+  const app = makeHostedSecret(); await listen(app);
+  try {
+    const base = urlOf(app);
+    const { state, nonce, stateCookie } = await startLogin(base);
+    const access = await mintAccess("tenant-unknown"); // not in hostedTenantIds
+    stubTokenEndpoint(access, await mintIdToken(nonce, access));
+    const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
+    assert.equal(cb.status, 403);
+  } finally { await closeApp(app); }
+});
+
+test("#104 OIDC with session secret + EMPTY allowlist: deny-all (403)", async () => {
+  const app = createConsoleHubServer({
+    rootDir: tempRoot(), port: 0, runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres", telemetryDatabaseUrl: "postgres://u:p@invalid/db",
+    telemetrySqlClient: new FakeSql(), coreSqlClient: new FakeSql(),
+    sessionSecret: "console-session-secret-test-0123456789abcdef",
+    hostedTenantIds: [], // empty allowlist -> no tenant provisioned for OIDC
+    hostedAuthTokens: [{ token: "opaque-tok", tenantId: "tenant-a" }]
+  });
+  await listen(app);
+  try {
+    const base = urlOf(app);
+    const { state, nonce, stateCookie } = await startLogin(base);
+    const access = await mintAccess("tenant-a");
+    stubTokenEndpoint(access, await mintIdToken(nonce, access));
+    const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
+    assert.equal(cb.status, 403);
+  } finally { await closeApp(app); }
+});

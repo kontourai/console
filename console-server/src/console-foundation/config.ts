@@ -15,6 +15,13 @@ export interface ConsoleRuntimeConfig {
   hostedAuthTokens: ConsoleHostedAuthToken[];
   localAuthToken?: string;
   /**
+   * Dedicated HMAC secret for session cookies (#104). When set, sessions are
+   * signed/verified with it — independent of auth tokens (so rotating a tenant
+   * token no longer logs everyone out, and OIDC sessions need no hosted-token
+   * anchor). When absent, sessions fall back to the per-tenant-token key.
+   */
+  sessionSecret?: string;
+  /**
    * OAuth 2.1 Resource-Server config (ADR 0003, Phase 1). Present ⇒ the console
    * additionally accepts OIDC-issued audience-bound JWTs and serves RFC 9728
    * Protected Resource Metadata. Absent ⇒ JWT path off, behavior unchanged.
@@ -48,6 +55,7 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
   const hostedTenantIds = options.hostedTenantIds || parseCsv(env.CONSOLE_TENANT_ALLOWLIST);
   const hostedAuthTokens = normalizeAuthTokens(options.hostedAuthTokens || parseHostedAuthTokens(env, defaultTenantId));
   const localAuthToken = options.telemetryToken || env.CONSOLE_AUTH_TOKEN || env.CONSOLE_TELEMETRY_TOKEN;
+  const sessionSecret = options.sessionSecret || env.CONSOLE_SESSION_SECRET?.trim() || undefined;
   const ingestToken = options.ingestToken || env.CONSOLE_INGEST_TOKEN;
   const allowedOrigins = options.allowedOrigins || parseCsv(env.CONSOLE_ALLOWED_ORIGINS);
   const telemetryStorageAdapter = resolveTelemetryStorageAdapter(options, env);
@@ -114,6 +122,22 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
       }
     }
   }
+  // Session secret hygiene (#104).
+  if (sessionSecret && Buffer.byteLength(sessionSecret, "utf8") < 32) {
+    validation.push({
+      severity: "warning",
+      code: "SESSION_SECRET_TOO_SHORT",
+      message: "CONSOLE_SESSION_SECRET should be at least 32 bytes (use: openssl rand -base64 32)"
+    });
+  }
+  // With a session secret + OIDC login, an empty tenant allowlist is allow-all for OIDC.
+  if (sessionSecret && oauthLogin && oauth && !hostedTenantIds.length) {
+    validation.push({
+      severity: "warning",
+      code: "SESSION_SECRET_OPEN_TENANT_ALLOWLIST",
+      message: "CONSOLE_SESSION_SECRET + OIDC login with an empty CONSOLE_TENANT_ALLOWLIST: OIDC logins are denied until the allowlist names the tenants"
+    });
+  }
   // Core login envs present but login disabled — most often a missing state secret.
   if (!oauthLogin && env.CONSOLE_OAUTH_CLIENT_ID && env.CONSOLE_OAUTH_AUTHORIZATION_ENDPOINT) {
     validation.push({
@@ -130,6 +154,7 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
     hostedTenantIds,
     hostedAuthTokens,
     localAuthToken,
+    sessionSecret,
     ingestToken,
     oauth,
     oauthLogin,
@@ -161,6 +186,7 @@ export function redactConsoleRuntimeConfig(config: ConsoleRuntimeConfig) {
       token: token.token ? "[redacted]" : ""
     })),
     localAuthToken: config.localAuthToken ? "[redacted]" : undefined,
+    sessionSecret: config.sessionSecret ? "[redacted]" : undefined,
     ingestToken: config.ingestToken ? "[redacted]" : undefined,
     oauth: config.oauth
       ? { issuer: config.oauth.issuer, audience: config.oauth.audience, jwksUri: config.oauth.jwksUri, tenantClaims: config.oauth.tenantClaims }

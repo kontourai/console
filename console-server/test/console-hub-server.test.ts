@@ -1717,7 +1717,7 @@ test("signSessionCookie and verifySessionCookieValue are consistent", () => {
     validation: []
   };
 
-  const cookieValue = signSessionCookie(tenantId, rawToken);
+  const cookieValue = signSessionCookie(tenantId, fakeConfig);
   const result = verifySessionCookieValue(cookieValue, fakeConfig);
   assert.ok(result, "valid cookie must verify");
   assert.equal(result.tenantId, tenantId);
