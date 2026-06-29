@@ -1197,7 +1197,14 @@ function hostedHubForTenant(
  */
 class PostgresConsoleHub implements Hub {
   private readonly repo: CoreRecordsRepository;
-  private readonly events: ConsoleEventRecord[] = [];
+  // Incremental projection of the operating state — fold each event once as it is
+  // loaded/appended instead of retaining every raw record and re-folding the full
+  // history on each /state read (ops#34). Memory and per-request cost scale with
+  // current state, not total history.
+  private readonly projection: {
+    apply(event: ConsoleEventRecord, streamId?: string): void;
+    materialize(options?: CurrentOperatingStateOptions): OperatingState;
+  };
   /** Resolves when the initial Postgres load is done (or errored gracefully). */
   private readonly loadPromise: Promise<void>;
 
@@ -1207,17 +1214,20 @@ class PostgresConsoleHub implements Hub {
     private readonly tenantId: string
   ) {
     this.repo = new CoreRecordsRepository(sqlClient);
-    // Start the load immediately so /state benefits from it on the first
-    // request without needing an explicit trigger.
+    this.projection = foundation().createOperatingStateProjection();
+    // Start the load immediately so /state benefits from it on the first request
+    // without needing an explicit trigger. Records arrive in sequence order
+    // (loadRecords orders by sequence asc), which the projection's parity contract
+    // requires.
     this.loadPromise = this.repo.loadRecords(tenantId).then((records) => {
       for (const record of records) {
         if (isConsoleEventRecord(record)) {
-          this.events.push(record);
+          this.projection.apply(record);
         }
       }
     }).catch(() => {
-      // Errors are swallowed; the events array stays empty and the hub
-      // degrades to an empty-state view rather than crashing.
+      // Errors are swallowed; the projection stays empty and the hub degrades to
+      // an empty-state view rather than crashing.
     });
   }
 
@@ -1241,9 +1251,9 @@ class PostgresConsoleHub implements Hub {
     // Also write to the local file sink for the current session
     // (enables inspect() to show streams; harmless if disk is ephemeral).
     await this.localHub.append(record);
-    // Add events to the in-memory cache for currentOperatingState().
+    // Fold the event into the projection for currentOperatingState().
     if (isConsoleEventRecord(record)) {
-      this.events.push(record);
+      this.projection.apply(record);
     }
     return persisted;
   }
@@ -1253,7 +1263,7 @@ class PostgresConsoleHub implements Hub {
   }
 
   currentOperatingState(options: CurrentOperatingStateOptions = {}): OperatingState {
-    return foundation().buildCurrentOperatingState(this.events, options);
+    return this.projection.materialize(options);
   }
 }
 
