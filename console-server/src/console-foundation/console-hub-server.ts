@@ -608,7 +608,10 @@ async function handleOAuthCallback(request: IncomingMessage, response: ServerRes
   // as the signing anchor. The OIDC access-token scopes are embedded in the session
   // so scope authorization applies to the browser session too.
   if (runtimeConfig.sessionSecret) {
-    if (runtimeConfig.hostedTenantIds.length && !runtimeConfig.hostedTenantIds.includes(tenantId)) {
+    // With a session secret there's no per-tenant hosted-token anchor, so the tenant
+    // allowlist IS the gate — and an empty allowlist means no tenant is provisioned
+    // for OIDC (deny-all), not allow-all.
+    if (!runtimeConfig.hostedTenantIds.includes(tenantId)) {
       failOAuthCallback(response, 403, "TENANT_FORBIDDEN", "tenant is not allowed");
       return;
     }

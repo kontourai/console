@@ -299,3 +299,23 @@ test("#104 OIDC with session secret: tenant outside the allowlist is rejected (4
     assert.equal(cb.status, 403);
   } finally { await closeApp(app); }
 });
+
+test("#104 OIDC with session secret + EMPTY allowlist: deny-all (403)", async () => {
+  const app = createConsoleHubServer({
+    rootDir: tempRoot(), port: 0, runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres", telemetryDatabaseUrl: "postgres://u:p@invalid/db",
+    telemetrySqlClient: new FakeSql(), coreSqlClient: new FakeSql(),
+    sessionSecret: "console-session-secret-test-0123456789abcdef",
+    hostedTenantIds: [], // empty allowlist -> no tenant provisioned for OIDC
+    hostedAuthTokens: [{ token: "opaque-tok", tenantId: "tenant-a" }]
+  });
+  await listen(app);
+  try {
+    const base = urlOf(app);
+    const { state, nonce, stateCookie } = await startLogin(base);
+    const access = await mintAccess("tenant-a");
+    stubTokenEndpoint(access, await mintIdToken(nonce, access));
+    const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
+    assert.equal(cb.status, 403);
+  } finally { await closeApp(app); }
+});
