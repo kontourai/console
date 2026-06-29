@@ -89,6 +89,17 @@ console itself into an **OAuth 2.1 Resource Server** that validates audience-bou
 We explicitly do **not** build our own Authorization Server first (correct per MCP guidance
 and our cost constraint), and we do **not** adopt Cognito (non-AWS hosting).
 
+**No vendor lock-in.** WorkOS is a *recommendation* (best free-tier economics + shipped MCP
+tooling), not a dependency. The console's implementation is **generic OIDC**: it validates a
+JWT against an `issuer` + `audience` via the AS's JWKS and reads a configurable tenant claim.
+Any OIDC-compliant Authorization Server — WorkOS, Auth0/Okta, Zitadel, Keycloak, Ory Hydra,
+Cognito — is selected purely by configuration (`CONSOLE_OAUTH_ISSUER`), with no code change.
+The only provider-specific value is the tenant claim name (`CONSOLE_OAUTH_TENANT_CLAIM`).
+Verification is a pluggable `AccessTokenVerifier`, leaving a clean seam to add RFC 7662
+introspection later for providers that issue opaque (non-JWT) access tokens. So "which
+provider" is a reversible, low-cost decision, not an architectural commitment. (Implemented in
+the Phase-1 spike as `console-server/src/console-foundation/oauth-resource.ts`.)
+
 ### Migration path (opaque tokens → JWT/OAuth), cutover-safe
 
 1. **Stand up WorkOS** (AS + AuthKit login). Add JWKS-based JWT verification to the console
