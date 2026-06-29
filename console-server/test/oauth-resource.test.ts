@@ -1,17 +1,17 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
 import {
-  resolveWorkosConfig,
+  resolveOAuthConfig,
   looksLikeJwt,
-  verifyWorkosToken,
+  verifyAccessToken,
   protectedResourceMetadata,
-  __setWorkosJwksForTest,
-  type ConsoleWorkosConfig
-} from "../src/console-foundation/workos-auth";
+  __setJwksForTest,
+  type ConsoleOAuthConfig
+} from "../src/console-foundation/oauth-resource";
 
 const ISSUER = "https://auth.console.test";
 const AUDIENCE = "https://console.kontourai.io";
-const CONFIG: ConsoleWorkosConfig = { issuer: ISSUER, audience: AUDIENCE, jwksUri: "https://auth.console.test/jwks", tenantClaim: "org_id" };
+const CONFIG: ConsoleOAuthConfig = { issuer: ISSUER, audience: AUDIENCE, jwksUri: "https://auth.console.test/jwks", tenantClaim: "org_id" };
 
 // Local signing key + JWKS injected as the verifier (no network). Set up in a
 // hook because top-level await isn't available under the CJS test transpile.
@@ -26,7 +26,7 @@ before(async () => {
   jwk.kid = "test-key";
   jwk.alg = "RS256";
   jwk.use = "sig";
-  __setWorkosJwksForTest(CONFIG.jwksUri, createLocalJWKSet({ keys: [jwk] }));
+  __setJwksForTest(CONFIG.jwksUri, createLocalJWKSet({ keys: [jwk] }));
 });
 
 function mint(claims: Record<string, unknown> = {}, opts: { iss?: string; aud?: string; exp?: string | number } = {}): Promise<string> {
@@ -39,35 +39,35 @@ function mint(claims: Record<string, unknown> = {}, opts: { iss?: string; aud?: 
     .sign(privateKey);
 }
 
-test("verifyWorkosToken accepts a valid token and resolves tenant + scopes", async () => {
-  const result = await verifyWorkosToken(await mint(), CONFIG);
+test("verifyAccessToken accepts a valid token and resolves tenant + scopes", async () => {
+  const result = await verifyAccessToken(await mint(), CONFIG);
   assert.equal(result.tenantId, "tenant-a");
   assert.deepEqual(result.scopes, ["telemetry:write", "records:read"]);
 });
 
-test("verifyWorkosToken rejects wrong audience (RFC 8707 binding)", async () => {
+test("verifyAccessToken rejects wrong audience (RFC 8707 binding)", async () => {
   const token = await mint({}, { aud: "https://someone-else.test" });
-  await assert.rejects(() => verifyWorkosToken(token, CONFIG));
+  await assert.rejects(() => verifyAccessToken(token, CONFIG));
 });
 
-test("verifyWorkosToken rejects wrong issuer", async () => {
+test("verifyAccessToken rejects wrong issuer", async () => {
   const token = await mint({}, { iss: "https://evil.test" });
-  await assert.rejects(() => verifyWorkosToken(token, CONFIG));
+  await assert.rejects(() => verifyAccessToken(token, CONFIG));
 });
 
-test("verifyWorkosToken rejects expired token", async () => {
+test("verifyAccessToken rejects expired token", async () => {
   const token = await mint({}, { exp: Math.floor(Date.now() / 1000) - 60 });
-  await assert.rejects(() => verifyWorkosToken(token, CONFIG));
+  await assert.rejects(() => verifyAccessToken(token, CONFIG));
 });
 
-test("verifyWorkosToken rejects token missing the tenant claim", async () => {
+test("verifyAccessToken rejects token missing the tenant claim", async () => {
   const token = await mint({ org_id: undefined });
-  await assert.rejects(() => verifyWorkosToken(token, CONFIG), /missing tenant claim/);
+  await assert.rejects(() => verifyAccessToken(token, CONFIG), /missing tenant claim/);
 });
 
-test("verifyWorkosToken honors a custom tenant claim", async () => {
+test("verifyAccessToken honors a custom tenant claim", async () => {
   const cfg = { ...CONFIG, tenantClaim: "tenant" };
-  const result = await verifyWorkosToken(await mint({ org_id: undefined, tenant: "tenant-z" }), cfg);
+  const result = await verifyAccessToken(await mint({ org_id: undefined, tenant: "tenant-z" }), cfg);
   assert.equal(result.tenantId, "tenant-z");
 });
 
@@ -78,22 +78,22 @@ test("looksLikeJwt distinguishes JWTs from opaque tokens", () => {
   assert.equal(looksLikeJwt("a..c"), false);
 });
 
-test("resolveWorkosConfig is off without env, parses + derives defaults with env", () => {
-  assert.equal(resolveWorkosConfig({}), undefined);
-  assert.equal(resolveWorkosConfig({ CONSOLE_WORKOS_ISSUER: ISSUER } as NodeJS.ProcessEnv), undefined); // audience required
+test("resolveOAuthConfig is off without env, parses + derives defaults with env", () => {
+  assert.equal(resolveOAuthConfig({}), undefined);
+  assert.equal(resolveOAuthConfig({ CONSOLE_OAUTH_ISSUER: ISSUER } as NodeJS.ProcessEnv), undefined); // audience required
 
-  const cfg = resolveWorkosConfig({ CONSOLE_WORKOS_ISSUER: ISSUER + "/", CONSOLE_WORKOS_AUDIENCE: AUDIENCE } as NodeJS.ProcessEnv);
+  const cfg = resolveOAuthConfig({ CONSOLE_OAUTH_ISSUER: ISSUER + "/", CONSOLE_OAUTH_AUDIENCE: AUDIENCE } as NodeJS.ProcessEnv);
   assert.ok(cfg);
   assert.equal(cfg!.issuer, ISSUER + "/");
   assert.equal(cfg!.audience, AUDIENCE);
   assert.equal(cfg!.jwksUri, `${ISSUER}/.well-known/jwks.json`); // trailing slash trimmed in default
   assert.equal(cfg!.tenantClaim, "org_id");
 
-  const explicit = resolveWorkosConfig({
-    CONSOLE_WORKOS_ISSUER: ISSUER,
-    CONSOLE_WORKOS_AUDIENCE: AUDIENCE,
-    CONSOLE_WORKOS_JWKS_URI: "https://custom/jwks",
-    CONSOLE_WORKOS_TENANT_CLAIM: "tenant"
+  const explicit = resolveOAuthConfig({
+    CONSOLE_OAUTH_ISSUER: ISSUER,
+    CONSOLE_OAUTH_AUDIENCE: AUDIENCE,
+    CONSOLE_OAUTH_JWKS_URI: "https://custom/jwks",
+    CONSOLE_OAUTH_TENANT_CLAIM: "tenant"
   } as NodeJS.ProcessEnv);
   assert.equal(explicit!.jwksUri, "https://custom/jwks");
   assert.equal(explicit!.tenantClaim, "tenant");

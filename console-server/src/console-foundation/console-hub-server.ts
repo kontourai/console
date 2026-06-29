@@ -26,7 +26,7 @@ import type {
   ValidationIssue
 } from "./types";
 import { CoreRecordsRepository } from "./core-records";
-import { looksLikeJwt, verifyWorkosToken, protectedResourceMetadata } from "./workos-auth";
+import { looksLikeJwt, verifyAccessToken, protectedResourceMetadata } from "./oauth-resource";
 
 const { LocalConsoleHub } = require("./console-hub");
 
@@ -221,13 +221,13 @@ async function routeRequest(input: {
 
     // RFC 9728 Protected Resource Metadata (ADR 0003) — public, no auth gate.
     // Lets MCP / OAuth clients discover the authorization server. Disabled (404)
-    // unless WorkOS is configured.
+    // unless an OAuth provider is configured.
     if (request.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
-      if (!runtimeConfig.workos) {
+      if (!runtimeConfig.oauth) {
         writeApiError(response, 404, "NOT_FOUND", "protected resource metadata is not configured");
         return;
       }
-      writeJson(response, 200, protectedResourceMetadata(runtimeConfig.workos));
+      writeJson(response, 200, protectedResourceMetadata(runtimeConfig.oauth));
       return;
     }
 
@@ -1081,12 +1081,12 @@ async function authenticateRequest(request: IncomingMessage, runtimeConfig: Cons
   }
 
   // OAuth 2.1 Resource-Server path (ADR 0003, config-gated). A bearer that is
-  // structurally a JWT is verified as a WorkOS access token (JWKS signature,
+  // structurally a JWT is verified as a OIDC access token (JWKS signature,
   // issuer, audience-bound `aud`); the tenant comes from the org claim. Opaque
   // tokens are not JWT-shaped and fall through to the unchanged path below.
-  if (runtimeConfig.workos && looksLikeJwt(token)) {
+  if (runtimeConfig.oauth && looksLikeJwt(token)) {
     try {
-      const verified = await verifyWorkosToken(token, runtimeConfig.workos);
+      const verified = await verifyAccessToken(token, runtimeConfig.oauth);
       const requestedTenant = requestTenantId(request);
       if (requestedTenant && requestedTenant !== verified.tenantId) {
         return { ok: false, statusCode: 403, error: "TENANT_FORBIDDEN", safeMessage: "tenant is not allowed for this token" };

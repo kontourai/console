@@ -4,7 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { __setWorkosJwksForTest } from "../src/console-foundation/workos-auth";
+import { __setJwksForTest } from "../src/console-foundation/oauth-resource";
 const { createConsoleHubServer } = require("../src/console-foundation");
 
 const ISSUER = "https://auth.console.test";
@@ -15,11 +15,11 @@ let privateKey: CryptoKey;
 let SignJWTCtor: any;
 
 before(async () => {
-  for (const k of ["CONSOLE_WORKOS_ISSUER", "CONSOLE_WORKOS_AUDIENCE", "CONSOLE_WORKOS_JWKS_URI", "CONSOLE_WORKOS_TENANT_CLAIM"]) SAVED[k] = process.env[k];
-  process.env.CONSOLE_WORKOS_ISSUER = ISSUER;
-  process.env.CONSOLE_WORKOS_AUDIENCE = AUDIENCE;
-  process.env.CONSOLE_WORKOS_JWKS_URI = JWKS_URI;
-  process.env.CONSOLE_WORKOS_TENANT_CLAIM = "org_id";
+  for (const k of ["CONSOLE_OAUTH_ISSUER", "CONSOLE_OAUTH_AUDIENCE", "CONSOLE_OAUTH_JWKS_URI", "CONSOLE_OAUTH_TENANT_CLAIM"]) SAVED[k] = process.env[k];
+  process.env.CONSOLE_OAUTH_ISSUER = ISSUER;
+  process.env.CONSOLE_OAUTH_AUDIENCE = AUDIENCE;
+  process.env.CONSOLE_OAUTH_JWKS_URI = JWKS_URI;
+  process.env.CONSOLE_OAUTH_TENANT_CLAIM = "org_id";
   const { generateKeyPair, exportJWK, createLocalJWKSet, SignJWT } = await import("jose");
   SignJWTCtor = SignJWT;
   const kp = await generateKeyPair("RS256", { extractable: true });
@@ -28,7 +28,7 @@ before(async () => {
   jwk.kid = "test-key";
   jwk.alg = "RS256";
   jwk.use = "sig";
-  __setWorkosJwksForTest(JWKS_URI, createLocalJWKSet({ keys: [jwk] }));
+  __setJwksForTest(JWKS_URI, createLocalJWKSet({ keys: [jwk] }));
 });
 
 after(() => {
@@ -57,7 +57,7 @@ class FakeSql {
 }
 
 function tempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "console-workos-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "console-oauth-"));
 }
 function makeHosted() {
   return createConsoleHubServer({
@@ -88,7 +88,7 @@ function req(method: string, url: string, headers: Record<string, string> = {}):
   });
 }
 
-test("PRM: serves RFC 9728 metadata when WorkOS is configured", async () => {
+test("PRM: serves RFC 9728 metadata when OIDC is configured", async () => {
   const app = makeHosted();
   await listen(app);
   try {
@@ -102,7 +102,7 @@ test("PRM: serves RFC 9728 metadata when WorkOS is configured", async () => {
   }
 });
 
-test("JWT path: valid WorkOS JWT authenticates; opaque token still works (dual-accept)", async () => {
+test("JWT path: valid OIDC JWT authenticates; opaque token still works (dual-accept)", async () => {
   const app = makeHosted();
   await listen(app);
   try {
@@ -144,10 +144,10 @@ test("JWT path: tenant header mismatch is forbidden (403)", async () => {
   }
 });
 
-test("PRM: 404 when WorkOS is not configured", async () => {
-  const saved = { i: process.env.CONSOLE_WORKOS_ISSUER, a: process.env.CONSOLE_WORKOS_AUDIENCE };
-  delete process.env.CONSOLE_WORKOS_ISSUER;
-  delete process.env.CONSOLE_WORKOS_AUDIENCE;
+test("PRM: 404 when OIDC is not configured", async () => {
+  const saved = { i: process.env.CONSOLE_OAUTH_ISSUER, a: process.env.CONSOLE_OAUTH_AUDIENCE };
+  delete process.env.CONSOLE_OAUTH_ISSUER;
+  delete process.env.CONSOLE_OAUTH_AUDIENCE;
   const app = createConsoleHubServer({ rootDir: tempRoot(), port: 0 });
   await listen(app);
   try {
@@ -155,7 +155,7 @@ test("PRM: 404 when WorkOS is not configured", async () => {
     assert.equal(res.status, 404);
   } finally {
     await closeApp(app);
-    process.env.CONSOLE_WORKOS_ISSUER = saved.i;
-    process.env.CONSOLE_WORKOS_AUDIENCE = saved.a;
+    process.env.CONSOLE_OAUTH_ISSUER = saved.i;
+    process.env.CONSOLE_OAUTH_AUDIENCE = saved.a;
   }
 });
