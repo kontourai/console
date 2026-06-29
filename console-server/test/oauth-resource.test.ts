@@ -73,10 +73,11 @@ test("verifyOidcIdToken rejects nonce mismatch", async () => {
   await assert.rejects(() => verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "DIFFERENT" }), /nonce mismatch/);
 });
 
-test("verifyOidcIdToken rejects a missing at_hash when an access token is supplied", async () => {
+test("verifyOidcIdToken allows a missing at_hash in the code flow (OIDC Core 3.1.3.6: optional)", async () => {
   const access = await mint();
-  const idToken = await mintId({ nonce: "n1" }); // no at_hash claim
-  await assert.rejects(() => verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "n1", accessToken: access }), /missing at_hash/);
+  const idToken = await mintId({ nonce: "n1" }); // no at_hash — legal for code flow; some providers (Auth0/Entra) omit it
+  const payload = await verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "n1", accessToken: access });
+  assert.equal(payload.sub, "user-1");
 });
 
 test("verifyOidcIdToken rejects at_hash mismatch (access-token substitution)", async () => {

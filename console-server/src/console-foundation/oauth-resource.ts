@@ -136,13 +136,13 @@ export async function verifyOidcIdToken(
   if (payload.nonce !== opts.nonce) {
     throw new Error("id_token nonce mismatch");
   }
-  // When an access token is supplied, at_hash MUST be present and bind to it
-  // (defends against access-token substitution) — a missing at_hash is an error,
-  // not a silent skip.
-  if (opts.accessToken) {
-    if (typeof payload.at_hash !== "string") {
-      throw new Error("id_token missing at_hash (access-token binding required)");
-    }
+  // at_hash is OPTIONAL for the authorization-code flow (OIDC Core §3.1.3.6): the
+  // id_token and access token are returned together from the trusted back-channel
+  // token endpoint (TLS + PKCE + client auth), so the access-token binding is only
+  // mandatory for front-channel delivery (hybrid/implicit). Major providers omit it
+  // in code flow (e.g. Auth0, Microsoft Entra), so requiring it would reject them.
+  // Validate the binding when the provider supplies at_hash; do not require it.
+  if (opts.accessToken && typeof payload.at_hash === "string") {
     const digest = crypto.createHash(shaForAlg(String(protectedHeader.alg || ""))).update(opts.accessToken, "ascii").digest();
     const expected = digest.subarray(0, digest.length / 2).toString("base64url");
     if (expected !== payload.at_hash) {
