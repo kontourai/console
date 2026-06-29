@@ -30,11 +30,22 @@ and `GET /.well-known/oauth-protected-resource` (RFC 9728).
 | `CONSOLE_OAUTH_REDIRECT_URI` | to enable login | `https://console.kontourai.io/auth/callback` |
 | `CONSOLE_OAUTH_AUTHORIZATION_ENDPOINT` | to enable login | `${issuer}/oauth2/authorize` (from the provider's `/.well-known/openid-configuration`) |
 | `CONSOLE_OAUTH_TOKEN_ENDPOINT` | to enable login | `${issuer}/oauth2/token` |
+| `CONSOLE_OAUTH_STATE_SECRET` | **required for login** | 32+ random bytes (e.g. `openssl rand -base64 32`) |
 | `CONSOLE_OAUTH_LOGIN_SCOPES` | optional | `openid profile email` (default) |
 
-Setting all of CLIENT_ID + REDIRECT_URI + AUTHORIZATION_ENDPOINT + TOKEN_ENDPOINT
-activates `GET /auth/login` and `GET /auth/callback`. Get the endpoint URLs from the
-provider's OIDC discovery document.
+Setting all of CLIENT_ID + REDIRECT_URI + AUTHORIZATION_ENDPOINT + TOKEN_ENDPOINT +
+**STATE_SECRET** activates `GET /auth/login` and `GET /auth/callback`. Get the endpoint
+URLs from the provider's OIDC discovery document. Login stays disabled (and config
+validation warns) if `CONSOLE_OAUTH_STATE_SECRET` is missing — it is a dedicated,
+high-entropy HMAC key for the login-state cookie and is never derived from auth tokens.
+Authorization/token endpoints must be **https** (http allowed only for localhost in dev).
+
+> **Access tokens must be JWTs.** The console runs as a combined Relying Party +
+> Resource Server: at the callback it verifies the *access token* (signature via JWKS,
+> `iss`, audience-bound `aud` per RFC 8707, `exp`) and reads the tenant claim from it.
+> Configure the provider to mint **JWT** access tokens with `aud = CONSOLE_OAUTH_AUDIENCE`.
+> A provider issuing opaque access tokens will fail login with a logged 401. (Full
+> `id_token`/`at_hash`/`nonce` validation is tracked as a hardening follow-up.)
 
 ## Scopes the console enforces
 

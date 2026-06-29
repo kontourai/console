@@ -22,7 +22,8 @@ const LOGIN_ENV = {
   CONSOLE_OAUTH_CLIENT_SECRET: "secret-1",
   CONSOLE_OAUTH_REDIRECT_URI: REDIRECT,
   CONSOLE_OAUTH_AUTHORIZATION_ENDPOINT: AUTHZ,
-  CONSOLE_OAUTH_TOKEN_ENDPOINT: TOKEN_EP
+  CONSOLE_OAUTH_TOKEN_ENDPOINT: TOKEN_EP,
+  CONSOLE_OAUTH_STATE_SECRET: "test-state-secret-0123456789abcdef0123456789abcdef"
 };
 const SAVED: Record<string, string | undefined> = {};
 let privateKey: CryptoKey;
@@ -129,6 +130,53 @@ test("callback: valid state + code issues a working session (round-trip)", async
     const check = await req("GET", `${base}/session`, { cookie: `console_session=${session}` });
     assert.equal(check.status, 200);
     assert.equal(JSON.parse(check.body).tenantId, "tenant-a");
+  } finally { await closeApp(app); }
+});
+
+test("callback: OIDC session carries the token's scopes and is scope-enforced", async () => {
+  const app = makeHosted(); await listen(app);
+  try {
+    const base = urlOf(app);
+    const login = await req("GET", `${base}/auth/login`);
+    const state = new URL(String(login.headers["location"])).searchParams.get("state")!;
+    const stateCookie = cookieFrom(login.headers["set-cookie"], "console_oauth_state")!;
+    // access token granted only telemetry:read
+    stubTokenEndpoint(await mintAccess("tenant-a"));
+    const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
+    const session = cookieFrom(cb.headers["set-cookie"], "console_session")!;
+    // has telemetry:read -> allowed; lacks records:read -> 403 (NOT full access)
+    const allowed = await req("GET", `${base}/api/telemetry`, { cookie: `console_session=${session}` });
+    assert.notEqual(allowed.status, 403);
+    const denied = await req("GET", `${base}/state`, { cookie: `console_session=${session}` });
+    assert.equal(denied.status, 403);
+    assert.match(denied.body, /INSUFFICIENT_SCOPE/);
+  } finally { await closeApp(app); }
+});
+
+test("callback: missing state cookie → 400 (not a crash)", async () => {
+  const app = makeHosted(); await listen(app);
+  try {
+    const cb = await req("GET", `${urlOf(app)}/auth/callback?code=abc&state=xyz`); // no Cookie header
+    assert.equal(cb.status, 400);
+    assert.match(cb.body, /INVALID_STATE/);
+  } finally { await closeApp(app); }
+});
+
+test("callback: missing code/state params → 400", async () => {
+  const app = makeHosted(); await listen(app);
+  try {
+    const cb = await req("GET", `${urlOf(app)}/auth/callback`);
+    assert.equal(cb.status, 400);
+    assert.match(cb.body, /INVALID_REQUEST/);
+  } finally { await closeApp(app); }
+});
+
+test("callback: RFC 9207 issuer mismatch → 400", async () => {
+  const app = makeHosted(); await listen(app);
+  try {
+    const cb = await req("GET", `${urlOf(app)}/auth/callback?code=abc&state=xyz&iss=https://evil.test`);
+    assert.equal(cb.status, 400);
+    assert.match(cb.body, /INVALID_ISS/);
   } finally { await closeApp(app); }
 });
 

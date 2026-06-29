@@ -22,8 +22,9 @@
 const josePromise = import("jose");
 
 /** jose's key resolver (createRemoteJWKSet / createLocalJWKSet return value).
- *  Typed loosely to avoid a type-position import of the ESM-only `jose`. */
-type KeyResolver = any;
+ *  `unknown` at the cache boundary (we can't type-position-import the ESM-only
+ *  `jose`); narrowed with one cast only at the jwtVerify call site. */
+type KeyResolver = unknown;
 
 export interface ConsoleOAuthConfig {
   /** Authorization Server issuer (token `iss`), e.g. an OIDC provider domain. */
@@ -91,7 +92,7 @@ async function jwksFor(config: ConsoleOAuthConfig): Promise<KeyResolver> {
  */
 export const verifyAccessToken: AccessTokenVerifier = async (token, config) => {
   const { jwtVerify } = await josePromise;
-  const { payload } = await jwtVerify(token, await jwksFor(config), {
+  const { payload } = await jwtVerify(token, (await jwksFor(config)) as any, {
     issuer: config.issuer,
     audience: config.audience
   });

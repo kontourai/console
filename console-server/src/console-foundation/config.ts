@@ -5,7 +5,7 @@ import type {
   TelemetryStorageAdapterName
 } from "./types";
 import { resolveOAuthConfig, type ConsoleOAuthConfig } from "./oauth-resource";
-import { resolveOAuthLoginConfig, type ConsoleOAuthLoginConfig } from "./oidc-login";
+import { resolveOAuthLoginConfig, isSecureOrLoopbackUrl, type ConsoleOAuthLoginConfig } from "./oidc-login";
 
 export interface ConsoleRuntimeConfig {
   mode: ConsoleRuntimeMode;
@@ -95,6 +95,34 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
     }
   }
 
+  // OIDC login (ADR 0003, Phase 2c) config checks.
+  if (oauthLogin && !oauth) {
+    validation.push({
+      severity: "warning",
+      code: "OAUTH_LOGIN_WITHOUT_RESOURCE_SERVER",
+      message: "OIDC login is configured but CONSOLE_OAUTH_ISSUER/AUDIENCE are absent; /auth/login will 404"
+    });
+  }
+  if (oauthLogin) {
+    for (const [name, endpoint] of [["authorization", oauthLogin.authorizationEndpoint], ["token", oauthLogin.tokenEndpoint]] as const) {
+      if (!isSecureOrLoopbackUrl(endpoint)) {
+        validation.push({
+          severity: "error",
+          code: "OAUTH_ENDPOINT_INSECURE",
+          message: `OIDC ${name} endpoint must be https (or http loopback for dev): ${endpoint}`
+        });
+      }
+    }
+  }
+  // Core login envs present but login disabled — most often a missing state secret.
+  if (!oauthLogin && env.CONSOLE_OAUTH_CLIENT_ID && env.CONSOLE_OAUTH_AUTHORIZATION_ENDPOINT) {
+    validation.push({
+      severity: "warning",
+      code: "OAUTH_LOGIN_INCOMPLETE",
+      message: "OIDC login env present but incomplete (require CONSOLE_OAUTH_STATE_SECRET + REDIRECT_URI + AUTHORIZATION/TOKEN endpoints); login disabled"
+    });
+  }
+
   return {
     mode,
     allowedOrigins,
@@ -144,7 +172,8 @@ export function redactConsoleRuntimeConfig(config: ConsoleRuntimeConfig) {
           redirectUri: config.oauthLogin.redirectUri,
           authorizationEndpoint: config.oauthLogin.authorizationEndpoint,
           tokenEndpoint: config.oauthLogin.tokenEndpoint,
-          scopes: config.oauthLogin.scopes
+          scopes: config.oauthLogin.scopes,
+          stateSecret: config.oauthLogin.stateSecret ? "[redacted]" : ""
         }
       : undefined,
     telemetryStorageAdapter: config.telemetryStorageAdapter,

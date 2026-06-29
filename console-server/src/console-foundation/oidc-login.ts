@@ -15,19 +15,38 @@ export interface ConsoleOAuthLoginConfig {
   tokenEndpoint: string;
   /** Scopes requested at login (space/comma separated in env). */
   scopes: string[];
+  /** Dedicated HMAC secret for the login-state cookie. MUST be high-entropy and
+   *  independent of auth tokens — never derived from operational credentials. */
+  stateSecret: string;
 }
 
-/** Build login config from env, or undefined when not configured (login route 404s). */
+/**
+ * Build login config from env, or undefined when not configured (login route 404s).
+ * Requires the core fields AND a dedicated CONSOLE_OAUTH_STATE_SECRET — login stays
+ * off (and config validation warns) if the secret is absent.
+ */
 export function resolveOAuthLoginConfig(env: NodeJS.ProcessEnv): ConsoleOAuthLoginConfig | undefined {
   const clientId = env.CONSOLE_OAUTH_CLIENT_ID?.trim();
   const redirectUri = env.CONSOLE_OAUTH_REDIRECT_URI?.trim();
   const authorizationEndpoint = env.CONSOLE_OAUTH_AUTHORIZATION_ENDPOINT?.trim();
   const tokenEndpoint = env.CONSOLE_OAUTH_TOKEN_ENDPOINT?.trim();
-  if (!clientId || !redirectUri || !authorizationEndpoint || !tokenEndpoint) return undefined;
+  const stateSecret = env.CONSOLE_OAUTH_STATE_SECRET?.trim();
+  if (!clientId || !redirectUri || !authorizationEndpoint || !tokenEndpoint || !stateSecret) return undefined;
   const clientSecret = env.CONSOLE_OAUTH_CLIENT_SECRET?.trim() || "";
   const scopes = (env.CONSOLE_OAUTH_LOGIN_SCOPES?.trim() || "openid profile email")
     .split(/[\s,]+/).filter(Boolean);
-  return { clientId, clientSecret, redirectUri, authorizationEndpoint, tokenEndpoint, scopes };
+  return { clientId, clientSecret, redirectUri, authorizationEndpoint, tokenEndpoint, scopes, stateSecret };
+}
+
+/** True when a URL is https, or an http loopback (localhost / 127.0.0.1) for dev. */
+export function isSecureOrLoopbackUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    if (u.protocol === "https:") return true;
+    return u.protocol === "http:" && (u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "[::1]");
+  } catch {
+    return false;
+  }
 }
 
 const b64url = (buf: Buffer): string => buf.toString("base64url");
@@ -61,7 +80,10 @@ export function buildAuthorizeRedirect(login: ConsoleOAuthLoginConfig, oauth: Co
   return { url: url.toString(), state, codeVerifier: verifier };
 }
 
-export type FetchLike = (url: string, init: Record<string, unknown>) => Promise<{ ok: boolean; status: number; json: () => Promise<any> }>;
+export type FetchLike = (url: string, init: Record<string, unknown>) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+
+/** Token-endpoint timeout (ms) — bounds a slow/hung IdP holding the callback open. */
+const TOKEN_EXCHANGE_TIMEOUT_MS = 10_000;
 
 export interface OidcTokenResponse {
   access_token: string;
@@ -93,12 +115,13 @@ export async function exchangeCodeForToken(
   const res = await doFetch(login.tokenEndpoint, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-    body: body.toString()
+    body: body.toString(),
+    signal: AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS)
   });
   if (!res.ok) throw new Error(`token exchange failed (${res.status})`);
-  const json = await res.json();
+  const json = (await res.json()) as Record<string, unknown> | null;
   if (!json || typeof json.access_token !== "string") throw new Error("token exchange returned no access_token");
-  return json as OidcTokenResponse;
+  return json as unknown as OidcTokenResponse;
 }
 
 // --- signed, short-lived state cookie (state + PKCE verifier across the redirect) ---

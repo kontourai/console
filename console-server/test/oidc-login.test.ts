@@ -8,6 +8,7 @@ import {
   exchangeCodeForToken,
   signLoginState,
   verifyLoginState,
+  isSecureOrLoopbackUrl,
   type ConsoleOAuthLoginConfig
 } from "../src/console-foundation/oidc-login";
 import type { ConsoleOAuthConfig } from "../src/console-foundation/oauth-resource";
@@ -19,7 +20,8 @@ const LOGIN: ConsoleOAuthLoginConfig = {
   redirectUri: "https://console.test/auth/callback",
   authorizationEndpoint: "https://as.test/authorize",
   tokenEndpoint: "https://as.test/token",
-  scopes: ["openid", "profile"]
+  scopes: ["openid", "profile"],
+  stateSecret: "unit-test-state-secret"
 };
 
 test("createPkce produces a valid S256 verifier/challenge", () => {
@@ -42,19 +44,31 @@ test("buildAuthorizeRedirect sets code flow + PKCE + RFC 8707 resource", () => {
   assert.equal(u.searchParams.get("code_challenge"), crypto.createHash("sha256").update(r.codeVerifier).digest("base64url"));
 });
 
-test("resolveOAuthLoginConfig requires core fields and parses scopes", () => {
+test("resolveOAuthLoginConfig requires core fields + state secret, and parses scopes", () => {
   assert.equal(resolveOAuthLoginConfig({} as NodeJS.ProcessEnv), undefined);
-  const cfg = resolveOAuthLoginConfig({
+  const core = {
     CONSOLE_OAUTH_CLIENT_ID: "c",
     CONSOLE_OAUTH_REDIRECT_URI: "https://x/cb",
     CONSOLE_OAUTH_AUTHORIZATION_ENDPOINT: "https://as/authorize",
     CONSOLE_OAUTH_TOKEN_ENDPOINT: "https://as/token",
     CONSOLE_OAUTH_CLIENT_SECRET: "s",
     CONSOLE_OAUTH_LOGIN_SCOPES: "openid, email profile"
-  } as NodeJS.ProcessEnv);
+  };
+  // Missing state secret -> login stays disabled (fail-closed, no predictable fallback).
+  assert.equal(resolveOAuthLoginConfig(core as NodeJS.ProcessEnv), undefined);
+  const cfg = resolveOAuthLoginConfig({ ...core, CONSOLE_OAUTH_STATE_SECRET: "secret" } as NodeJS.ProcessEnv);
   assert.ok(cfg);
   assert.deepEqual(cfg!.scopes, ["openid", "email", "profile"]);
   assert.equal(cfg!.clientSecret, "s");
+  assert.equal(cfg!.stateSecret, "secret");
+});
+
+test("isSecureOrLoopbackUrl: https ok, http loopback ok, other http rejected", () => {
+  assert.equal(isSecureOrLoopbackUrl("https://as.example/authorize"), true);
+  assert.equal(isSecureOrLoopbackUrl("http://localhost:9999/authorize"), true);
+  assert.equal(isSecureOrLoopbackUrl("http://127.0.0.1/token"), true);
+  assert.equal(isSecureOrLoopbackUrl("http://as.example/authorize"), false);
+  assert.equal(isSecureOrLoopbackUrl("not-a-url"), false);
 });
 
 test("exchangeCodeForToken posts the code-grant body and returns tokens", async () => {
