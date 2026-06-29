@@ -104,5 +104,11 @@ test("protectedResourceMetadata returns an RFC 9728 document", () => {
   assert.equal(doc.resource, AUDIENCE);
   assert.deepEqual(doc.authorization_servers, [ISSUER]);
   assert.deepEqual(doc.bearer_methods_supported, ["header"]);
-  assert.ok(Array.isArray(doc.scopes_supported));
+  const scopes = doc.scopes_supported as string[];
+  assert.ok(Array.isArray(scopes));
+  // Every scope the server enforces must be discoverable here (else clients
+  // following RFC 9728 can never request it → silent 403). Phase 2a enforces these:
+  for (const s of ["telemetry:read", "telemetry:write", "records:read", "records:write", "pricing:read"]) {
+    assert.ok(scopes.includes(s), `scopes_supported missing ${s}`);
+  }
 });

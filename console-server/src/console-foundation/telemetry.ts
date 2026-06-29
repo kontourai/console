@@ -1595,7 +1595,7 @@ function timestampString(value: unknown): string | undefined {
 }
 
 function localRequestContext(): ConsoleRequestContext {
-  return { tenantId: "local", runtimeMode: "local" };
+  return { tenantId: "local", runtimeMode: "local", authMethod: "local" };
 }
 
 function parseCsv(value: string | undefined): string[] {

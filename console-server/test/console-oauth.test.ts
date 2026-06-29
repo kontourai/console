@@ -75,13 +75,13 @@ function makeHosted() {
 const listen = (app: any) => new Promise((r: any) => app.listen({ port: 0 }, r));
 const closeApp = (app: any) => new Promise((r: any, j: any) => app.close((e: any) => (e ? j(e) : r())));
 const urlOf = (app: any) => `http://${app.server.address().address}:${app.server.address().port}`;
-function req(method: string, url: string, headers: Record<string, string> = {}): Promise<{ status?: number; body: string }> {
+function req(method: string, url: string, headers: Record<string, string> = {}): Promise<{ status?: number; body: string; headers: Record<string, any> }> {
   return new Promise((resolve, reject) => {
     const r = http.request(url, { method, headers }, (res: any) => {
       let body = "";
       res.setEncoding("utf8");
       res.on("data", (c: any) => (body += c));
-      res.on("end", () => resolve({ status: res.statusCode, body }));
+      res.on("end", () => resolve({ status: res.statusCode, body, headers: res.headers }));
     });
     r.on("error", reject);
     r.end();
@@ -139,6 +139,36 @@ test("JWT path: tenant header mismatch is forbidden (403)", async () => {
     const jwt = await mint();
     const res = await req("GET", `${urlOf(app)}/api/telemetry`, { authorization: `Bearer ${jwt}`, "x-console-tenant-id": "tenant-b" });
     assert.equal(res.status, 403);
+  } finally {
+    await closeApp(app);
+  }
+});
+
+test("scope: JWT allowed with the required scope; rejected (403 + WWW-Authenticate) without it", async () => {
+  const app = makeHosted();
+  await listen(app);
+  try {
+    const base = urlOf(app);
+    const ok = await req("GET", `${base}/api/telemetry`, { authorization: `Bearer ${await mint({ scope: "telemetry:read" })}` });
+    assert.notEqual(ok.status, 403);
+
+    const denied = await req("GET", `${base}/api/telemetry`, { authorization: `Bearer ${await mint({ scope: "pricing:read" })}` });
+    assert.equal(denied.status, 403);
+    assert.match(denied.body, /INSUFFICIENT_SCOPE/);
+    assert.match(String(denied.headers["www-authenticate"]), /insufficient_scope/);
+    assert.match(String(denied.headers["www-authenticate"]), /telemetry:read/);
+  } finally {
+    await closeApp(app);
+  }
+});
+
+test("scope: legacy opaque token is not scope-gated (back-compat)", async () => {
+  const app = makeHosted();
+  await listen(app);
+  try {
+    // opaque token carries no scopes; legacy auth must still reach the route.
+    const res = await req("GET", `${urlOf(app)}/api/telemetry`, { authorization: "Bearer opaque-tok" });
+    assert.notEqual(res.status, 403);
   } finally {
     await closeApp(app);
   }

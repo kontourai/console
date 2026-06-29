@@ -460,8 +460,13 @@ export interface ConsoleHostedAuthToken {
 export interface ConsoleRequestContext {
   tenantId: string;
   runtimeMode: ConsoleRuntimeMode;
-  /** How the request was authenticated (ADR 0003). Optional/observability-only. */
-  authMethod?: "local" | "session" | "token" | "jwt";
+  /** How the request was authenticated (ADR 0003). Required — it is the predicate
+   *  for scope authorization (Phase 2): only the legacy methods skip scope checks,
+   *  so an unset/new method fails safe (gets scope-enforced). */
+  authMethod: "local" | "session" | "token" | "jwt";
+  /** OAuth scopes granted to a JWT-authenticated request (ADR 0003, Phase 2).
+   *  Only populated for authMethod "jwt"; undefined for legacy credentials. */
+  scopes?: string[];
 }
 
 export interface ConsoleSqlQueryResult<Row = OpenRecord> {
