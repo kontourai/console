@@ -26,7 +26,7 @@ import type {
   ValidationIssue
 } from "./types";
 import { CoreRecordsRepository } from "./core-records";
-import { looksLikeJwt, verifyAccessToken, protectedResourceMetadata } from "./oauth-resource";
+import { looksLikeJwt, verifyAccessToken, verifyOidcIdToken, protectedResourceMetadata } from "./oauth-resource";
 import { buildAuthorizeRedirect, exchangeCodeForToken, signLoginState, verifyLoginState } from "./oidc-login";
 import { handleMcpRequest } from "./mcp-server";
 import { buildOpenApiDocument } from "./openapi";
@@ -542,7 +542,7 @@ async function handleOAuthLogin(response: ServerResponse, runtimeConfig: Console
     return;
   }
   const redirect = buildAuthorizeRedirect(runtimeConfig.oauthLogin, runtimeConfig.oauth);
-  const stateCookie = signLoginState(redirect.state, redirect.codeVerifier, runtimeConfig.oauthLogin.stateSecret, Date.now());
+  const stateCookie = signLoginState(redirect.state, redirect.codeVerifier, redirect.nonce, runtimeConfig.oauthLogin.stateSecret, Date.now());
   response.writeHead(302, {
     location: redirect.url,
     "set-cookie": buildOauthStateCookieHeader(stateCookie, OAUTH_STATE_MAX_AGE_SECONDS),
@@ -579,6 +579,17 @@ async function handleOAuthCallback(request: IncomingMessage, response: ServerRes
   let scopes: string[];
   try {
     const tokens = await exchangeCodeForToken(runtimeConfig.oauthLogin, code, stored.codeVerifier, runtimeConfig.oauth);
+    // When `openid` was requested, validate the id_token as the authentication
+    // assertion (OIDC Core): signature, iss, aud=client_id, exp, our nonce, and the
+    // at_hash binding to the access token (blocks access-token substitution).
+    if (runtimeConfig.oauthLogin.scopes.includes("openid")) {
+      if (!tokens.id_token) throw new Error("missing id_token (openid scope requested)");
+      await verifyOidcIdToken(tokens.id_token, runtimeConfig.oauth, {
+        audience: runtimeConfig.oauthLogin.clientId,
+        nonce: stored.nonce,
+        accessToken: tokens.access_token
+      });
+    }
     // We run as a combined Relying Party + Resource Server: the access token is a
     // JWT minted by our AS, audience-bound to this console (RFC 8707) and carrying
     // the tenant claim — so it is a sound identity+authorization basis. (A provider

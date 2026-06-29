@@ -1,9 +1,11 @@
 import test, { before } from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import {
   resolveOAuthConfig,
   looksLikeJwt,
   verifyAccessToken,
+  verifyOidcIdToken,
   protectedResourceMetadata,
   __setJwksForTest,
   type ConsoleOAuthConfig
@@ -38,6 +40,51 @@ function mint(claims: Record<string, unknown> = {}, opts: { iss?: string; aud?: 
     .setExpirationTime(opts.exp ?? "5m")
     .sign(privateKey);
 }
+
+const CLIENT_ID = "client-xyz";
+function atHash(accessToken: string): string {
+  const d = crypto.createHash("sha256").update(accessToken, "ascii").digest();
+  return d.subarray(0, d.length / 2).toString("base64url");
+}
+function mintId(claims: Record<string, unknown> = {}, opts: { aud?: string } = {}): Promise<string> {
+  return new SignJWTCtor({ sub: "user-1", ...claims })
+    .setProtectedHeader({ alg: "RS256", kid: "test-key" })
+    .setIssuer(ISSUER)
+    .setAudience(opts.aud ?? CLIENT_ID)
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .sign(privateKey);
+}
+
+test("verifyOidcIdToken accepts a valid id_token (aud=client, nonce, at_hash)", async () => {
+  const access = await mint();
+  const idToken = await mintId({ nonce: "n1", at_hash: atHash(access) });
+  const payload = await verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "n1", accessToken: access });
+  assert.equal(payload.sub, "user-1");
+});
+
+test("verifyOidcIdToken rejects wrong audience (not the client_id)", async () => {
+  const idToken = await mintId({ nonce: "n1" }, { aud: "some-other-client" });
+  await assert.rejects(() => verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "n1" }));
+});
+
+test("verifyOidcIdToken rejects nonce mismatch", async () => {
+  const idToken = await mintId({ nonce: "n1" });
+  await assert.rejects(() => verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "DIFFERENT" }), /nonce mismatch/);
+});
+
+test("verifyOidcIdToken rejects a missing at_hash when an access token is supplied", async () => {
+  const access = await mint();
+  const idToken = await mintId({ nonce: "n1" }); // no at_hash claim
+  await assert.rejects(() => verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "n1", accessToken: access }), /missing at_hash/);
+});
+
+test("verifyOidcIdToken rejects at_hash mismatch (access-token substitution)", async () => {
+  const access = await mint();
+  const other = await mint({ org_id: "attacker" });
+  const idToken = await mintId({ nonce: "n1", at_hash: atHash(other) }); // bound to a different token
+  await assert.rejects(() => verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "n1", accessToken: access }), /at_hash mismatch/);
+});
 
 test("verifyAccessToken accepts a valid token and resolves tenant + scopes", async () => {
   const result = await verifyAccessToken(await mint(), CONFIG);

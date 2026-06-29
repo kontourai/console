@@ -4,6 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import { __setJwksForTest } from "../src/console-foundation/oauth-resource";
 const { createConsoleHubServer } = require("../src/console-foundation");
 
@@ -51,8 +52,27 @@ function mintAccess(orgId: string): Promise<string> {
     .setProtectedHeader({ alg: "RS256", kid: "k1" }).setIssuer(ISSUER).setAudience(AUDIENCE)
     .setIssuedAt().setExpirationTime("5m").sign(privateKey);
 }
-function stubTokenEndpoint(accessToken: string) {
-  globalThis.fetch = (async () => ({ ok: true, status: 200, json: async () => ({ access_token: accessToken, token_type: "Bearer" }) })) as any;
+function atHash(accessToken: string, alg = "RS256"): string {
+  const sha = alg.endsWith("384") ? "sha384" : alg.endsWith("512") ? "sha512" : "sha256";
+  const d = crypto.createHash(sha).update(accessToken, "ascii").digest();
+  return d.subarray(0, d.length / 2).toString("base64url");
+}
+function mintIdToken(nonce: string, accessToken: string, over: { aud?: string; nonce?: string; atHash?: string } = {}): Promise<string> {
+  return new SignJWTCtor({ nonce: over.nonce ?? nonce, at_hash: over.atHash ?? atHash(accessToken) })
+    .setProtectedHeader({ alg: "RS256", kid: "k1" }).setIssuer(ISSUER).setAudience(over.aud ?? "client-1")
+    .setSubject("user-1").setIssuedAt().setExpirationTime("5m").sign(privateKey);
+}
+function stubTokenEndpoint(accessToken: string, idToken?: string) {
+  globalThis.fetch = (async () => ({ ok: true, status: 200, json: async () => ({ access_token: accessToken, id_token: idToken, token_type: "Bearer" }) })) as any;
+}
+async function startLogin(base: string): Promise<{ state: string; nonce: string; stateCookie: string }> {
+  const login = await req("GET", `${base}/auth/login`);
+  const loc = new URL(String(login.headers["location"]));
+  return {
+    state: loc.searchParams.get("state")!,
+    nonce: loc.searchParams.get("nonce")!,
+    stateCookie: cookieFrom(login.headers["set-cookie"], "console_oauth_state")!
+  };
 }
 
 class FakeSql { async query(text: string) { return text.toLowerCase().includes("select 1") ? { rows: [{ ok: 1 }], rowCount: 1 } : { rows: [], rowCount: 0 }; } }
@@ -115,11 +135,9 @@ test("callback: valid state + code issues a working session (round-trip)", async
   const app = makeHosted(); await listen(app);
   try {
     const base = urlOf(app);
-    const login = await req("GET", `${base}/auth/login`);
-    const state = new URL(String(login.headers["location"])).searchParams.get("state")!;
-    const stateCookie = cookieFrom(login.headers["set-cookie"], "console_oauth_state")!;
-
-    stubTokenEndpoint(await mintAccess("tenant-a"));
+    const { state, nonce, stateCookie } = await startLogin(base);
+    const access = await mintAccess("tenant-a");
+    stubTokenEndpoint(access, await mintIdToken(nonce, access));
     const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
     assert.equal(cb.status, 302);
     assert.equal(cb.headers["location"], "/");
@@ -137,11 +155,10 @@ test("callback: OIDC session carries the token's scopes and is scope-enforced", 
   const app = makeHosted(); await listen(app);
   try {
     const base = urlOf(app);
-    const login = await req("GET", `${base}/auth/login`);
-    const state = new URL(String(login.headers["location"])).searchParams.get("state")!;
-    const stateCookie = cookieFrom(login.headers["set-cookie"], "console_oauth_state")!;
+    const { state, nonce, stateCookie } = await startLogin(base);
     // access token granted only telemetry:read
-    stubTokenEndpoint(await mintAccess("tenant-a"));
+    const access = await mintAccess("tenant-a");
+    stubTokenEndpoint(access, await mintIdToken(nonce, access));
     const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
     const session = cookieFrom(cb.headers["set-cookie"], "console_session")!;
     // has telemetry:read -> allowed; lacks records:read -> 403 (NOT full access)
@@ -197,11 +214,46 @@ test("callback: tenant without a hosted token → 403", async () => {
   const app = makeHosted(); await listen(app);
   try {
     const base = urlOf(app);
-    const login = await req("GET", `${base}/auth/login`);
-    const state = new URL(String(login.headers["location"])).searchParams.get("state")!;
-    const stateCookie = cookieFrom(login.headers["set-cookie"], "console_oauth_state")!;
-    stubTokenEndpoint(await mintAccess("tenant-x")); // not provisioned
+    const { state, nonce, stateCookie } = await startLogin(base);
+    const access = await mintAccess("tenant-x"); // not provisioned
+    stubTokenEndpoint(access, await mintIdToken(nonce, access));
     const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
     assert.equal(cb.status, 403);
+  } finally { await closeApp(app); }
+});
+
+test("callback: missing id_token (openid requested) → 401", async () => {
+  const app = makeHosted(); await listen(app);
+  try {
+    const base = urlOf(app);
+    const { state, stateCookie } = await startLogin(base);
+    stubTokenEndpoint(await mintAccess("tenant-a")); // no id_token
+    const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
+    assert.equal(cb.status, 401);
+  } finally { await closeApp(app); }
+});
+
+test("callback: id_token nonce mismatch → 401", async () => {
+  const app = makeHosted(); await listen(app);
+  try {
+    const base = urlOf(app);
+    const { state, stateCookie } = await startLogin(base);
+    const access = await mintAccess("tenant-a");
+    stubTokenEndpoint(access, await mintIdToken("ignored", access, { nonce: "WRONG-NONCE" }));
+    const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
+    assert.equal(cb.status, 401);
+  } finally { await closeApp(app); }
+});
+
+test("callback: id_token at_hash mismatch → 401 (access-token substitution blocked)", async () => {
+  const app = makeHosted(); await listen(app);
+  try {
+    const base = urlOf(app);
+    const { state, nonce, stateCookie } = await startLogin(base);
+    const access = await mintAccess("tenant-a");
+    // id_token's at_hash binds to a DIFFERENT access token than the one returned
+    stubTokenEndpoint(access, await mintIdToken(nonce, access, { atHash: atHash(await mintAccess("attacker")) }));
+    const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
+    assert.equal(cb.status, 401);
   } finally { await closeApp(app); }
 });

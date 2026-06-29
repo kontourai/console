@@ -40,6 +40,8 @@ test("buildAuthorizeRedirect sets code flow + PKCE + RFC 8707 resource", () => {
   assert.equal(u.searchParams.get("scope"), "openid profile");
   assert.equal(u.searchParams.get("code_challenge_method"), "S256");
   assert.equal(u.searchParams.get("state"), r.state);
+  assert.equal(u.searchParams.get("nonce"), r.nonce);
+  assert.ok(r.nonce && r.nonce.length >= 16);
   assert.equal(u.searchParams.get("resource"), OAUTH.audience);
   assert.equal(u.searchParams.get("code_challenge"), crypto.createHash("sha256").update(r.codeVerifier).digest("base64url"));
 });
@@ -97,8 +99,8 @@ test("exchangeCodeForToken throws on non-ok and on missing access_token", async 
 test("signLoginState/verifyLoginState round-trips and rejects tamper + expiry + wrong secret", () => {
   const secret = "secret-key";
   const now = 1_000_000;
-  const cookie = signLoginState("state-1", "verifier-1", secret, now);
-  assert.deepEqual(verifyLoginState(cookie, secret, now + 1000), { state: "state-1", codeVerifier: "verifier-1" });
+  const cookie = signLoginState("state-1", "verifier-1", "nonce-1", secret, now);
+  assert.deepEqual(verifyLoginState(cookie, secret, now + 1000), { state: "state-1", codeVerifier: "verifier-1", nonce: "nonce-1" });
   assert.equal(verifyLoginState(cookie, "other-secret", now + 1000), null);
   assert.equal(verifyLoginState("x" + cookie, secret, now + 1000), null);
   assert.equal(verifyLoginState(cookie, secret, now + 10_000_000), null); // expired (>10m default ttl)
