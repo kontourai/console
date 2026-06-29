@@ -73,6 +73,12 @@ test("verifyOidcIdToken rejects nonce mismatch", async () => {
   await assert.rejects(() => verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "DIFFERENT" }), /nonce mismatch/);
 });
 
+test("verifyOidcIdToken rejects a missing at_hash when an access token is supplied", async () => {
+  const access = await mint();
+  const idToken = await mintId({ nonce: "n1" }); // no at_hash claim
+  await assert.rejects(() => verifyOidcIdToken(idToken, CONFIG, { audience: CLIENT_ID, nonce: "n1", accessToken: access }), /missing at_hash/);
+});
+
 test("verifyOidcIdToken rejects at_hash mismatch (access-token substitution)", async () => {
   const access = await mint();
   const other = await mint({ org_id: "attacker" });

@@ -125,17 +125,24 @@ function shaForAlg(alg: string): "sha256" | "sha384" | "sha512" {
 export async function verifyOidcIdToken(
   idToken: string,
   config: ConsoleOAuthConfig,
-  opts: { audience: string; nonce?: string; accessToken?: string }
+  opts: { audience: string; nonce: string; accessToken?: string }
 ): Promise<Record<string, unknown>> {
   const { jwtVerify } = await josePromise;
   const { payload, protectedHeader } = await jwtVerify(idToken, (await jwksFor(config)) as any, {
     issuer: config.issuer,
     audience: opts.audience
   });
-  if (opts.nonce !== undefined && payload.nonce !== opts.nonce) {
+  // nonce is required (anti-replay / browser binding) — never skipped.
+  if (payload.nonce !== opts.nonce) {
     throw new Error("id_token nonce mismatch");
   }
-  if (opts.accessToken && typeof payload.at_hash === "string") {
+  // When an access token is supplied, at_hash MUST be present and bind to it
+  // (defends against access-token substitution) — a missing at_hash is an error,
+  // not a silent skip.
+  if (opts.accessToken) {
+    if (typeof payload.at_hash !== "string") {
+      throw new Error("id_token missing at_hash (access-token binding required)");
+    }
     const digest = crypto.createHash(shaForAlg(String(protectedHeader.alg || ""))).update(opts.accessToken, "ascii").digest();
     const expected = digest.subarray(0, digest.length / 2).toString("base64url");
     if (expected !== payload.at_hash) {
