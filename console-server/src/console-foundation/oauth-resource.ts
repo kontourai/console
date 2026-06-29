@@ -33,9 +33,11 @@ export interface ConsoleOAuthConfig {
   audience: string;
   /** JWKS endpoint of the AS. Defaults to `${issuer}/.well-known/jwks.json`. */
   jwksUri: string;
-  /** JWT claim carrying the tenant/organization id (provider-dependent; e.g.
-   *  WorkOS/Auth0 use `org_id`). Default `org_id`. */
-  tenantClaim: string;
+  /** Ordered JWT claims that may carry the tenant/organization id; the first one
+   *  present on the token wins. Provider-dependent and lets user tokens and
+   *  machine (client-credentials / M2M) tokens use different claims under one
+   *  config — e.g. `["org_id", "tenant_id"]`. Default `["org_id"]`. */
+  tenantClaims: string[];
 }
 
 /** Build OAuth Resource-Server config from env, or undefined when not configured. */
@@ -44,8 +46,9 @@ export function resolveOAuthConfig(env: NodeJS.ProcessEnv): ConsoleOAuthConfig |
   const audience = env.CONSOLE_OAUTH_AUDIENCE?.trim();
   if (!issuer || !audience) return undefined;
   const jwksUri = env.CONSOLE_OAUTH_JWKS_URI?.trim() || `${issuer.replace(/\/+$/, "")}/.well-known/jwks.json`;
-  const tenantClaim = env.CONSOLE_OAUTH_TENANT_CLAIM?.trim() || "org_id";
-  return { issuer, audience, jwksUri, tenantClaim };
+  const tenantClaims = (env.CONSOLE_OAUTH_TENANT_CLAIM?.trim() || "org_id")
+    .split(",").map((claim) => claim.trim()).filter(Boolean);
+  return { issuer, audience, jwksUri, tenantClaims };
 }
 
 /** Cheap structural check: a compact JWS has three non-empty base64url segments. */
@@ -92,9 +95,13 @@ export const verifyAccessToken: AccessTokenVerifier = async (token, config) => {
     issuer: config.issuer,
     audience: config.audience
   });
-  const tenantId = readStringClaim(payload, config.tenantClaim);
+  let tenantId: string | undefined;
+  for (const claim of config.tenantClaims) {
+    tenantId = readStringClaim(payload, claim);
+    if (tenantId) break;
+  }
   if (!tenantId) {
-    throw new Error(`access token is missing tenant claim '${config.tenantClaim}'`);
+    throw new Error(`access token is missing a tenant claim (tried: ${config.tenantClaims.join(", ")})`);
   }
   return { tenantId, subject: payload.sub, scopes: readScopes(payload) };
 };

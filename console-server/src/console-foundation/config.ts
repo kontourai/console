@@ -126,7 +126,7 @@ export function redactConsoleRuntimeConfig(config: ConsoleRuntimeConfig) {
     localAuthToken: config.localAuthToken ? "[redacted]" : undefined,
     ingestToken: config.ingestToken ? "[redacted]" : undefined,
     oauth: config.oauth
-      ? { issuer: config.oauth.issuer, audience: config.oauth.audience, jwksUri: config.oauth.jwksUri, tenantClaim: config.oauth.tenantClaim }
+      ? { issuer: config.oauth.issuer, audience: config.oauth.audience, jwksUri: config.oauth.jwksUri, tenantClaims: config.oauth.tenantClaims }
       : undefined,
     telemetryStorageAdapter: config.telemetryStorageAdapter,
     telemetryDatabaseUrl: config.telemetryDatabaseUrl ? "[redacted]" : undefined,
