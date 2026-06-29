@@ -47,6 +47,19 @@ Authorization/token endpoints must be **https** (http allowed only for localhost
 > A provider issuing opaque access tokens will fail login with a logged 401. (Full
 > `id_token`/`at_hash`/`nonce` validation is tracked as a hardening follow-up.)
 
+## MCP server (Phase 3)
+
+When OAuth is configured, the console serves an authenticated **MCP server** at
+`POST /mcp` (JSON-RPC 2.0) behind the Resource-Server auth, requiring the
+`telemetry:read` scope. MCP clients present a `Bearer <jwt>` and can call:
+
+- `get_usage_summary` — tenant-scoped token-usage + estimated-cost analytics
+  (totals + breakdowns by model / project / agent / runtime).
+
+Discovery is via the RFC 9728 metadata at `/.well-known/oauth-protected-resource`.
+Standard methods: `initialize`, `tools/list`, `tools/call`, `ping`. Tools are
+tenant-isolated through the authenticated request context.
+
 ## Scopes the console enforces
 
 Advertised in the RFC 9728 metadata and enforced for JWT clients (legacy opaque/session
