@@ -37,17 +37,50 @@ type MutableReplayState = {
 function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | ConsoleEventRecord[] | null | undefined, options: CurrentOperatingStateOptions = {}): OperatingState {
   const eventStreams = normalizeEventStreams(input);
   const prepared = prepareEvents(eventStreams);
-  const generatedAt = options.generatedAt || replayGeneratedAt(prepared.acceptedEvents);
+  const working = createMutableReplayState();
+  prepared.acceptedEvents.forEach((entry: ReplayEventEntry) => applyEvent(working, entry.event, entry.streamId));
+  const lastEntry = prepared.acceptedEvents[prepared.acceptedEvents.length - 1];
+  return materializeOperatingState(working, {
+    streamIds: eventStreams.map((stream: ReplayEventStream, index: number) => stream.relativePath || stream.filePath || `stream-${index + 1}`),
+    acceptedEventCount: prepared.acceptedEvents.length,
+    duplicateEventCount: prepared.duplicateEventCount,
+    lastAcceptedEventId: lastEntry ? lastEntry.event.id ?? null : null,
+    generatedAt: replayGeneratedAt(prepared.acceptedEvents)
+  }, options);
+}
+
+function createMutableReplayState(): MutableReplayState {
+  return {
+    processes: new Map<string, ReplayObject>(),
+    gates: new Map<string, ReplayObject>(),
+    claims: new Map<string, ReplayObject>(),
+    evidence: new Map<string, ReplayObject>(),
+    learnings: new Map<string, ReplayObject>(),
+    inquiries: new Map<string, ReplayObject>(),
+    actions: new Map<string, ConsoleActionRecord>(),
+    links: new Map<string, ConsoleLink>(),
+    timeline: [],
+    pipeline: undefined
+  };
+}
+
+interface OperatingStateMeta {
+  streamIds: string[];
+  acceptedEventCount: number;
+  duplicateEventCount: number;
+  lastAcceptedEventId: string | null;
+  generatedAt: string | null;
+}
+
+function materializeOperatingState(working: MutableReplayState, meta: OperatingStateMeta, options: CurrentOperatingStateOptions): OperatingState {
   const state: OperatingState = {
-    generatedAt,
+    generatedAt: options.generatedAt || meta.generatedAt,
     source: {
       mode: "event_replay",
-      streamIds: eventStreams.map((stream: ReplayEventStream, index: number) => stream.relativePath || stream.filePath || `stream-${index + 1}`),
-      acceptedEventCount: prepared.acceptedEvents.length,
-      duplicateEventCount: prepared.duplicateEventCount,
-      lastAcceptedEventId: prepared.acceptedEvents.length
-        ? prepared.acceptedEvents[prepared.acceptedEvents.length - 1].event.id
-        : null
+      streamIds: meta.streamIds,
+      acceptedEventCount: meta.acceptedEventCount,
+      duplicateEventCount: meta.duplicateEventCount,
+      lastAcceptedEventId: meta.lastAcceptedEventId
     },
     currentStage: "No events replayed.",
     processes: [],
@@ -60,21 +93,6 @@ function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | C
     links: [],
     timeline: []
   };
-
-  const working: MutableReplayState = {
-    processes: new Map<string, ReplayObject>(),
-    gates: new Map<string, ReplayObject>(),
-    claims: new Map<string, ReplayObject>(),
-    evidence: new Map<string, ReplayObject>(),
-    learnings: new Map<string, ReplayObject>(),
-    inquiries: new Map<string, ReplayObject>(),
-    actions: new Map<string, ConsoleActionRecord>(),
-    links: new Map<string, ConsoleLink>(),
-    timeline: [],
-    pipeline: undefined
-  };
-
-  prepared.acceptedEvents.forEach((entry: ReplayEventEntry) => applyEvent(working, entry.event, entry.streamId));
 
   const processes = sortById([...working.processes.values()]);
   const gates = sortById([...working.gates.values()]);
@@ -102,6 +120,57 @@ function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | C
   });
 
   return state;
+}
+
+interface OperatingStateProjection {
+  apply(event: ConsoleEventRecord, streamId?: string): void;
+  materialize(options?: CurrentOperatingStateOptions): OperatingState;
+}
+
+// Incremental projection: maintain the folded operating state as events arrive
+// instead of re-folding the full event history on every read. The hosted Postgres
+// hub uses this so memory and per-request cost scale with current state rather
+// than total history (ops#34) — it no longer retains every raw event record nor
+// rebuilds from scratch on each /state call.
+//
+// Parity contract: callers must apply events in the order prepareEvents would sort
+// them into (by sequence asc, then occurredAt/observedAt). The hub satisfies this —
+// it cold-loads `order by sequence asc` and appends monotonically — so a projection
+// fed the hub's events produces the same OperatingState as buildCurrentOperatingState
+// over the same events (verified by tests/current-operating-state-projection.test.ts).
+function createOperatingStateProjection(defaultStreamId: string = "inline-events"): OperatingStateProjection {
+  const working = createMutableReplayState();
+  const seen = new Set<string>();
+  const streamIds = new Set<string>();
+  let acceptedEventCount = 0;
+  let duplicateEventCount = 0;
+  let lastAcceptedEventId: string | null = null;
+  let generatedAt: string | null = null;
+
+  return {
+    apply(event: ConsoleEventRecord, streamId: string = defaultStreamId): void {
+      if (!event || typeof event !== "object") return;
+      streamIds.add(streamId);
+      if (event.id && seen.has(event.id)) {
+        duplicateEventCount += 1;
+        return;
+      }
+      if (event.id) seen.add(event.id);
+      applyEvent(working, event, streamId);
+      acceptedEventCount += 1;
+      lastAcceptedEventId = event.id ?? null;
+      generatedAt = event.observedAt || event.occurredAt || null;
+    },
+    materialize(options: CurrentOperatingStateOptions = {}): OperatingState {
+      return materializeOperatingState(working, {
+        streamIds: [...streamIds],
+        acceptedEventCount,
+        duplicateEventCount,
+        lastAcceptedEventId,
+        generatedAt
+      }, options);
+    }
+  };
 }
 
 function normalizeEventStreams(input: ReplayInput | ReplayEventStream[] | ConsoleEventRecord[] | null | undefined): ReplayEventStream[] {
@@ -647,5 +716,6 @@ function isConsoleActionRecord(value: ConsoleActionRecord | null): value is Cons
 }
 
 module.exports = {
-  buildCurrentOperatingState
+  buildCurrentOperatingState,
+  createOperatingStateProjection
 };
