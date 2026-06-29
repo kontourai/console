@@ -305,10 +305,13 @@ async function routeRequest(input: {
       return;
     }
     const context = auth.context;
-    // Scope authorization (ADR 0003, Phase 2): OAuth/JWT clients must hold the
-    // scope a route requires. Legacy credentials (opaque token, session cookie,
-    // local) are unaffected — scopes are an additive constraint for OAuth clients.
-    if (context.authMethod === "jwt") {
+    // Scope authorization (ADR 0003, Phase 2): scopes are enforced for every auth
+    // method EXCEPT the legacy ones (opaque token, signed session cookie, loopback
+    // local), which keep full access for back-compat. Using a legacy allowlist
+    // (rather than `=== "jwt"`) makes a new/unknown auth method fail safe — it gets
+    // scope-enforced by default instead of silently bypassing.
+    const legacyFullAccess = context.authMethod === "local" || context.authMethod === "session" || context.authMethod === "token";
+    if (!legacyFullAccess) {
       const requiredScope = requiredScopeForRoute(request.method || "GET", url.pathname);
       if (requiredScope && !(context.scopes || []).includes(requiredScope)) {
         response.setHeader("WWW-Authenticate", `Bearer error="insufficient_scope", scope="${requiredScope}"`);
@@ -1067,7 +1070,7 @@ function requiredScopeForRoute(method: string, pathname: string): string | undef
   if (pathname === "/api/telemetry" || pathname === "/api/telemetry/records") {
     return m === "POST" ? "telemetry:write" : "telemetry:read";
   }
-  if (pathname === "/records") return m === "POST" ? "records:write" : "records:read";
+  if (pathname === "/records") return "records:write"; // only POST is handled at /records
   if (pathname === "/state" || pathname === "/inspect" || pathname === "/events" || pathname === "/stream") {
     return "records:read";
   }

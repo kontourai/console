@@ -117,6 +117,6 @@ export function protectedResourceMetadata(config: ConsoleOAuthConfig): Record<st
     resource: config.audience,
     authorization_servers: [config.issuer],
     bearer_methods_supported: ["header"],
-    scopes_supported: ["telemetry:read", "telemetry:write", "records:read", "pricing:read"]
+    scopes_supported: ["telemetry:read", "telemetry:write", "records:read", "records:write", "pricing:read"]
   };
 }
