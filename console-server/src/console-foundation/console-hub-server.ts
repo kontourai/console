@@ -477,7 +477,7 @@ async function handleSessionCreate(
   }
 
   // Issue signed session cookie.
-  const cookieValue = signSessionCookie(tokenConfig.tenantId, tokenConfig.token);
+  const cookieValue = signSessionCookie(tokenConfig.tenantId, runtimeConfig);
   const cookieHeader = buildSessionCookieHeader(cookieValue, SESSION_COOKIE_MAX_AGE_SECONDS);
   response.writeHead(204, {
     "set-cookie": cookieHeader,
@@ -602,11 +602,17 @@ async function handleOAuthCallback(request: IncomingMessage, response: ServerRes
     failOAuthCallback(response, 401, "UNAUTHORIZED", "login failed");
     return;
   }
-  // Reuse the existing session scheme: the resolved tenant must have a hosted auth
-  // token (the session signing anchor). The OIDC access-token scopes are embedded in
-  // the session so scope authorization applies to the browser session too.
-  const tokenConfig = runtimeConfig.hostedAuthTokens.find((candidate) => candidate.tenantId === tenantId);
-  if (!tokenConfig) {
+  // Authorize the tenant for a session. With a dedicated CONSOLE_SESSION_SECRET the
+  // session is signed with that secret (no per-tenant hosted token needed), so we
+  // gate on the tenant allowlist; without it, fall back to requiring a hosted token
+  // as the signing anchor. The OIDC access-token scopes are embedded in the session
+  // so scope authorization applies to the browser session too.
+  if (runtimeConfig.sessionSecret) {
+    if (runtimeConfig.hostedTenantIds.length && !runtimeConfig.hostedTenantIds.includes(tenantId)) {
+      failOAuthCallback(response, 403, "TENANT_FORBIDDEN", "tenant is not allowed");
+      return;
+    }
+  } else if (!runtimeConfig.hostedAuthTokens.some((candidate) => candidate.tenantId === tenantId)) {
     failOAuthCallback(response, 403, "TENANT_FORBIDDEN", "tenant is not provisioned");
     return;
   }
@@ -614,7 +620,7 @@ async function handleOAuthCallback(request: IncomingMessage, response: ServerRes
     location: "/",
     "set-cookie": [
       buildOauthStateCookieHeader("", 0),
-      buildSessionCookieHeader(signSessionCookie(tenantId, tokenConfig.token, scopes), SESSION_COOKIE_MAX_AGE_SECONDS)
+      buildSessionCookieHeader(signSessionCookie(tenantId, runtimeConfig, scopes), SESSION_COOKIE_MAX_AGE_SECONDS)
     ],
     "cache-control": "no-store"
   });
@@ -724,17 +730,37 @@ function sessionSigningKey(rawToken: string): Buffer {
 }
 
 /**
+ * Resolve the HMAC key for session cookies (ADR 0003 / #104). Prefer a dedicated
+ * CONSOLE_SESSION_SECRET — independent of auth tokens, so rotating a tenant's auth
+ * token no longer invalidates everyone's session, and OIDC sessions don't need a
+ * per-tenant hosted token to sign. Falls back to the tenant's hosted-token-derived
+ * key for back-compat when no session secret is configured. Returns null when
+ * neither source is available.
+ */
+function sessionKey(runtimeConfig: ConsoleRuntimeConfig, tenantId: string): Buffer | null {
+  if (runtimeConfig.sessionSecret) {
+    return crypto.createHash("sha256").update(`console-session-secret-v1:${runtimeConfig.sessionSecret}`).digest();
+  }
+  const tokenConfig = runtimeConfig.hostedAuthTokens.find((candidate) => candidate.tenantId === tenantId);
+  return tokenConfig ? sessionSigningKey(tokenConfig.token) : null;
+}
+
+/**
  * Build a signed session cookie value for a given tenant.
  *
  * Legacy (token-issued, full-access) format: base64url(tenantId).timestampMs.HMAC
  * Scoped (OIDC-issued) format:               base64url(tenantId).timestampMs.base64url(scopes).HMAC
  * The HMAC covers all preceding dot-joined parts. Presence of the scope segment
- * is what makes a session scope-enforced (ADR 0003, Phase 2).
+ * is what makes a session scope-enforced (ADR 0003, Phase 2). The signing key comes
+ * from CONSOLE_SESSION_SECRET when set, else the tenant's hosted token (#104).
  */
-export function signSessionCookie(tenantId: string, rawToken: string, scopes?: string[]): string {
+export function signSessionCookie(tenantId: string, runtimeConfig: ConsoleRuntimeConfig, scopes?: string[]): string {
   const tenantPart = Buffer.from(tenantId, "utf8").toString("base64url");
   const tsPart = String(Date.now());
-  const key = sessionSigningKey(rawToken);
+  const key = sessionKey(runtimeConfig, tenantId);
+  if (!key) {
+    throw new Error("no session signing key (set CONSOLE_SESSION_SECRET or a hosted auth token for the tenant)");
+  }
   if (scopes === undefined) {
     const sig = crypto.createHmac("sha256", key).update(`${tenantPart}.${tsPart}`).digest("hex");
     return `${tenantPart}.${tsPart}.${sig}`;
@@ -779,11 +805,11 @@ export function verifySessionCookieValue(
   }
   if (!tenantId) return null;
 
-  const tokenConfig = runtimeConfig.hostedAuthTokens.find((candidate) => candidate.tenantId === tenantId);
-  if (!tokenConfig) return null;
+  const key = sessionKey(runtimeConfig, tenantId);
+  if (!key) return null;
 
   const sigInput = scoped ? `${tenantPart}.${tsPart}.${scopePart}` : `${tenantPart}.${tsPart}`;
-  const expected = crypto.createHmac("sha256", sessionSigningKey(tokenConfig.token)).update(sigInput).digest("hex");
+  const expected = crypto.createHmac("sha256", key).update(sigInput).digest("hex");
   // Compare as ASCII hex — both sides are fixed-length lowercase hex, so this is
   // constant-time and never throws (unlike Buffer.from(sig, "hex") on bad input).
   const sigBuf = Buffer.from(sig, "ascii");
