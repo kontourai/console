@@ -460,6 +460,8 @@ export interface ConsoleHostedAuthToken {
 export interface ConsoleRequestContext {
   tenantId: string;
   runtimeMode: ConsoleRuntimeMode;
+  /** How the request was authenticated (ADR 0003). Optional/observability-only. */
+  authMethod?: "local" | "session" | "token" | "jwt";
 }
 
 export interface ConsoleSqlQueryResult<Row = OpenRecord> {

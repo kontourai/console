@@ -47,6 +47,7 @@
     "@kontourai/console-core": "^0.1.0",
     "@kontourai/console-telemetry": "^0.1.0",
     "@kontourai/flow": "^1.4.0",
-    "@kontourai/surface": "^1.0.1"
+    "@kontourai/surface": "^1.0.1",
+    "jose": "^6.2.3"
   }
 }
