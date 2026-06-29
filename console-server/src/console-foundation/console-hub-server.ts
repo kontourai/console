@@ -27,13 +27,14 @@ import type {
 } from "./types";
 import { CoreRecordsRepository } from "./core-records";
 import { looksLikeJwt, verifyAccessToken, protectedResourceMetadata } from "./oauth-resource";
+import { buildAuthorizeRedirect, exchangeCodeForToken, signLoginState, verifyLoginState } from "./oidc-login";
 
 const { LocalConsoleHub } = require("./console-hub");
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource"];
+const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -247,6 +248,17 @@ async function routeRequest(input: {
 
     if (request.method === "POST" && url.pathname === "/session/logout") {
       handleSessionLogout(response);
+      return;
+    }
+
+    // OIDC login (ADR 0003, Phase 2c) — public, before the auth gate. Inert (404)
+    // unless OAuth + login are configured.
+    if (request.method === "GET" && url.pathname === "/auth/login") {
+      await handleOAuthLogin(response, runtimeConfig);
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/auth/callback") {
+      await handleOAuthCallback(request, response, url, runtimeConfig);
       return;
     }
 
@@ -472,6 +484,84 @@ function handleSessionCheck(
 function handleSessionLogout(response: ServerResponse): void {
   response.writeHead(204, {
     "set-cookie": buildSessionCookieHeader("", 0),
+    "cache-control": "no-store"
+  });
+  response.end();
+}
+
+// --- OIDC login (ADR 0003, Phase 2c) ---------------------------------------
+
+const OAUTH_STATE_COOKIE_NAME = "console_oauth_state";
+const OAUTH_STATE_MAX_AGE_SECONDS = 600;
+
+/** Stable per-deployment secret for the short-lived login-state cookie, derived
+ *  from the first hosted auth token (always present in hosted mode). */
+function oauthStateSecret(runtimeConfig: ConsoleRuntimeConfig): string {
+  const seed = runtimeConfig.hostedAuthTokens[0]?.token || runtimeConfig.defaultTenantId;
+  return crypto.createHash("sha256").update(`console-oauth-state-v1:${seed}`).digest("base64");
+}
+
+function buildOauthStateCookieHeader(value: string, maxAge: number): string {
+  // SameSite=Lax so the cookie survives the top-level redirect back from the IdP.
+  return `${OAUTH_STATE_COOKIE_NAME}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}; Secure`;
+}
+
+/** GET /auth/login — start the OIDC Authorization-Code + PKCE flow. */
+async function handleOAuthLogin(response: ServerResponse, runtimeConfig: ConsoleRuntimeConfig): Promise<void> {
+  if (!runtimeConfig.oauth || !runtimeConfig.oauthLogin) {
+    writeApiError(response, 404, "NOT_FOUND", "login is not configured");
+    return;
+  }
+  const redirect = buildAuthorizeRedirect(runtimeConfig.oauthLogin, runtimeConfig.oauth);
+  const stateCookie = signLoginState(redirect.state, redirect.codeVerifier, oauthStateSecret(runtimeConfig), Date.now());
+  response.writeHead(302, {
+    location: redirect.url,
+    "set-cookie": buildOauthStateCookieHeader(stateCookie, OAUTH_STATE_MAX_AGE_SECONDS),
+    "cache-control": "no-store"
+  });
+  response.end();
+}
+
+/** GET /auth/callback — validate state, exchange the code, and issue a session. */
+async function handleOAuthCallback(request: IncomingMessage, response: ServerResponse, url: URL, runtimeConfig: ConsoleRuntimeConfig): Promise<void> {
+  if (!runtimeConfig.oauth || !runtimeConfig.oauthLogin) {
+    writeApiError(response, 404, "NOT_FOUND", "login is not configured");
+    return;
+  }
+  const code = url.searchParams.get("code");
+  const stateParam = url.searchParams.get("state");
+  if (!code || !stateParam) {
+    writeApiError(response, 400, "INVALID_REQUEST", "missing code or state");
+    return;
+  }
+  const cookieValue = request.headers.cookie ? parseCookieValue(request.headers.cookie, OAUTH_STATE_COOKIE_NAME) : null;
+  const stored = cookieValue ? verifyLoginState(cookieValue, oauthStateSecret(runtimeConfig), Date.now()) : null;
+  if (!stored || stored.state !== stateParam) {
+    writeApiError(response, 400, "INVALID_STATE", "login state is invalid or expired");
+    return;
+  }
+  let tenantId: string;
+  try {
+    const tokens = await exchangeCodeForToken(runtimeConfig.oauthLogin, code, stored.codeVerifier, runtimeConfig.oauth);
+    const verified = await verifyAccessToken(tokens.access_token, runtimeConfig.oauth);
+    tenantId = verified.tenantId;
+  } catch {
+    writeApiError(response, 401, "UNAUTHORIZED", "login failed");
+    return;
+  }
+  // Reuse the existing session scheme: the resolved tenant must have a hosted auth
+  // token (no change to the session verify path). Sign a session for that tenant.
+  const tokenConfig = runtimeConfig.hostedAuthTokens.find((candidate) => candidate.tenantId === tenantId);
+  if (!tokenConfig) {
+    writeApiError(response, 403, "TENANT_FORBIDDEN", "tenant is not provisioned");
+    return;
+  }
+  response.writeHead(302, {
+    location: "/",
+    "set-cookie": [
+      buildOauthStateCookieHeader("", 0),
+      buildSessionCookieHeader(signSessionCookie(tenantId, tokenConfig.token), SESSION_COOKIE_MAX_AGE_SECONDS)
+    ],
     "cache-control": "no-store"
   });
   response.end();
