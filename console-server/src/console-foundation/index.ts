@@ -823,6 +823,7 @@ module.exports = {
   getFlowProcessStatus,
   getSurveyReviewState,
   buildCurrentOperatingState: currentOperatingState.buildCurrentOperatingState,
+  createOperatingStateProjection: currentOperatingState.createOperatingStateProjection,
   LocalConsoleHub: consoleHub.LocalConsoleHub,
   createLocalConsoleHub: consoleHub.createLocalConsoleHub,
   createConsoleHubServer: consoleHubServer.createConsoleHubServer,
