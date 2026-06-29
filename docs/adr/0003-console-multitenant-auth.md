@@ -103,6 +103,39 @@ and our cost constraint), and we do **not** adopt Cognito (non-AWS hosting).
    validation. (For the Node stack use `workos/authkit-xmcp`, not the Python FastMCP example.)
 5. **Enterprise tier.** Per-org SSO/SCIM connections enabled on demand.
 
+### Phased roadmap (scoped)
+
+Each phase is independently shippable and ordered by risk. **Phase 1 is deliberately the
+smallest cut that proves the Resource-Server model with zero breakage** — it is additive and
+config-gated, so with no WorkOS env set the console behaves exactly as today.
+
+**Phase 1 — Resource Server foundation** *(the spike; additive, config-gated, no breakage)*
+- Add WorkOS JWT verification to `authenticateRequest()` as an **additional** accepted
+  credential: JWKS signature check, validate `iss` / `aud` / `exp`, derive `tenantId` from the
+  organization claim. Enabled only when WorkOS config (`issuer`/`audience`) is present;
+  otherwise behavior is byte-identical to today.
+- Opaque bearer tokens + signed session cookies keep working (**dual acceptance**).
+- Add RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`
+  (public, points at the WorkOS AS).
+- **Exit criteria:** a WorkOS-issued JWT *and* an existing opaque token both authenticate and
+  resolve the same tenant; bad-`aud`/expired JWTs are rejected (401); the PRM document
+  validates against RFC 9728. No change to ingestion behavior when WorkOS env is unset.
+- **Explicitly NOT in Phase 1:** UI login, SCIM, MCP tools, migrating machine posters,
+  enterprise SSO connections, scope enforcement.
+
+**Phase 2 — Identity + machine subjects**
+- AuthKit login for the console UI (the existing signed cookie wraps the WorkOS session).
+- Migrate agents/CI telemetry posters to **M2M client-credentials** JWTs (audience = console);
+  retire static `hostedAuthTokens` once all posters are migrated.
+- Begin enforcing `scope` per route (e.g. `telemetry:write`, `records:read`).
+
+**Phase 3 — MCP surface**
+- Stand up an authenticated MCP server exposing telemetry / pricing / cost analytics as MCP
+  tools/resources; validate `aud` names the console; no token passthrough.
+
+**Phase 4 — Enterprise**
+- Per-org SAML/OIDC SSO + SCIM connections enabled on demand (incremental per-connection cost).
+
 ## Consequences
 
 **Positive**
