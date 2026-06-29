@@ -1,0 +1,21 @@
+{
+  "interactiveLogin": false,
+  "httpServer": "NettyWrapper",
+  "tokenCallbacks": [
+    {
+      "issuerId": "default",
+      "tokenExpiry": 3600,
+      "requestMappings": [
+        {
+          "requestParam": "grant_type",
+          "match": ".*",
+          "claims": {
+            "org_id": "kontour",
+            "aud": ["http://localhost:3000"],
+            "scope": "telemetry:read telemetry:write records:read records:write pricing:read"
+          }
+        }
+      ]
+    }
+  ]
+}
