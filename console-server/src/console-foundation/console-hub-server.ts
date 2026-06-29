@@ -27,13 +27,14 @@ import type {
 } from "./types";
 import { CoreRecordsRepository } from "./core-records";
 import { looksLikeJwt, verifyAccessToken, protectedResourceMetadata } from "./oauth-resource";
+import { buildAuthorizeRedirect, exchangeCodeForToken, signLoginState, verifyLoginState } from "./oidc-login";
 
 const { LocalConsoleHub } = require("./console-hub");
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource"];
+const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -250,6 +251,17 @@ async function routeRequest(input: {
       return;
     }
 
+    // OIDC login (ADR 0003, Phase 2c) — public, before the auth gate. Inert (404)
+    // unless OAuth + login are configured.
+    if (request.method === "GET" && url.pathname === "/auth/login") {
+      await handleOAuthLogin(response, runtimeConfig);
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/auth/callback") {
+      await handleOAuthCallback(request, response, url, runtimeConfig);
+      return;
+    }
+
     // Flow hosted-ingest contract v1 (POST /ingest/flow, GET /ingest/flow/:runId).
     // Guarded by its OWN per-product bearer token (CONSOLE_INGEST_TOKEN), NOT the
     // hosted-auth tokens or the browser session — Flow's HostedConsoleSink pushes
@@ -305,13 +317,15 @@ async function routeRequest(input: {
       return;
     }
     const context = auth.context;
-    // Scope authorization (ADR 0003, Phase 2): scopes are enforced for every auth
-    // method EXCEPT the legacy ones (opaque token, signed session cookie, loopback
-    // local), which keep full access for back-compat. Using a legacy allowlist
-    // (rather than `=== "jwt"`) makes a new/unknown auth method fail safe — it gets
-    // scope-enforced by default instead of silently bypassing.
-    const legacyFullAccess = context.authMethod === "local" || context.authMethod === "session" || context.authMethod === "token";
-    if (!legacyFullAccess) {
+    // Scope authorization (ADR 0003, Phase 2): enforce scopes whenever the
+    // credential CARRIES them — JWT clients, AND OIDC-issued sessions (whose
+    // access-token scopes are embedded in the session cookie). Legacy credentials
+    // that carry no scopes (token-issued session, opaque bearer token, loopback
+    // local) keep full access for back-compat. An unknown method with no scopes
+    // is NOT exempt, so it fails safe into enforcement.
+    const scopeExempt = context.scopes === undefined
+      && (context.authMethod === "local" || context.authMethod === "session" || context.authMethod === "token");
+    if (!scopeExempt) {
       const requiredScope = requiredScopeForRoute(request.method || "GET", url.pathname);
       if (requiredScope && !(context.scopes || []).includes(requiredScope)) {
         response.setHeader("WWW-Authenticate", `Bearer error="insufficient_scope", scope="${requiredScope}"`);
@@ -477,6 +491,97 @@ function handleSessionLogout(response: ServerResponse): void {
   response.end();
 }
 
+// --- OIDC login (ADR 0003, Phase 2c) ---------------------------------------
+
+const OAUTH_STATE_COOKIE_NAME = "console_oauth_state";
+const OAUTH_STATE_MAX_AGE_SECONDS = 600;
+
+function buildOauthStateCookieHeader(value: string, maxAge: number): string {
+  // SameSite=Lax so the cookie survives the top-level redirect back from the IdP.
+  return `${OAUTH_STATE_COOKIE_NAME}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}; Secure`;
+}
+
+/** Error exit from the callback that always clears the (now stale) state cookie. */
+function failOAuthCallback(response: ServerResponse, status: number, code: string, message: string): void {
+  response.setHeader("set-cookie", buildOauthStateCookieHeader("", 0));
+  writeApiError(response, status, code, message);
+}
+
+/** GET /auth/login — start the OIDC Authorization-Code + PKCE flow. */
+async function handleOAuthLogin(response: ServerResponse, runtimeConfig: ConsoleRuntimeConfig): Promise<void> {
+  if (!runtimeConfig.oauth || !runtimeConfig.oauthLogin) {
+    writeApiError(response, 404, "NOT_FOUND", "login is not configured");
+    return;
+  }
+  const redirect = buildAuthorizeRedirect(runtimeConfig.oauthLogin, runtimeConfig.oauth);
+  const stateCookie = signLoginState(redirect.state, redirect.codeVerifier, runtimeConfig.oauthLogin.stateSecret, Date.now());
+  response.writeHead(302, {
+    location: redirect.url,
+    "set-cookie": buildOauthStateCookieHeader(stateCookie, OAUTH_STATE_MAX_AGE_SECONDS),
+    "cache-control": "no-store"
+  });
+  response.end();
+}
+
+/** GET /auth/callback — validate state, exchange the code, and issue a session. */
+async function handleOAuthCallback(request: IncomingMessage, response: ServerResponse, url: URL, runtimeConfig: ConsoleRuntimeConfig): Promise<void> {
+  if (!runtimeConfig.oauth || !runtimeConfig.oauthLogin) {
+    writeApiError(response, 404, "NOT_FOUND", "login is not configured");
+    return;
+  }
+  const code = url.searchParams.get("code");
+  const stateParam = url.searchParams.get("state");
+  if (!code || !stateParam) {
+    failOAuthCallback(response, 400, "INVALID_REQUEST", "missing code or state");
+    return;
+  }
+  // RFC 9207 — if the AS returned an issuer, it must match the configured one.
+  const issParam = url.searchParams.get("iss");
+  if (issParam && issParam !== runtimeConfig.oauth.issuer) {
+    failOAuthCallback(response, 400, "INVALID_ISS", "issuer mismatch");
+    return;
+  }
+  const cookieValue = request.headers.cookie ? parseCookieValue(request.headers.cookie, OAUTH_STATE_COOKIE_NAME) : null;
+  const stored = cookieValue ? verifyLoginState(cookieValue, runtimeConfig.oauthLogin.stateSecret, Date.now()) : null;
+  if (!stored || stored.state !== stateParam) {
+    failOAuthCallback(response, 400, "INVALID_STATE", "login state is invalid or expired");
+    return;
+  }
+  let tenantId: string;
+  let scopes: string[];
+  try {
+    const tokens = await exchangeCodeForToken(runtimeConfig.oauthLogin, code, stored.codeVerifier, runtimeConfig.oauth);
+    // We run as a combined Relying Party + Resource Server: the access token is a
+    // JWT minted by our AS, audience-bound to this console (RFC 8707) and carrying
+    // the tenant claim — so it is a sound identity+authorization basis. (A provider
+    // that issues OPAQUE access tokens will throw here; surfaced as a logged 401.)
+    const verified = await verifyAccessToken(tokens.access_token, runtimeConfig.oauth);
+    tenantId = verified.tenantId;
+    scopes = verified.scopes;
+  } catch (err) {
+    console.error("[oauth] callback token exchange / verification failed:", err);
+    failOAuthCallback(response, 401, "UNAUTHORIZED", "login failed");
+    return;
+  }
+  // Reuse the existing session scheme: the resolved tenant must have a hosted auth
+  // token (the session signing anchor). The OIDC access-token scopes are embedded in
+  // the session so scope authorization applies to the browser session too.
+  const tokenConfig = runtimeConfig.hostedAuthTokens.find((candidate) => candidate.tenantId === tenantId);
+  if (!tokenConfig) {
+    failOAuthCallback(response, 403, "TENANT_FORBIDDEN", "tenant is not provisioned");
+    return;
+  }
+  response.writeHead(302, {
+    location: "/",
+    "set-cookie": [
+      buildOauthStateCookieHeader("", 0),
+      buildSessionCookieHeader(signSessionCookie(tenantId, tokenConfig.token, scopes), SESSION_COOKIE_MAX_AGE_SECONDS)
+    ],
+    "cache-control": "no-store"
+  });
+  response.end();
+}
+
 /**
  * Serve the minimal token-entry gate page for unauthenticated HTML requests
  * in hosted mode. Zero product information disclosed. Dark Kontour-ish look.
@@ -582,33 +687,50 @@ function sessionSigningKey(rawToken: string): Buffer {
 /**
  * Build a signed session cookie value for a given tenant.
  *
- * Format: base64url(tenantId) "." timestampMs "." HMAC-SHA256(hex)
- * HMAC input: "<tenantPart>.<tsPart>"
+ * Legacy (token-issued, full-access) format: base64url(tenantId).timestampMs.HMAC
+ * Scoped (OIDC-issued) format:               base64url(tenantId).timestampMs.base64url(scopes).HMAC
+ * The HMAC covers all preceding dot-joined parts. Presence of the scope segment
+ * is what makes a session scope-enforced (ADR 0003, Phase 2).
  */
-export function signSessionCookie(tenantId: string, rawToken: string): string {
+export function signSessionCookie(tenantId: string, rawToken: string, scopes?: string[]): string {
   const tenantPart = Buffer.from(tenantId, "utf8").toString("base64url");
   const tsPart = String(Date.now());
-  const sigInput = `${tenantPart}.${tsPart}`;
-  const sig = crypto.createHmac("sha256", sessionSigningKey(rawToken)).update(sigInput).digest("hex");
-  return `${tenantPart}.${tsPart}.${sig}`;
+  const key = sessionSigningKey(rawToken);
+  if (scopes === undefined) {
+    const sig = crypto.createHmac("sha256", key).update(`${tenantPart}.${tsPart}`).digest("hex");
+    return `${tenantPart}.${tsPart}.${sig}`;
+  }
+  const scopePart = Buffer.from(scopes.join(" "), "utf8").toString("base64url");
+  const sig = crypto.createHmac("sha256", key).update(`${tenantPart}.${tsPart}.${scopePart}`).digest("hex");
+  return `${tenantPart}.${tsPart}.${scopePart}.${sig}`;
 }
 
 /**
  * Verify a session cookie value against the current runtime config.
  *
- * Returns { tenantId } if valid, null otherwise.
- * Uses constant-time comparison to avoid timing side channels.
+ * Returns { tenantId, scopes? } if valid, null otherwise. `scopes` is present
+ * only for scoped (OIDC) sessions. Constant-time signature comparison; server-side
+ * max-age enforcement (so a stolen raw cookie can't outlive the signed lifetime).
  */
 export function verifySessionCookieValue(
   cookieValue: string,
   runtimeConfig: ConsoleRuntimeConfig
-): { tenantId: string } | null {
+): { tenantId: string; scopes?: string[] } | null {
   const parts = cookieValue.split(".");
-  // Expect exactly three dot-separated parts (tenantPart, timestamp, sig).
-  // Note: base64url uses no dots, and hex sig uses no dots, so three is correct.
-  if (parts.length !== 3) return null;
-  const [tenantPart, tsPart, sig] = parts;
+  // 3 parts = legacy (full-access); 4 parts = scoped (OIDC). base64url + hex are
+  // dot-free, so the segment count is unambiguous.
+  if (parts.length !== 3 && parts.length !== 4) return null;
+  const scoped = parts.length === 4;
+  const tenantPart = parts[0];
+  const tsPart = parts[1];
+  const scopePart = scoped ? parts[2] : undefined;
+  const sig = scoped ? parts[3] : parts[2];
   if (!tenantPart || !tsPart || !sig) return null;
+  if (!/^\d+$/.test(tsPart)) return null;
+
+  // Server-side max-age: reject cookies older than the signed lifetime.
+  const ts = Number(tsPart);
+  if (!Number.isSafeInteger(ts) || Date.now() - ts > SESSION_COOKIE_MAX_AGE_SECONDS * 1000) return null;
 
   let tenantId: string;
   try {
@@ -618,30 +740,24 @@ export function verifySessionCookieValue(
   }
   if (!tenantId) return null;
 
-  // Timestamp sanity — must be a positive integer; no expiry check here since
-  // the cookie itself carries max-age. Revocation is via token removal from config.
-  if (!/^\d+$/.test(tsPart)) return null;
-
-  // Find a token config for this tenant.
-  const tokenConfig = runtimeConfig.hostedAuthTokens.find(
-    (candidate) => candidate.tenantId === tenantId
-  );
+  const tokenConfig = runtimeConfig.hostedAuthTokens.find((candidate) => candidate.tenantId === tenantId);
   if (!tokenConfig) return null;
 
-  // Recompute expected signature and compare in constant time.
-  const sigInput = `${tenantPart}.${tsPart}`;
-  const expected = crypto
-    .createHmac("sha256", sessionSigningKey(tokenConfig.token))
-    .update(sigInput)
-    .digest("hex");
+  const sigInput = scoped ? `${tenantPart}.${tsPart}.${scopePart}` : `${tenantPart}.${tsPart}`;
+  const expected = crypto.createHmac("sha256", sessionSigningKey(tokenConfig.token)).update(sigInput).digest("hex");
+  // Compare as ASCII hex — both sides are fixed-length lowercase hex, so this is
+  // constant-time and never throws (unlike Buffer.from(sig, "hex") on bad input).
+  const sigBuf = Buffer.from(sig, "ascii");
+  const expBuf = Buffer.from(expected, "ascii");
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
 
-  const expectedBuf = Buffer.from(expected, "hex");
-  const actualBuf = Buffer.from(sig.length === expected.length ? sig : expected, "hex");
-  const match =
-    sig.length === expected.length &&
-    crypto.timingSafeEqual(expectedBuf, actualBuf);
-
-  return match ? { tenantId } : null;
+  if (!scoped) return { tenantId };
+  try {
+    const raw = Buffer.from(scopePart as string, "base64url").toString("utf8");
+    return { tenantId, scopes: raw ? raw.split(" ").filter(Boolean) : [] };
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -651,7 +767,7 @@ export function verifySessionCookieValue(
 function verifySessionCookie(
   request: IncomingMessage,
   runtimeConfig: ConsoleRuntimeConfig
-): { tenantId: string } | null {
+): { tenantId: string; scopes?: string[] } | null {
   const cookieHeader = request.headers.cookie;
   if (!cookieHeader) return null;
   const cookieValue = parseCookieValue(cookieHeader, SESSION_COOKIE_NAME);
@@ -1101,7 +1217,7 @@ async function authenticateRequest(request: IncomingMessage, runtimeConfig: Cons
   // This supports EventSource (SSE) from the browser, which cannot set headers.
   const sessionContext = verifySessionCookie(request, runtimeConfig);
   if (sessionContext) {
-    return { ok: true, context: { tenantId: sessionContext.tenantId, runtimeMode: "hosted", authMethod: "session" } };
+    return { ok: true, context: { tenantId: sessionContext.tenantId, runtimeMode: "hosted", authMethod: "session", scopes: sessionContext.scopes } };
   }
 
   const token = apiRequestToken(request);

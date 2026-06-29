@@ -5,6 +5,7 @@ import type {
   TelemetryStorageAdapterName
 } from "./types";
 import { resolveOAuthConfig, type ConsoleOAuthConfig } from "./oauth-resource";
+import { resolveOAuthLoginConfig, isSecureOrLoopbackUrl, type ConsoleOAuthLoginConfig } from "./oidc-login";
 
 export interface ConsoleRuntimeConfig {
   mode: ConsoleRuntimeMode;
@@ -19,6 +20,12 @@ export interface ConsoleRuntimeConfig {
    * Protected Resource Metadata. Absent ⇒ JWT path off, behavior unchanged.
    */
   oauth?: ConsoleOAuthConfig;
+  /**
+   * OIDC login (Authorization Code + PKCE) config for the console UI (ADR 0003,
+   * Phase 2c). Present ⇒ `/auth/login` + `/auth/callback` are active. Absent ⇒
+   * those routes 404 and nothing changes.
+   */
+  oauthLogin?: ConsoleOAuthLoginConfig;
   /**
    * Bearer token guarding `POST /ingest/flow`. Absent ⇒ the ingest endpoint is
    * disabled (returns 404). See `ConsoleHubServerOptions.ingestToken`.
@@ -46,6 +53,7 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
   const telemetryStorageAdapter = resolveTelemetryStorageAdapter(options, env);
   const telemetryDatabaseUrl = options.telemetryDatabaseUrl || env.CONSOLE_DATABASE_URL || env.CONSOLE_TELEMETRY_DATABASE_URL;
   const oauth = resolveOAuthConfig(env);
+  const oauthLogin = resolveOAuthLoginConfig(env);
   const validation: ConsoleConfigValidationIssue[] = [];
 
   if (mode === "hosted") {
@@ -87,6 +95,34 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
     }
   }
 
+  // OIDC login (ADR 0003, Phase 2c) config checks.
+  if (oauthLogin && !oauth) {
+    validation.push({
+      severity: "warning",
+      code: "OAUTH_LOGIN_WITHOUT_RESOURCE_SERVER",
+      message: "OIDC login is configured but CONSOLE_OAUTH_ISSUER/AUDIENCE are absent; /auth/login will 404"
+    });
+  }
+  if (oauthLogin) {
+    for (const [name, endpoint] of [["authorization", oauthLogin.authorizationEndpoint], ["token", oauthLogin.tokenEndpoint]] as const) {
+      if (!isSecureOrLoopbackUrl(endpoint)) {
+        validation.push({
+          severity: "error",
+          code: "OAUTH_ENDPOINT_INSECURE",
+          message: `OIDC ${name} endpoint must be https (or http loopback for dev): ${endpoint}`
+        });
+      }
+    }
+  }
+  // Core login envs present but login disabled — most often a missing state secret.
+  if (!oauthLogin && env.CONSOLE_OAUTH_CLIENT_ID && env.CONSOLE_OAUTH_AUTHORIZATION_ENDPOINT) {
+    validation.push({
+      severity: "warning",
+      code: "OAUTH_LOGIN_INCOMPLETE",
+      message: "OIDC login env present but incomplete (require CONSOLE_OAUTH_STATE_SECRET + REDIRECT_URI + AUTHORIZATION/TOKEN endpoints); login disabled"
+    });
+  }
+
   return {
     mode,
     allowedOrigins,
@@ -96,6 +132,7 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
     localAuthToken,
     ingestToken,
     oauth,
+    oauthLogin,
     telemetryStorageAdapter,
     telemetryDatabaseUrl,
     validation
@@ -127,6 +164,17 @@ export function redactConsoleRuntimeConfig(config: ConsoleRuntimeConfig) {
     ingestToken: config.ingestToken ? "[redacted]" : undefined,
     oauth: config.oauth
       ? { issuer: config.oauth.issuer, audience: config.oauth.audience, jwksUri: config.oauth.jwksUri, tenantClaims: config.oauth.tenantClaims }
+      : undefined,
+    oauthLogin: config.oauthLogin
+      ? {
+          clientId: config.oauthLogin.clientId,
+          clientSecret: config.oauthLogin.clientSecret ? "[redacted]" : "",
+          redirectUri: config.oauthLogin.redirectUri,
+          authorizationEndpoint: config.oauthLogin.authorizationEndpoint,
+          tokenEndpoint: config.oauthLogin.tokenEndpoint,
+          scopes: config.oauthLogin.scopes,
+          stateSecret: config.oauthLogin.stateSecret ? "[redacted]" : ""
+        }
       : undefined,
     telemetryStorageAdapter: config.telemetryStorageAdapter,
     telemetryDatabaseUrl: config.telemetryDatabaseUrl ? "[redacted]" : undefined,
