@@ -11,7 +11,7 @@ import {
 
 const ISSUER = "https://auth.console.test";
 const AUDIENCE = "https://console.kontourai.io";
-const CONFIG: ConsoleOAuthConfig = { issuer: ISSUER, audience: AUDIENCE, jwksUri: "https://auth.console.test/jwks", tenantClaim: "org_id" };
+const CONFIG: ConsoleOAuthConfig = { issuer: ISSUER, audience: AUDIENCE, jwksUri: "https://auth.console.test/jwks", tenantClaims: ["org_id"] };
 
 // Local signing key + JWKS injected as the verifier (no network). Set up in a
 // hook because top-level await isn't available under the CJS test transpile.
@@ -62,13 +62,26 @@ test("verifyAccessToken rejects expired token", async () => {
 
 test("verifyAccessToken rejects token missing the tenant claim", async () => {
   const token = await mint({ org_id: undefined });
-  await assert.rejects(() => verifyAccessToken(token, CONFIG), /missing tenant claim/);
+  await assert.rejects(() => verifyAccessToken(token, CONFIG), /missing a tenant claim/);
 });
 
 test("verifyAccessToken honors a custom tenant claim", async () => {
-  const cfg = { ...CONFIG, tenantClaim: "tenant" };
+  const cfg = { ...CONFIG, tenantClaims: ["tenant"] };
   const result = await verifyAccessToken(await mint({ org_id: undefined, tenant: "tenant-z" }), cfg);
   assert.equal(result.tenantId, "tenant-z");
+});
+
+test("verifyAccessToken resolves tenant from an ordered claim list (user vs M2M)", async () => {
+  const cfg = { ...CONFIG, tenantClaims: ["org_id", "tenant_id"] };
+  // user token: org_id present
+  assert.equal((await verifyAccessToken(await mint({ org_id: "tenant-u" }), cfg)).tenantId, "tenant-u");
+  // M2M token: no org_id, tenant carried in tenant_id (the fallback claim)
+  assert.equal((await verifyAccessToken(await mint({ org_id: undefined, tenant_id: "tenant-m" }), cfg)).tenantId, "tenant-m");
+  // precedence: first present claim wins
+  assert.equal((await verifyAccessToken(await mint({ org_id: "tenant-a", tenant_id: "tenant-b" }), cfg)).tenantId, "tenant-a");
+  // neither present -> rejected
+  const none = await mint({ org_id: undefined });
+  await assert.rejects(() => verifyAccessToken(none, cfg), /missing a tenant claim/);
 });
 
 test("looksLikeJwt distinguishes JWTs from opaque tokens", () => {
@@ -87,16 +100,16 @@ test("resolveOAuthConfig is off without env, parses + derives defaults with env"
   assert.equal(cfg!.issuer, ISSUER + "/");
   assert.equal(cfg!.audience, AUDIENCE);
   assert.equal(cfg!.jwksUri, `${ISSUER}/.well-known/jwks.json`); // trailing slash trimmed in default
-  assert.equal(cfg!.tenantClaim, "org_id");
+  assert.deepEqual(cfg!.tenantClaims, ["org_id"]);
 
   const explicit = resolveOAuthConfig({
     CONSOLE_OAUTH_ISSUER: ISSUER,
     CONSOLE_OAUTH_AUDIENCE: AUDIENCE,
     CONSOLE_OAUTH_JWKS_URI: "https://custom/jwks",
-    CONSOLE_OAUTH_TENANT_CLAIM: "tenant"
+    CONSOLE_OAUTH_TENANT_CLAIM: "org_id, tenant_id" // comma-separated, trimmed → ordered list
   } as NodeJS.ProcessEnv);
   assert.equal(explicit!.jwksUri, "https://custom/jwks");
-  assert.equal(explicit!.tenantClaim, "tenant");
+  assert.deepEqual(explicit!.tenantClaims, ["org_id", "tenant_id"]);
 });
 
 test("protectedResourceMetadata returns an RFC 9728 document", () => {
