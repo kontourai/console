@@ -4,6 +4,7 @@ import type {
   ConsoleRuntimeMode,
   TelemetryStorageAdapterName
 } from "./types";
+import { resolveOAuthConfig, type ConsoleOAuthConfig } from "./oauth-resource";
 
 export interface ConsoleRuntimeConfig {
   mode: ConsoleRuntimeMode;
@@ -12,6 +13,12 @@ export interface ConsoleRuntimeConfig {
   hostedTenantIds: string[];
   hostedAuthTokens: ConsoleHostedAuthToken[];
   localAuthToken?: string;
+  /**
+   * OAuth 2.1 Resource-Server config (ADR 0003, Phase 1). Present ⇒ the console
+   * additionally accepts OIDC-issued audience-bound JWTs and serves RFC 9728
+   * Protected Resource Metadata. Absent ⇒ JWT path off, behavior unchanged.
+   */
+  oauth?: ConsoleOAuthConfig;
   /**
    * Bearer token guarding `POST /ingest/flow`. Absent ⇒ the ingest endpoint is
    * disabled (returns 404). See `ConsoleHubServerOptions.ingestToken`.
@@ -38,6 +45,7 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
   const allowedOrigins = options.allowedOrigins || parseCsv(env.CONSOLE_ALLOWED_ORIGINS);
   const telemetryStorageAdapter = resolveTelemetryStorageAdapter(options, env);
   const telemetryDatabaseUrl = options.telemetryDatabaseUrl || env.CONSOLE_DATABASE_URL || env.CONSOLE_TELEMETRY_DATABASE_URL;
+  const oauth = resolveOAuthConfig(env);
   const validation: ConsoleConfigValidationIssue[] = [];
 
   if (mode === "hosted") {
@@ -87,6 +95,7 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
     hostedAuthTokens,
     localAuthToken,
     ingestToken,
+    oauth,
     telemetryStorageAdapter,
     telemetryDatabaseUrl,
     validation
@@ -116,6 +125,9 @@ export function redactConsoleRuntimeConfig(config: ConsoleRuntimeConfig) {
     })),
     localAuthToken: config.localAuthToken ? "[redacted]" : undefined,
     ingestToken: config.ingestToken ? "[redacted]" : undefined,
+    oauth: config.oauth
+      ? { issuer: config.oauth.issuer, audience: config.oauth.audience, jwksUri: config.oauth.jwksUri, tenantClaim: config.oauth.tenantClaim }
+      : undefined,
     telemetryStorageAdapter: config.telemetryStorageAdapter,
     telemetryDatabaseUrl: config.telemetryDatabaseUrl ? "[redacted]" : undefined,
     validation: config.validation

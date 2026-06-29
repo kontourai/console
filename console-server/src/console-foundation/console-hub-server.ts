@@ -26,13 +26,14 @@ import type {
   ValidationIssue
 } from "./types";
 import { CoreRecordsRepository } from "./core-records";
+import { looksLikeJwt, verifyAccessToken, protectedResourceMetadata } from "./oauth-resource";
 
 const { LocalConsoleHub } = require("./console-hub");
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout"];
+const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -218,6 +219,18 @@ async function routeRequest(input: {
       return;
     }
 
+    // RFC 9728 Protected Resource Metadata (ADR 0003) — public, no auth gate.
+    // Lets MCP / OAuth clients discover the authorization server. Disabled (404)
+    // unless an OAuth provider is configured.
+    if (request.method === "GET" && url.pathname === "/.well-known/oauth-protected-resource") {
+      if (!runtimeConfig.oauth) {
+        writeApiError(response, 404, "NOT_FOUND", "protected resource metadata is not configured");
+        return;
+      }
+      writeJson(response, 200, protectedResourceMetadata(runtimeConfig.oauth));
+      return;
+    }
+
     // Session routes — handled before the auth gate and before static asset serving.
     // POST /session: validate {token, tenant} body and issue a session cookie (hosted + dist only).
     // GET /session: check cookie, return {tenantId} (exempt from gate — used by UI on startup).
@@ -286,7 +299,7 @@ async function routeRequest(input: {
       if (served) return;
     }
 
-    const auth = authenticateRequest(request, runtimeConfig, options);
+    const auth = await authenticateRequest(request, runtimeConfig, options);
     if (!auth.ok) {
       writeApiError(response, auth.statusCode, auth.error, auth.safeMessage);
       return;
@@ -1047,26 +1060,47 @@ function isKnownRoute(pathname: string): boolean {
   return KNOWN_ROUTES.includes(pathname);
 }
 
-function authenticateRequest(request: IncomingMessage, runtimeConfig: ConsoleRuntimeConfig, options: ConsoleHubServerOptions): { ok: true; context: ConsoleRequestContext } | { ok: false; statusCode: number; error: string; safeMessage: string } {
+async function authenticateRequest(request: IncomingMessage, runtimeConfig: ConsoleRuntimeConfig, options: ConsoleHubServerOptions): Promise<{ ok: true; context: ConsoleRequestContext } | { ok: false; statusCode: number; error: string; safeMessage: string }> {
   if (runtimeConfig.mode !== "hosted") {
     if (!authorizeLocalRequest(request, runtimeConfig)) {
       return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "console token is required for non-loopback clients" };
     }
-    return { ok: true, context: { tenantId: runtimeConfig.defaultTenantId, runtimeMode: "local" } };
+    return { ok: true, context: { tenantId: runtimeConfig.defaultTenantId, runtimeMode: "local", authMethod: "local" } };
   }
 
   // Accept session cookie as credential (equivalent to bearer token + tenant).
   // This supports EventSource (SSE) from the browser, which cannot set headers.
   const sessionContext = verifySessionCookie(request, runtimeConfig);
   if (sessionContext) {
-    return { ok: true, context: { tenantId: sessionContext.tenantId, runtimeMode: "hosted" } };
+    return { ok: true, context: { tenantId: sessionContext.tenantId, runtimeMode: "hosted", authMethod: "session" } };
   }
 
-  // Fall through to bearer token auth (unchanged).
   const token = apiRequestToken(request);
   if (!token) {
     return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "authorization token is required" };
   }
+
+  // OAuth 2.1 Resource-Server path (ADR 0003, config-gated). A bearer that is
+  // structurally a JWT is verified as a OIDC access token (JWKS signature,
+  // issuer, audience-bound `aud`); the tenant comes from the org claim. Opaque
+  // tokens are not JWT-shaped and fall through to the unchanged path below.
+  if (runtimeConfig.oauth && looksLikeJwt(token)) {
+    try {
+      const verified = await verifyAccessToken(token, runtimeConfig.oauth);
+      const requestedTenant = requestTenantId(request);
+      if (requestedTenant && requestedTenant !== verified.tenantId) {
+        return { ok: false, statusCode: 403, error: "TENANT_FORBIDDEN", safeMessage: "tenant is not allowed for this token" };
+      }
+      if (runtimeConfig.hostedTenantIds.length && !runtimeConfig.hostedTenantIds.includes(verified.tenantId)) {
+        return { ok: false, statusCode: 403, error: "TENANT_FORBIDDEN", safeMessage: "tenant is not allowed" };
+      }
+      return { ok: true, context: { tenantId: verified.tenantId, runtimeMode: "hosted", authMethod: "jwt" } };
+    } catch {
+      return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "access token is invalid" };
+    }
+  }
+
+  // Opaque bearer token auth (unchanged).
   const tokenConfig = runtimeConfig.hostedAuthTokens.find((candidate) => tokenMatches(candidate.token, token));
   if (!tokenConfig) {
     return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "authorization token is invalid" };
@@ -1075,7 +1109,7 @@ function authenticateRequest(request: IncomingMessage, runtimeConfig: ConsoleRun
   if (requestedTenant && requestedTenant !== tokenConfig.tenantId) {
     return { ok: false, statusCode: 403, error: "TENANT_FORBIDDEN", safeMessage: "tenant is not allowed for this token" };
   }
-  return { ok: true, context: { tenantId: tokenConfig.tenantId, runtimeMode: "hosted" } };
+  return { ok: true, context: { tenantId: tokenConfig.tenantId, runtimeMode: "hosted", authMethod: "token" } };
 }
 
 function authorizeLocalRequest(request: IncomingMessage, runtimeConfig: ConsoleRuntimeConfig): boolean {
