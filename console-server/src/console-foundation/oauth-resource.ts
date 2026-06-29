@@ -16,6 +16,8 @@
 // alternative AccessTokenVerifier without changing call sites — verifyAccessToken
 // is the seam.
 
+import crypto from "node:crypto";
+
 // jose is ESM-only; this module compiles to CommonJS, so load it via dynamic
 // import (a static import would be a TS1479 error, and type-position imports of
 // jose would require a resolution-mode attribute).
@@ -106,6 +108,42 @@ export const verifyAccessToken: AccessTokenVerifier = async (token, config) => {
   }
   return { tenantId, subject: payload.sub, scopes: readScopes(payload) };
 };
+
+/** Map a JWS `alg` to the SHA variant used for OIDC `at_hash` (per OIDC Core). */
+function shaForAlg(alg: string): "sha256" | "sha384" | "sha512" {
+  if (alg.endsWith("384")) return "sha384";
+  if (alg.endsWith("512")) return "sha512";
+  return "sha256";
+}
+
+/**
+ * Verify an OIDC `id_token` as the authentication assertion (OIDC Core §3.1.3.7):
+ * JWKS signature, `iss`, `aud` = the client_id, `exp`, the `nonce` we issued, and
+ * the `at_hash` binding to the access token (defends against access-token
+ * substitution). Throws on any failure. Returns the validated claims.
+ */
+export async function verifyOidcIdToken(
+  idToken: string,
+  config: ConsoleOAuthConfig,
+  opts: { audience: string; nonce?: string; accessToken?: string }
+): Promise<Record<string, unknown>> {
+  const { jwtVerify } = await josePromise;
+  const { payload, protectedHeader } = await jwtVerify(idToken, (await jwksFor(config)) as any, {
+    issuer: config.issuer,
+    audience: opts.audience
+  });
+  if (opts.nonce !== undefined && payload.nonce !== opts.nonce) {
+    throw new Error("id_token nonce mismatch");
+  }
+  if (opts.accessToken && typeof payload.at_hash === "string") {
+    const digest = crypto.createHash(shaForAlg(String(protectedHeader.alg || ""))).update(opts.accessToken, "ascii").digest();
+    const expected = digest.subarray(0, digest.length / 2).toString("base64url");
+    if (expected !== payload.at_hash) {
+      throw new Error("id_token at_hash mismatch (access-token binding failed)");
+    }
+  }
+  return payload as Record<string, unknown>;
+}
 
 function readStringClaim(payload: Record<string, unknown>, claim: string): string | undefined {
   const value = payload[claim];

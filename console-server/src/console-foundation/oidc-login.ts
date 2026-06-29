@@ -62,11 +62,13 @@ export interface AuthorizeRedirect {
   url: string;
   state: string;
   codeVerifier: string;
+  nonce: string;
 }
 
-/** Build the authorization-endpoint redirect (code flow + PKCE + RFC 8707 resource). */
+/** Build the authorization-endpoint redirect (code flow + PKCE + nonce + RFC 8707 resource). */
 export function buildAuthorizeRedirect(login: ConsoleOAuthLoginConfig, oauth: ConsoleOAuthConfig): AuthorizeRedirect {
   const state = b64url(crypto.randomBytes(16));
+  const nonce = b64url(crypto.randomBytes(16));
   const { verifier, challenge } = createPkce();
   const url = new URL(login.authorizationEndpoint);
   url.searchParams.set("response_type", "code");
@@ -74,10 +76,11 @@ export function buildAuthorizeRedirect(login: ConsoleOAuthLoginConfig, oauth: Co
   url.searchParams.set("redirect_uri", login.redirectUri);
   url.searchParams.set("scope", login.scopes.join(" "));
   url.searchParams.set("state", state);
+  url.searchParams.set("nonce", nonce); // bound into the id_token, validated at the callback
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("resource", oauth.audience); // RFC 8707 audience binding
-  return { url: url.toString(), state, codeVerifier: verifier };
+  return { url: url.toString(), state, codeVerifier: verifier, nonce };
 }
 
 export type FetchLike = (url: string, init: Record<string, unknown>) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
@@ -126,18 +129,18 @@ export async function exchangeCodeForToken(
 
 // --- signed, short-lived state cookie (state + PKCE verifier across the redirect) ---
 
-interface LoginState { state: string; codeVerifier: string; exp: number }
+interface LoginState { state: string; codeVerifier: string; nonce: string; exp: number }
 
-/** Sign {state, codeVerifier} into an opaque cookie value (HMAC-SHA256). */
-export function signLoginState(state: string, codeVerifier: string, secret: string, nowMs: number, ttlMs = 600_000): string {
-  const payload: LoginState = { state, codeVerifier, exp: nowMs + ttlMs };
+/** Sign {state, codeVerifier, nonce} into an opaque cookie value (HMAC-SHA256). */
+export function signLoginState(state: string, codeVerifier: string, nonce: string, secret: string, nowMs: number, ttlMs = 600_000): string {
+  const payload: LoginState = { state, codeVerifier, nonce, exp: nowMs + ttlMs };
   const body = b64url(Buffer.from(JSON.stringify(payload), "utf8"));
   const mac = crypto.createHmac("sha256", secret).update(body).digest("hex");
   return `${body}.${mac}`;
 }
 
 /** Verify + decode the state cookie. Returns null if tampered or expired. */
-export function verifyLoginState(cookieValue: string, secret: string, nowMs: number): { state: string; codeVerifier: string } | null {
+export function verifyLoginState(cookieValue: string, secret: string, nowMs: number): { state: string; codeVerifier: string; nonce: string } | null {
   const dot = cookieValue.lastIndexOf(".");
   if (dot <= 0) return null;
   const body = cookieValue.slice(0, dot);
@@ -148,9 +151,9 @@ export function verifyLoginState(cookieValue: string, secret: string, nowMs: num
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
   try {
     const parsed = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as LoginState;
-    if (!parsed || typeof parsed.state !== "string" || typeof parsed.codeVerifier !== "string") return null;
+    if (!parsed || typeof parsed.state !== "string" || typeof parsed.codeVerifier !== "string" || typeof parsed.nonce !== "string") return null;
     if (typeof parsed.exp !== "number" || parsed.exp < nowMs) return null;
-    return { state: parsed.state, codeVerifier: parsed.codeVerifier };
+    return { state: parsed.state, codeVerifier: parsed.codeVerifier, nonce: parsed.nonce };
   } catch {
     return null;
   }

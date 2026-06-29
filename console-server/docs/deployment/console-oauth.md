@@ -40,12 +40,15 @@ validation warns) if `CONSOLE_OAUTH_STATE_SECRET` is missing — it is a dedicat
 high-entropy HMAC key for the login-state cookie and is never derived from auth tokens.
 Authorization/token endpoints must be **https** (http allowed only for localhost in dev).
 
-> **Access tokens must be JWTs.** The console runs as a combined Relying Party +
-> Resource Server: at the callback it verifies the *access token* (signature via JWKS,
-> `iss`, audience-bound `aud` per RFC 8707, `exp`) and reads the tenant claim from it.
-> Configure the provider to mint **JWT** access tokens with `aud = CONSOLE_OAUTH_AUDIENCE`.
-> A provider issuing opaque access tokens will fail login with a logged 401. (Full
-> `id_token`/`at_hash`/`nonce` validation is tracked as a hardening follow-up.)
+> **Login token validation.** When `openid` is in `CONSOLE_OAUTH_LOGIN_SCOPES` (the
+> default), the callback validates the **`id_token`** as the authentication assertion
+> (OIDC Core): JWKS signature, `iss`, `aud = CONSOLE_OAUTH_CLIENT_ID`, `exp`, the
+> **`nonce`** we issued, and the **`at_hash`** binding to the access token (blocks
+> access-token substitution). It then verifies the **access token** (signature via JWKS,
+> `iss`, audience-bound `aud` per RFC 8707, `exp`) and reads the tenant claim from it —
+> the console acts as a combined Relying Party + Resource Server. Configure the provider
+> to mint **JWT** access tokens with `aud = CONSOLE_OAUTH_AUDIENCE`; an opaque access
+> token fails login with a logged 401.
 
 ## MCP server (Phase 3)
 
