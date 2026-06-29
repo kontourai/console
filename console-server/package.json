@@ -21,10 +21,12 @@
     "test": "KONTOUR_REPO_ROOT=.. node --import tsx --test test/*.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build"
+    "prepack": "npm run build",
+    "generate:openapi": "node scripts/generate-openapi-schemas.mjs"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "ts-json-schema-generator": "^2.9.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   },
