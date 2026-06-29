@@ -1,5 +1,6 @@
 // Type declaration for the <surface-trust-panel> custom element.
-// Loaded via side-effect import of @kontourai/surface/dist/src/trust-panel/surface-trust-panel.js.
+// Registered via a dynamic import of the @kontourai/surface "./trust-panel/element"
+// export (see surface-trust-panel-loader.ts).
 // The element exposes a `report` property (TrustReport) and `src` / `heading` attributes.
 
 declare module "react" {

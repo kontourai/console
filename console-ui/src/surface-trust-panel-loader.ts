@@ -1,10 +1,11 @@
 // Loads the <surface-trust-panel> custom element as a side effect.
-// This module is imported dynamically so it doesn't need to be in
-// @kontourai/surface's package.json exports. Vite bundles the file
-// inline; the public/ copy serves as a fallback for the hub static server.
 //
-// We use a script-injection approach that works in both Vite dev mode (which
-// serves public/ files) and the bundled build (which copies public/ to dist/).
+// Registered from @kontourai/surface's published "./trust-panel/element" export
+// via a dynamic import: Vite code-splits it into a chunk fetched on first use
+// (same lazy behaviour as the former runtime <script> injection), the version is
+// pinned by the @kontourai/surface dependency, and there is no vendored public/
+// copy to drift from the source. Fire-and-forget: the element self-registers on
+// import, consumers render <surface-trust-panel> and set `report` once upgraded.
 
 let loaded = false;
 
@@ -15,11 +16,5 @@ export function ensureSurfaceTrustPanel(): void {
     return;
   }
   loaded = true;
-
-  const script = document.createElement("script");
-  script.type = "module";
-  // In dev: Vite serves /surface-trust-panel.js from public/.
-  // In prod: the file is copied to dist/ by Vite, served at root by the hub.
-  script.src = "/surface-trust-panel.js";
-  document.head.appendChild(script);
+  void import("@kontourai/surface/trust-panel/element");
 }
