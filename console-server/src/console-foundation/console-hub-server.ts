@@ -305,6 +305,17 @@ async function routeRequest(input: {
       return;
     }
     const context = auth.context;
+    // Scope authorization (ADR 0003, Phase 2): OAuth/JWT clients must hold the
+    // scope a route requires. Legacy credentials (opaque token, session cookie,
+    // local) are unaffected — scopes are an additive constraint for OAuth clients.
+    if (context.authMethod === "jwt") {
+      const requiredScope = requiredScopeForRoute(request.method || "GET", url.pathname);
+      if (requiredScope && !(context.scopes || []).includes(requiredScope)) {
+        response.setHeader("WWW-Authenticate", `Bearer error="insufficient_scope", scope="${requiredScope}"`);
+        writeApiError(response, 403, "INSUFFICIENT_SCOPE", `missing required scope: ${requiredScope}`);
+        return;
+      }
+    }
     const hub = runtimeConfig.mode === "hosted" ? hostedHubForTenant(input.hostedHubs, options, context.tenantId, coreSqlClient) : input.localHub;
     const events = runtimeConfig.mode === "hosted" ? hostedEventsForTenant(input.hostedEvents, context.tenantId) : input.localEvents;
 
@@ -1048,6 +1059,21 @@ function applyCorsPolicy(request: IncomingMessage, response: ServerResponse, run
   return true;
 }
 
+/** Required OAuth scope for a route (ADR 0003, Phase 2), or undefined if the
+ *  route is unscoped. Mirrors the `scopes_supported` in the RFC 9728 metadata. */
+function requiredScopeForRoute(method: string, pathname: string): string | undefined {
+  const m = method.toUpperCase();
+  if (pathname === "/api/telemetry/pricing") return "pricing:read";
+  if (pathname === "/api/telemetry" || pathname === "/api/telemetry/records") {
+    return m === "POST" ? "telemetry:write" : "telemetry:read";
+  }
+  if (pathname === "/records") return m === "POST" ? "records:write" : "records:read";
+  if (pathname === "/state" || pathname === "/inspect" || pathname === "/events" || pathname === "/stream") {
+    return "records:read";
+  }
+  return undefined;
+}
+
 function isAllowedOrigin(origin: string | undefined, runtimeConfig: ConsoleRuntimeConfig): boolean {
   if (!origin) return true;
   const allowedOrigins = runtimeConfig.mode === "hosted"
@@ -1094,7 +1120,7 @@ async function authenticateRequest(request: IncomingMessage, runtimeConfig: Cons
       if (runtimeConfig.hostedTenantIds.length && !runtimeConfig.hostedTenantIds.includes(verified.tenantId)) {
         return { ok: false, statusCode: 403, error: "TENANT_FORBIDDEN", safeMessage: "tenant is not allowed" };
       }
-      return { ok: true, context: { tenantId: verified.tenantId, runtimeMode: "hosted", authMethod: "jwt" } };
+      return { ok: true, context: { tenantId: verified.tenantId, runtimeMode: "hosted", authMethod: "jwt", scopes: verified.scopes } };
     } catch {
       return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "access token is invalid" };
     }

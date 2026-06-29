@@ -462,6 +462,9 @@ export interface ConsoleRequestContext {
   runtimeMode: ConsoleRuntimeMode;
   /** How the request was authenticated (ADR 0003). Optional/observability-only. */
   authMethod?: "local" | "session" | "token" | "jwt";
+  /** OAuth scopes granted to a JWT-authenticated request (ADR 0003, Phase 2).
+   *  Only populated for authMethod "jwt"; undefined for legacy credentials. */
+  scopes?: string[];
 }
 
 export interface ConsoleSqlQueryResult<Row = OpenRecord> {
