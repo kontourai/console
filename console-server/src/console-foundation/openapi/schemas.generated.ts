@@ -1,0 +1,679 @@
+// GENERATED from src/console-foundation/types.ts by scripts/generate-openapi-schemas.mjs.
+// Do not edit by hand. Run: npm run generate:openapi -w console-server
+// JSON Schema (draft-07) definitions for the console API types; consumed by openapi.ts.
+export const GENERATED_DEFINITIONS: Record<string, unknown> = {
+  "DeliveryOutcome": {
+    "type": "string",
+    "enum": [
+      "accepted",
+      "skipped",
+      "failed"
+    ]
+  },
+  "DeliveryResult": {
+    "type": "object",
+    "properties": {
+      "sinkId": {
+        "type": "string"
+      },
+      "sinkRole": {
+        "type": "string"
+      },
+      "outcome": {
+        "$ref": "#/definitions/DeliveryOutcome"
+      },
+      "status": {
+        "type": "string"
+      },
+      "recordId": {
+        "type": "string"
+      },
+      "recordKind": {
+        "$ref": "#/definitions/RecordKind"
+      },
+      "observedAt": {
+        "type": "string"
+      },
+      "destination": {
+        "type": "string"
+      },
+      "retryable": {
+        "type": "boolean"
+      },
+      "errorCode": {
+        "type": "string"
+      },
+      "safeMessage": {
+        "type": "string"
+      },
+      "children": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/DeliveryResult"
+        }
+      }
+    },
+    "required": [
+      "sinkId",
+      "sinkRole",
+      "outcome",
+      "status",
+      "recordId",
+      "recordKind",
+      "observedAt"
+    ],
+    "additionalProperties": {}
+  },
+  "RecordKind": {
+    "type": "string",
+    "enum": [
+      "event",
+      "projection"
+    ]
+  },
+  "TelemetryAnalyticsSummary": {
+    "type": "object",
+    "properties": {
+      "facets": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryFacetSummary"
+        }
+      },
+      "flows": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryFlowSummary"
+        }
+      },
+      "usageByModel": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryUsageBreakdown"
+        }
+      },
+      "usageByProject": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryUsageBreakdown"
+        }
+      },
+      "usageByAgent": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryUsageBreakdown"
+        }
+      },
+      "usageByRuntime": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryUsageBreakdown"
+        }
+      }
+    },
+    "required": [
+      "facets",
+      "flows",
+      "usageByModel",
+      "usageByProject",
+      "usageByAgent",
+      "usageByRuntime"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryCountSummary": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string"
+      },
+      "count": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "name",
+      "count"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryFacetSummary": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      },
+      "counts": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryCountSummary"
+        }
+      }
+    },
+    "required": [
+      "id",
+      "label",
+      "counts"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryFlowItem": {
+    "type": "object",
+    "properties": {
+      "slug": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "updatedAt": {
+        "type": "string"
+      },
+      "attributes": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "details": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "label",
+            "value"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": [
+      "slug"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryFlowSummary": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      },
+      "total": {
+        "type": "number"
+      },
+      "items": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryFlowItem"
+        }
+      }
+    },
+    "required": [
+      "id",
+      "label",
+      "total",
+      "items"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryPaginationSummary": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number"
+      },
+      "offset": {
+        "type": "number"
+      },
+      "returnedCount": {
+        "type": "number"
+      },
+      "totalMatchedCount": {
+        "type": "number"
+      },
+      "nextOffset": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "limit",
+      "offset",
+      "returnedCount",
+      "totalMatchedCount"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryQueryFilter": {
+    "type": "object",
+    "properties": {
+      "facetId": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      },
+      "value": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "facetId",
+      "label",
+      "value"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryQueryPreset": {
+    "type": "string",
+    "enum": [
+      "live",
+      "15m",
+      "24h",
+      "7d",
+      "custom"
+    ]
+  },
+  "TelemetryQuerySummary": {
+    "type": "object",
+    "properties": {
+      "preset": {
+        "$ref": "#/definitions/TelemetryQueryPreset"
+      },
+      "from": {
+        "type": "string"
+      },
+      "to": {
+        "type": "string"
+      },
+      "q": {
+        "type": "string"
+      },
+      "filters": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryQueryFilter"
+        }
+      },
+      "sort": {
+        "$ref": "#/definitions/TelemetrySortDirection"
+      }
+    },
+    "required": [
+      "filters",
+      "sort"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryRecord": {
+    "type": "object",
+    "properties": {
+      "schema_version": {
+        "type": "string"
+      },
+      "event_type": {
+        "type": "string"
+      },
+      "session_id": {
+        "type": "string"
+      },
+      "event_id": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "schema_version",
+      "event_type",
+      "session_id",
+      "event_id"
+    ]
+  },
+  "TelemetryRecordKind": {
+    "type": "string",
+    "enum": [
+      "runtime",
+      "workflow-sidecar"
+    ]
+  },
+  "TelemetryRecordSummary": {
+    "type": "object",
+    "properties": {
+      "sourceId": {
+        "type": "string"
+      },
+      "sourceKind": {
+        "$ref": "#/definitions/TelemetryRecordKind"
+      },
+      "eventId": {
+        "type": "string"
+      },
+      "eventType": {
+        "type": "string"
+      },
+      "sessionId": {
+        "type": "string"
+      },
+      "observedAt": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "outcome": {
+        "type": "string"
+      },
+      "durationMs": {
+        "type": "number"
+      },
+      "agentName": {
+        "type": "string"
+      },
+      "runtime": {
+        "type": "string"
+      },
+      "runtimeVersion": {
+        "type": "string"
+      },
+      "model": {
+        "type": "string"
+      },
+      "hookEventName": {
+        "type": "string"
+      },
+      "runtimeSessionId": {
+        "type": "string"
+      },
+      "turnId": {
+        "type": "string"
+      },
+      "project": {
+        "type": "string"
+      },
+      "cwd": {
+        "type": "string"
+      },
+      "delegationTarget": {
+        "type": "string"
+      },
+      "toolName": {
+        "type": "string"
+      },
+      "taskSlug": {
+        "type": "string"
+      },
+      "title": {
+        "type": "string"
+      },
+      "inputTokens": {
+        "type": "number"
+      },
+      "outputTokens": {
+        "type": "number"
+      },
+      "cacheCreationInputTokens": {
+        "type": "number"
+      },
+      "cacheReadInputTokens": {
+        "type": "number"
+      },
+      "estimatedCostUsd": {
+        "type": "number"
+      },
+      "usageByModel": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryUsageBreakdown"
+        }
+      },
+      "attributes": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      },
+      "path": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sourceId",
+      "sourceKind",
+      "eventId",
+      "eventType",
+      "sessionId"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetrySortDirection": {
+    "type": "string",
+    "enum": [
+      "desc",
+      "asc"
+    ]
+  },
+  "TelemetrySourceSummary": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "kind": {
+        "$ref": "#/definitions/TelemetryRecordKind"
+      },
+      "path": {
+        "type": "string"
+      },
+      "recordCount": {
+        "type": "number"
+      },
+      "warningCount": {
+        "type": "number"
+      },
+      "warnings": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/ValidationIssue"
+        }
+      }
+    },
+    "required": [
+      "id",
+      "kind",
+      "path",
+      "recordCount",
+      "warningCount",
+      "warnings"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetrySummary": {
+    "type": "object",
+    "properties": {
+      "generatedAt": {
+        "type": "string"
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetrySourceSummary"
+        }
+      },
+      "totals": {
+        "type": "object",
+        "properties": {
+          "recordCount": {
+            "type": "number"
+          },
+          "sessionCount": {
+            "type": "number"
+          },
+          "eventTypeCounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "productRecordCount": {
+            "type": "number"
+          },
+          "usage": {
+            "$ref": "#/definitions/TelemetryUsageTotals"
+          }
+        },
+        "required": [
+          "recordCount",
+          "sessionCount",
+          "eventTypeCounts",
+          "productRecordCount",
+          "usage"
+        ],
+        "additionalProperties": false
+      },
+      "analytics": {
+        "$ref": "#/definitions/TelemetryAnalyticsSummary"
+      },
+      "records": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryRecordSummary"
+        }
+      },
+      "query": {
+        "$ref": "#/definitions/TelemetryQuerySummary"
+      },
+      "pagination": {
+        "$ref": "#/definitions/TelemetryPaginationSummary"
+      },
+      "warnings": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/ValidationIssue"
+        }
+      }
+    },
+    "required": [
+      "generatedAt",
+      "sources",
+      "totals",
+      "analytics",
+      "records",
+      "warnings"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryUsageBreakdown": {
+    "type": "object",
+    "properties": {
+      "inputTokens": {
+        "type": "number"
+      },
+      "outputTokens": {
+        "type": "number"
+      },
+      "cacheCreationInputTokens": {
+        "type": "number"
+      },
+      "cacheReadInputTokens": {
+        "type": "number"
+      },
+      "totalTokens": {
+        "type": "number"
+      },
+      "estimatedCostUsd": {
+        "type": "number"
+      },
+      "key": {
+        "type": "string"
+      },
+      "label": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "cacheCreationInputTokens",
+      "cacheReadInputTokens",
+      "estimatedCostUsd",
+      "inputTokens",
+      "key",
+      "label",
+      "outputTokens",
+      "totalTokens"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryUsageTotals": {
+    "type": "object",
+    "properties": {
+      "inputTokens": {
+        "type": "number"
+      },
+      "outputTokens": {
+        "type": "number"
+      },
+      "cacheCreationInputTokens": {
+        "type": "number"
+      },
+      "cacheReadInputTokens": {
+        "type": "number"
+      },
+      "totalTokens": {
+        "type": "number"
+      },
+      "estimatedCostUsd": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "inputTokens",
+      "outputTokens",
+      "cacheCreationInputTokens",
+      "cacheReadInputTokens",
+      "totalTokens",
+      "estimatedCostUsd"
+    ],
+    "additionalProperties": false
+  },
+  "ValidationIssue": {
+    "type": "object",
+    "properties": {
+      "severity": {
+        "$ref": "#/definitions/ValidationSeverity"
+      },
+      "path": {
+        "type": "string"
+      },
+      "message": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "severity",
+      "path",
+      "message"
+    ],
+    "additionalProperties": false
+  },
+  "ValidationSeverity": {
+    "type": "string",
+    "enum": [
+      "error",
+      "warning"
+    ]
+  }
+};

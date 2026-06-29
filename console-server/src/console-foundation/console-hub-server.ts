@@ -29,13 +29,14 @@ import { CoreRecordsRepository } from "./core-records";
 import { looksLikeJwt, verifyAccessToken, protectedResourceMetadata } from "./oauth-resource";
 import { buildAuthorizeRedirect, exchangeCodeForToken, signLoginState, verifyLoginState } from "./oidc-login";
 import { handleMcpRequest } from "./mcp-server";
+import { buildOpenApiDocument } from "./openapi";
 
 const { LocalConsoleHub } = require("./console-hub");
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp"];
+export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -218,6 +219,12 @@ async function routeRequest(input: {
     if (request.method === "GET" && url.pathname === "/readyz") {
       const readiness = await telemetry.ready();
       writeJson(response, readiness.ok ? 200 : 503, readiness);
+      return;
+    }
+
+    // OpenAPI 3.1 document — public, generated from the route registry + types.
+    if (request.method === "GET" && url.pathname === "/openapi.json") {
+      writeJson(response, 200, buildOpenApiDocument({ serverUrl: `${url.protocol}//${url.host}` }));
       return;
     }
 
@@ -1201,7 +1208,7 @@ function applyCorsPolicy(request: IncomingMessage, response: ServerResponse, run
 
 /** Required OAuth scope for a route (ADR 0003, Phase 2), or undefined if the
  *  route is unscoped. Mirrors the `scopes_supported` in the RFC 9728 metadata. */
-function requiredScopeForRoute(method: string, pathname: string): string | undefined {
+export function requiredScopeForRoute(method: string, pathname: string): string | undefined {
   const m = method.toUpperCase();
   if (pathname === "/api/telemetry/pricing") return "pricing:read";
   if (pathname === "/api/telemetry" || pathname === "/api/telemetry/records") {
