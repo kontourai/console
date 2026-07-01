@@ -370,7 +370,7 @@ describe("OKF interop — grounded against a REAL, public Google OKF concept", (
     );
     assert.match(result.kontour.reason, /STALE|stale/);
     assert.match(result.kontour.reason, /integrity-ref/, "names the integrity-ref boundary");
-    assert.match(result.kontour.reason, /OKF/, "explains OKF's timestamp cannot detect it");
+    assert.match(result.kontour.reason, /timestamp/, "explains a bare timestamp cannot detect a content change");
     // Still a real schemaVersion-3 bundle (the stale grounding is real, just stale).
     assert.equal(result.kontour.grounded!.bundle.schemaVersion, 3);
   });

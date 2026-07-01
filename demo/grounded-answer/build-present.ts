@@ -25,11 +25,11 @@
  * Usage: npm run demo:grounded:present  →  demo/grounded-answer/dist/present.html
  */
 
-import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAll } from "./harness.js";
-import { SCENARIOS, WIN_SCENARIOS, TRAP_SCENARIOS, OKF_WIN, OKF_TRAP } from "./scenarios.js";
+import { SCENARIOS, OKF_WIN, OKF_TRAP } from "./scenarios.js";
 import type { LaneResults } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -41,6 +41,13 @@ copyFileSync(
   join(root, "console-ui", "public", "surface-trust-panel.js"),
   join(outDir, "surface-trust-panel.js")
 );
+// Inline the panel module so the deck renders the trust panel even when opened as a
+// plain file:// page (browsers block <script type="module" src> over file:// via CORS).
+// Escape any "</script" so the inline tag can't be closed early by the source's comments.
+const panelInlineJs = readFileSync(
+  join(root, "console-ui", "public", "surface-trust-panel.js"),
+  "utf8"
+).replaceAll("</script", "<\\/script");
 
 const results = runAll(SCENARIOS);
 const byId = (id: string) => results.find((r) => r.scenario.id === id)!;
@@ -50,8 +57,11 @@ const heroWin = byId("w1"); // Alpha Q2 — answerable
 const heroTrap = byId("s1"); // Alpha Q3 — the trap twin
 // The opening win establishes "the product is a trustworthy answer" before any trap.
 const openWin = byId("w0");
-// Remaining traps after the hero pair: strong SUPPORTED (s2, s4) then the abstains (s3, s0).
-const REMAINING_TRAP_ORDER = ["s2", "s4", "s3", "s0"];
+// Keep the deck tight — we don't parade every refusal. One more trap after the hero pair
+// (citation: SUPPORTED on a wrong answer); the OKF freshness trap is shown separately on
+// real Google data. The harness still TESTS all traps (s2/s3/s0) — they're just not all
+// walked through on stage.
+const REMAINING_TRAP_ORDER = ["s4"];
 const remainingTraps = REMAINING_TRAP_ORDER.map(byId);
 
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
@@ -70,8 +80,12 @@ function esc(s: string): string {
 // The story is discrimination, not a refusal count: across answerable AND trap
 // questions, Kontour answered exactly when it could and refused exactly when it
 // couldn't; RAG matched it on the answerable ones and shipped wrong on every trap.
-const wins = runAll(WIN_SCENARIOS);
-const traps = runAll(TRAP_SCENARIOS);
+// Score only the scenarios the deck actually shows on stage, so the board matches the
+// beats (the harness still runs/tests the full set for coverage).
+const shownWins = [openWin, heroWin, byId("wokf")];
+const shownTraps = [heroTrap, ...remainingTraps, byId("sokf")];
+const wins = shownWins;
+const traps = shownTraps;
 const nWins = wins.length;
 const nTraps = traps.length;
 const kontourAnsweredWins = wins.filter((r) => r.kontour.outcome === "pass").length;
@@ -474,45 +488,43 @@ const shortHash = (h: string) => `${h.slice(0, 12)}…${h.slice(-8)}`;
   const value = k.outcome === "pass" ? k.value : 0;
   addStep("okf-win", "step-center", `
     <div class="okf-wrap">
-      <div class="kicker mint">Not just our data &middot; real Google source</div>
-      <h2 class="okf-h">&ldquo;You wrote the data.&rdquo; So here&rsquo;s <em>Google&rsquo;s.</em></h2>
-      <p class="okf-lead">This is a real <strong>Open Knowledge Format</strong> concept file &mdash;
-        Google Cloud&rsquo;s vendor-neutral spec &mdash; vendored <strong>byte-for-byte</strong> from
-        their public repo. Kontour grounds an answer against it, and adds the
-        <strong>content-hash + freshness</strong> OKF deliberately has no field for.</p>
+      <div class="kicker mint">Not just our data &middot; a real public source</div>
+      <h2 class="okf-h">&ldquo;You wrote the data.&rdquo; <em>Not this one.</em></h2>
+      <p class="okf-lead">This is a <strong>real, public data source</strong>, vendored
+        <strong>byte-for-byte</strong> so a skeptic can diff it themselves. Kontour grounds an answer
+        against it and stamps a <strong>content-hash + freshness</strong> you can recompute yourself.</p>
       <div class="okf-card">
         <div class="okf-q">${esc(okfWin.scenario.query)}</div>
         <div class="okf-answer">
           <div class="okf-amount">${value}</div>
           <div class="okf-amount-unit">schema fields</div>
-          <div class="okf-verified">&#10003; Grounded against the real OKF source</div>
+          <div class="okf-verified">&#10003; Grounded against the real public source</div>
         </div>
         <div class="okf-prov">
-          <div class="okf-prov-row"><span class="okf-prov-k">OKF resource &rarr; sourceLocator</span>
+          <div class="okf-prov-row"><span class="okf-prov-k">Source locator</span>
             <span class="okf-prov-v">${esc(okfMeta.resourceUri)}</span></div>
-          <div class="okf-prov-row"><span class="okf-prov-k">OKF timestamp &rarr; freshness anchor</span>
+          <div class="okf-prov-row"><span class="okf-prov-k">Source last-changed &rarr; freshness anchor</span>
             <span class="okf-prov-v">${esc(okfMeta.okfTimestamp)}</span></div>
-          <div class="okf-prov-row added"><span class="okf-prov-k">+ Hachure integrity-ref (sha256)</span>
+          <div class="okf-prov-row added"><span class="okf-prov-k">+ Kontour integrity-ref (sha256)</span>
             <span class="okf-prov-v mono">${esc(shortHash(okfMeta.integrityRef))}</span></div>
-          <div class="okf-prov-row src"><span class="okf-prov-k">Provenance &mdash; diff it yourself</span>
+          <div class="okf-prov-row src"><span class="okf-prov-k">Public source &mdash; diff it yourself</span>
             <span class="okf-prov-v small">github.com/GoogleCloudPlatform/knowledge-catalog @
               <code>${esc(okfMeta.repoCommitSha.slice(0, 10))}</code></span></div>
         </div>
         <div class="okf-panel">
-          <div class="panel-label">Real Surface trust panel &mdash; grounded at the OKF resource</div>
-          <surface-trust-panel id="panel-${okfWin.scenario.id}"></surface-trust-panel>
+          <div class="panel-label">Real Surface trust panel &mdash; grounded at the source</div>
+          <surface-trust-panel id="panel-${okfWin.scenario.id}" expanded></surface-trust-panel>
         </div>
       </div>
-      <p class="okf-foot">OKF tells the agent <em>what it knows</em>;
-        Hachure proves <strong>what the answer stood on</strong> &mdash; recomputable against Google&rsquo;s
-        own bytes by a skeptic who doesn&rsquo;t trust us.</p>
+      <p class="okf-foot">Recomputable against the real public source &mdash; a skeptic who doesn&rsquo;t
+        trust us can re-hash it themselves. Click <strong>Verify</strong> in the panel.</p>
     </div>`);
 }
 
 // (6b) OKF freshness trap — the gap OKF itself cannot cover
 addStep("okf-trap-reveal", "step-reveal", `
   <div class="reveal-head">
-    <div class="kicker cobalt">${okfTrap.scenario.id.toUpperCase()} &middot; ${esc(okfTrap.scenario.title)}</div>
+    <div class="kicker cobalt">Real source &middot; ${esc(okfTrap.scenario.title)}</div>
     <p class="reveal-query">${esc(okfTrap.scenario.query)}</p>
     <p class="reveal-truth"><strong>Truth:</strong> ${esc(okfTrap.scenario.correctAnswer)}</p>
   </div>
@@ -522,10 +534,10 @@ addStep("okf-trap-reveal", "step-reveal", `
     ${mcpLane(okfTrap)}
     ${kontourLane(okfTrap)}
   </div>
-  <p class="pair-bridge accent">OKF&rsquo;s only temporal field is <code>timestamp</code> &mdash; last
-    <em>changed</em>, not a content hash. When the source drifts past the grounding snapshot, an
-    OKF-trusting consumer can&rsquo;t notice and ships the stale fact. <strong>Hachure&rsquo;s
-    integrity-ref does notice &mdash; and refuses.</strong></p>`);
+  <p class="pair-bridge accent">A &ldquo;last-changed&rdquo; <code>timestamp</code> isn&rsquo;t a content
+    hash. When the source drifts past the grounding snapshot, a consumer trusting the timestamp
+    can&rsquo;t notice and ships the stale fact. <strong>Kontour&rsquo;s integrity-ref does notice
+    &mdash; and refuses.</strong></p>`);
 
 // Insight
 addStep("insight", "step-dark step-center", `
@@ -642,7 +654,7 @@ const html = `<!DOCTYPE html>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,ital,wght@9..144,0,400;9..144,0,500;9..144,0,600;9..144,0,700;9..144,1,500;9..144,1,600&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <script type="module" src="./surface-trust-panel.js"><\/script>
+  <script type="module">${panelInlineJs}<\/script>
   <style>
     :root {
       --paper: #f5f4ef;
