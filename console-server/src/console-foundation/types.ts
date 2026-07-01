@@ -402,6 +402,8 @@ export interface ConsoleHubServerOptions extends LocalConsoleHubOptions {
   hostedAuthTokens?: ConsoleHostedAuthToken[];
   hostedTenantIds?: string[];
   defaultTenantId?: string;
+  /** Dedicated session-cookie HMAC secret (#104); else env CONSOLE_SESSION_SECRET. */
+  sessionSecret?: string;
   telemetryStorageAdapter?: TelemetryStorageAdapterName;
   telemetryDatabaseUrl?: string;
   telemetrySqlClient?: ConsoleSqlClient;
