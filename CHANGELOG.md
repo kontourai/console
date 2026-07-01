@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.11.0](https://github.com/kontourai/console/compare/v1.10.0...v1.11.0) (2026-07-01)
+
+
+### Features
+
+* **console:** authenticated MCP server over telemetry/cost analytics (ADR 0003, Phase 3) ([#107](https://github.com/kontourai/console/issues/107)) ([fe8ae45](https://github.com/kontourai/console/commit/fe8ae45a9e7bf54b758420dcc65123e1491142f0))
+* **console:** dedicated session secret, decoupled from auth tokens (part of [#104](https://github.com/kontourai/console/issues/104)) ([#111](https://github.com/kontourai/console/issues/111)) ([1e14649](https://github.com/kontourai/console/commit/1e1464961dfaab76ed9d2a272b9dccb62594f6f5))
+* **console:** dynamically generated OpenAPI 3.1 spec served at /openapi.json ([#108](https://github.com/kontourai/console/issues/108)) ([763f1d8](https://github.com/kontourai/console/commit/763f1d83a74849d4e3912e58d5bbd135e0f637a8))
+* **console:** M2M tenant binding via ordered tenant-claim resolution (ADR 0003, Phase 2b) ([#102](https://github.com/kontourai/console/issues/102)) ([83b2b27](https://github.com/kontourai/console/commit/83b2b27be7ec4f39967474d2c16ae676b0355d60))
+* **console:** OAuth 2.1 / OIDC Resource-Server spike — vendor-neutral (ADR 0003, Phase 1) ([#96](https://github.com/kontourai/console/issues/96)) ([11258d7](https://github.com/kontourai/console/commit/11258d71e26c20f3a8ec4bfdb862909d93b5e706))
+* **console:** OIDC Authorization-Code + PKCE login + runbook (ADR 0003, Phase 2c) ([#103](https://github.com/kontourai/console/issues/103)) ([e3831e5](https://github.com/kontourai/console/commit/e3831e5ceb6a4135e33bbc8a43652f68fa40ca46))
+* **console:** OIDC id_token + nonce + at_hash validation at login (closes [#105](https://github.com/kontourai/console/issues/105)) ([#110](https://github.com/kontourai/console/issues/110)) ([d4b5b12](https://github.com/kontourai/console/commit/d4b5b12cf405ef926fb2b2a603db3d48b7b5c4db))
+* **console:** per-route OAuth scope authorization (ADR 0003, Phase 2a) ([#101](https://github.com/kontourai/console/issues/101)) ([0cb8525](https://github.com/kontourai/console/commit/0cb8525860f7cac6194df0d98468cc05c5c4790e))
+* **console:** persist hub connection + connection/auth regression coverage ([#91](https://github.com/kontourai/console/issues/91)) ([a93a841](https://github.com/kontourai/console/commit/a93a841aa728e7a748f52ef6990fa03f9253663f))
+* **dev:** turnkey local full-stack with Postgres + mock OIDC (verified) ([#114](https://github.com/kontourai/console/issues/114)) ([09b5d73](https://github.com/kontourai/console/commit/09b5d73f008623951e39bae43b779e86d1598262))
+* **telemetry:** cost-by-dimension breakdowns (project / agent / runtime) ([#89](https://github.com/kontourai/console/issues/89)) ([0d5bf43](https://github.com/kontourai/console/commit/0d5bf43c016ca389240ea4c98ac4d87c7c03d5ae))
+
+
+### Bug Fixes
+
+* **console:** incremental operating-state projection for the hosted hub (ops[#34](https://github.com/kontourai/console/issues/34)) ([#97](https://github.com/kontourai/console/issues/97)) ([80dd28f](https://github.com/kontourai/console/commit/80dd28f75b1aa0ff664c637d813627ae7cf98faa))
+* **console:** validate id_token at_hash only when present (OIDC Core code-flow) ([#113](https://github.com/kontourai/console/issues/113)) ([e4a0084](https://github.com/kontourai/console/commit/e4a0084dd3dd36a8bd88b86f6a48dcd03d19daf3))
+
 ## [1.10.0](https://github.com/kontourai/console/compare/v1.9.0...v1.10.0) (2026-06-28)
 
 
