@@ -59,6 +59,11 @@
   "publishConfig": {
     "access": "public"
   },
+  "dependencies": {
+    "@kontourai/console-core": "^0.1.0",
+    "@kontourai/console-telemetry": "^0.1.0",
+    "jose": "^6.2.3"
+  },
   "devDependencies": {
     "@kontourai/surface": "^1.0.1",
     "@kontourai/survey": "file:../survey",
