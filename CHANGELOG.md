@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.11.1](https://github.com/kontourai/console/compare/v1.11.0...v1.11.1) (2026-07-03)
+
+
+### Bug Fixes
+
+* **console:** declare runtime deps so console-inspect (and all bins) resolve cold ([#120](https://github.com/kontourai/console/issues/120)) ([ef9a474](https://github.com/kontourai/console/commit/ef9a47428400cb889d6dc2a6e98584574f4827ed))
+* **console:** declare runtime deps so console-inspect resolves cold ([#120](https://github.com/kontourai/console/issues/120)) ([1879f7c](https://github.com/kontourai/console/commit/1879f7cf2b230bb5f6f257d4426089bb60589d81))
+
 ## [1.11.0](https://github.com/kontourai/console/compare/v1.10.0...v1.11.0) (2026-07-01)
 
 
