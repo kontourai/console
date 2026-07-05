@@ -68,7 +68,8 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
     "type": "string",
     "enum": [
       "event",
-      "projection"
+      "projection",
+      "economics"
     ]
   },
   "TelemetryAnalyticsSummary": {

@@ -1,10 +1,11 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { DEFAULT_HUB_URL, IS_SAME_ORIGIN, getTelemetry, getSession, getFlowRunProjection, postSessionLogout } from "./hubClient";
+import { DEFAULT_HUB_URL, IS_SAME_ORIGIN, getTelemetry, getEconomics, getEconomicsValue, getSession, getFlowRunProjection, postSessionLogout } from "./hubClient";
 import { useHubConnection } from "./hooks/useHubConnection";
 import { useTheme } from "./hooks/useTheme";
-import type { ConsoleTelemetryResponse, TelemetryQueryInput } from "./serverApiTypes";
+import type { ConsoleEconomicsRollup, ConsoleTelemetryResponse, ConsoleValueComparison, TelemetryQueryInput } from "./serverApiTypes";
 import { ConnectionBar } from "./sections/ConnectionBar";
+import { EconomicsSection } from "./sections/EconomicsSection";
 import { EnvironmentSection } from "./sections/EnvironmentSection";
 import { StageBand } from "./sections/StageBand";
 import { TelemetrySection } from "./sections/TelemetrySection";
@@ -12,7 +13,7 @@ import { TimelineSection } from "./sections/TimelineSection";
 import { DEFAULT_TELEMETRY_QUERY, parseTelemetryRoute, serializeTelemetryRoute, withDrilldownFilter, type TelemetryRouteState } from "./utils/telemetryQuery";
 import { WorkGrid } from "./sections/WorkGrid";
 
-type AppView = "operate" | "telemetry" | "environment";
+type AppView = "operate" | "telemetry" | "economics" | "environment";
 
 const CONNECTION_STORAGE_KEY = "kontour.console.connection.v1";
 
@@ -61,6 +62,9 @@ export default function App() {
   const [telemetryQuery, setTelemetryQuery] = useState<TelemetryQueryInput>(() => viewFromPath(window.location.pathname) === "telemetry" ? initialRoute.query : DEFAULT_TELEMETRY_QUERY);
   const [telemetry, setTelemetry] = useState<ConsoleTelemetryResponse | null>(null);
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
+  const [economics, setEconomics] = useState<ConsoleEconomicsRollup | null>(null);
+  const [economicsValue, setEconomicsValue] = useState<ConsoleValueComparison | null>(null);
+  const [economicsError, setEconomicsError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const { theme, toggleTheme } = useTheme();
 
@@ -126,6 +130,37 @@ export default function App() {
     };
   }, [hubUrl, authToken, tenantId, cookieAuth, telemetryQuery, lastAccepted?.delivery?.recordId, lastTelemetryUpdated?.telemetry?.generatedAt]);
 
+  // Economics read-models are polled only while the Economics view is open (the
+  // rollups are cheap to rebuild server-side, but there's no reason to poll them
+  // from other views). A new accepted record also refreshes them.
+  useEffect(() => {
+    if (view !== "economics") return;
+    let cancelled = false;
+
+    async function refreshEconomics() {
+      try {
+        const [rollup, value] = await Promise.all([
+          getEconomics(hubUrl, auth),
+          getEconomicsValue(hubUrl, auth)
+        ]);
+        if (cancelled) return;
+        setEconomics(rollup);
+        setEconomicsValue(value);
+        setEconomicsError(null);
+      } catch (refreshError) {
+        if (cancelled) return;
+        setEconomicsError(refreshError instanceof Error ? refreshError.message : "Economics unavailable");
+      }
+    }
+
+    refreshEconomics();
+    const intervalId = window.setInterval(refreshEconomics, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [view, hubUrl, authToken, tenantId, cookieAuth, lastAccepted?.delivery?.recordId]);
+
   function submitHubUrl(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextHubUrl = draftHubUrl.trim() || DEFAULT_HUB_URL;
@@ -150,9 +185,11 @@ export default function App() {
     setView(nextView);
     const nextPath = nextView === "telemetry"
       ? serializeTelemetryRoute(telemetryQuery, telemetryRoute.drilldown)
-      : nextView === "environment"
-        ? "/environment"
-        : "/";
+      : nextView === "economics"
+        ? "/economics"
+        : nextView === "environment"
+          ? "/environment"
+          : "/";
     if (`${window.location.pathname}${window.location.search}` !== nextPath) {
       window.history.pushState(null, "", nextPath);
     }
@@ -199,6 +236,7 @@ export default function App() {
       <nav className="view-tabs" aria-label="Console views">
         <button type="button" className={view === "operate" ? "active" : ""} onClick={() => selectView("operate")}>Operate</button>
         <button type="button" className={view === "telemetry" ? "active" : ""} onClick={() => selectView("telemetry")}>Telemetry</button>
+        <button type="button" className={view === "economics" ? "active" : ""} onClick={() => selectView("economics")}>Economics</button>
         <button type="button" className={view === "environment" ? "active" : ""} onClick={() => selectView("environment")}>Environment</button>
       </nav>
       {view === "operate" ? (
@@ -224,6 +262,14 @@ export default function App() {
           liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
           lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
         />
+      ) : view === "economics" ? (
+        <EconomicsSection
+          rollup={economics}
+          value={economicsValue}
+          error={economicsError}
+          liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
+          lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
+        />
       ) : (
         <EnvironmentSection
           state={state}
@@ -238,6 +284,7 @@ export default function App() {
 
 function viewFromPath(pathname: string): AppView {
   if (pathname === "/telemetry" || pathname.startsWith("/telemetry/")) return "telemetry";
+  if (pathname === "/economics" || pathname.startsWith("/economics/")) return "economics";
   if (pathname === "/environment") return "environment";
   return "operate";
 }
