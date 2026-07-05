@@ -51,6 +51,47 @@ test("valid economics record POSTed to /records is queryable via GET /api/econom
   }
 });
 
+test("#415 delegations route: a record with delegations is queryable via GET /api/economics/delegations (proxy cost + honest coverage)", async () => {
+  const app = createConsoleHubServer({ rootDir: tempRoot(), port: 0 });
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    // The base fixture carries cost.by_model for claude-opus-4-8 (0.305). Attach a
+    // delegations block + signals (additionalProperties pass through ingest).
+    const withDelegations = {
+      ...VALID,
+      run_id: "kontourai-flow-agents-415-run-01",
+      signals: { runtime: "claude-code", per_delegation_tokens: false, per_delegation_outcome: "partial" },
+      delegations: [
+        { agent_id: "w1", role: "delegate-design", resolved_model: "claude-opus-4-8@anthropic", outcome: "accepted" },
+        { agent_id: "w2", role: "delegate-design", resolved_model: "claude-opus-4-8@anthropic", outcome: "rework" },
+        { agent_id: "w3", role: "delegate-impl", resolved_model: "claude-opus-4-8@anthropic", outcome: "unavailable" }
+      ]
+    };
+    const accept = await requestJson("POST", `${base}/records`, withDelegations);
+    assert.equal(accept.statusCode, 202);
+
+    const del = await requestJson("GET", `${base}/api/economics/delegations`);
+    assert.equal(del.statusCode, 200);
+    assert.equal(del.body.runCount, 1);
+    // coverage: 2 measurable (accepted+rework), 1 unavailable — never folded together.
+    assert.deepEqual(del.body.coverage, { measurable: 2, unavailable: 1 });
+    // signals surfaced for the honesty labels.
+    assert.equal(del.body.signals.perDelegationTokens, false);
+    assert.equal(del.body.signals.perDelegationOutcome, "partial");
+    const design = del.body.perRoleModel.find((g: any) => g.role === "delegate-design");
+    assert.equal(design.model, "claude-opus-4-8"); // bare
+    assert.equal(design.acceptanceRate, 0.5);      // 1 accepted / (1 accepted + 1 rework)
+    assert.equal(design.costUsd, 0.305);           // PROXY from cost.by_model
+    assert.equal(design.costGranularity, "model-proxy");
+    const impl = del.body.perRoleModel.find((g: any) => g.role === "delegate-impl");
+    assert.equal(impl.acceptanceRate, null);        // only an unavailable → null, NOT 0
+    assert.equal(impl.unavailableCount, 1);
+  } finally {
+    await close(app);
+  }
+});
+
 test("R7 Goodhart invariant: a cost-only record (no defects) is rejected 400 INVALID_RECORD with a diagnostic", async () => {
   const app = createConsoleHubServer({ rootDir: tempRoot(), port: 0 });
   await listen(app);

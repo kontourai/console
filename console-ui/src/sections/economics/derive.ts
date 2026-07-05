@@ -12,6 +12,8 @@
 import type {
   ConsoleEconomicsTaskDayRollup,
   ConsoleEconomicsRollup,
+  ConsoleEconomicsDelegationRollup,
+  ConsoleEconomicsRoleModelRollup,
   ConsoleValueCell,
   ConsoleValueComparison
 } from "../../serverApiTypes";
@@ -95,4 +97,72 @@ export function hasHeadline(comparison: ConsoleValueComparison | null): boolean 
  */
 export function hasTaggedRuns(comparison: ConsoleValueComparison | null): boolean {
   return Boolean(comparison && (comparison.taggedRunCount > 0 || comparison.cells.length > 0));
+}
+
+// ── Delegation efficiency derivations (flow-agents #415) ───────────────────────
+// HONESTY: these NEVER recompute acceptance or cost — they format server numbers
+// and gate the rendering on `signals`. costUsd is a MODEL-GRANULARITY PROXY;
+// `unavailable` is already excluded from acceptanceRate by the projection.
+
+/** True when the projection has recorded no delegation runs yet (empty state). */
+export function isEmptyDelegations(rollup: ConsoleEconomicsDelegationRollup | null): boolean {
+  return !rollup || rollup.runCount === 0 || rollup.perRoleModel.length === 0;
+}
+
+/**
+ * True when this harness cannot measure delegation outcomes at all — the panel
+ * must say "outcome not measurable on this harness" instead of a misleading 0%
+ * acceptance (honesty rule 3). `none`/`n/a` mean no measurable outcomes exist.
+ */
+export function outcomeNotMeasurable(rollup: ConsoleEconomicsDelegationRollup | null): boolean {
+  if (!rollup) return false;
+  const sig = rollup.signals.perDelegationOutcome;
+  return (sig === "none" || sig === "n/a") && rollup.coverage.measurable === 0;
+}
+
+/**
+ * True when per-delegation token isolation is unavailable (false on every runtime
+ * today) — the cost column carries the "model-granularity (proxy)" label.
+ */
+export function costIsProxy(rollup: ConsoleEconomicsDelegationRollup | null): boolean {
+  return !rollup || rollup.signals.perDelegationTokens !== true;
+}
+
+/** Fraction of all delegations that had a measurable (non-`unavailable`) outcome;
+ *  null when there are no delegations at all (never a fake 0). */
+export function outcomeCoverageRate(rollup: ConsoleEconomicsDelegationRollup | null): number | null {
+  if (!rollup) return null;
+  const { measurable, unavailable } = rollup.coverage;
+  const total = measurable + unavailable;
+  return total === 0 ? null : measurable / total;
+}
+
+/** (role, model) rollups sorted by role then model — the delegation table order. */
+export function roleModelRows(rollup: ConsoleEconomicsDelegationRollup | null): ConsoleEconomicsRoleModelRollup[] {
+  if (!rollup) return [];
+  return rollup.perRoleModel.slice().sort((a, b) =>
+    a.role === b.role ? a.model.localeCompare(b.model) : a.role.localeCompare(b.role));
+}
+
+/** Bare model names shared by more than one (role, model) group — the cost proxy's
+ *  inherent imprecision (a model's cost is attributed whole to each sharing group). */
+export function sharedModels(rollup: ConsoleEconomicsDelegationRollup | null): string[] {
+  if (!rollup) return [];
+  const rolesByModel = new Map<string, Set<string>>();
+  for (const row of rollup.perRoleModel) {
+    if (!rolesByModel.has(row.model)) rolesByModel.set(row.model, new Set());
+    rolesByModel.get(row.model)!.add(row.role);
+  }
+  return [...rolesByModel.entries()].filter(([, roles]) => roles.size > 1).map(([model]) => model).sort();
+}
+
+/** A compact "3 accepted · 1 rework · 2 unavailable" summary of one group's outcomes. */
+export function outcomeSummary(row: ConsoleEconomicsRoleModelRollup): string {
+  const parts: string[] = [];
+  if (row.acceptedCount) parts.push(`${row.acceptedCount} accepted`);
+  if (row.reworkCount) parts.push(`${row.reworkCount} rework`);
+  if (row.divergedCount) parts.push(`${row.divergedCount} diverged`);
+  if (row.failedCount) parts.push(`${row.failedCount} failed`);
+  if (row.unavailableCount) parts.push(`${row.unavailableCount} unavailable`);
+  return parts.length ? parts.join(" · ") : "no outcomes";
 }

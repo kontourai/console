@@ -2686,6 +2686,23 @@ flow-run-panel {
   font-style: italic;
 }
 
+/* Delegation efficiency (flow-agents #415): the cost column is a MODEL-GRANULARITY
+   PROXY — tag it inline so it never reads as exact per-delegation spend. */
+.economics-proxy-tag {
+  margin-left: 4px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.6;
+}
+
+.economics-delegation .economics-usage-breakdown h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .economics-chart {
   display: block;
   max-width: 100%;

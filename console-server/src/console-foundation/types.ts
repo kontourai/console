@@ -252,6 +252,41 @@ export interface EconomicsDefects {
   verification_verdict: EconomicsVerificationVerdict;
 }
 
+/** A delegation outcome (flow-agents #415). `unavailable` = NOT measurable — it is
+ *  never folded into any accepted/failed bucket (honesty rule 2). */
+export type EconomicsDelegationOutcome = "accepted" | "rework" | "diverged" | "failed" | "unavailable";
+
+/** One delegated sub-agent entry on a run (flow-agents #415, part 4). Passed through
+ *  ingestion untouched via additionalProperties; typed here so the projection can read it. */
+export interface EconomicsDelegation {
+  agent_id?: string;
+  /** The routing role, e.g. `delegate-design`. The (role, model) grouping dimension. */
+  role?: string;
+  /** Resolved model WITH an `@provider` suffix (e.g. `claude-opus-4-8@anthropic`);
+   *  the projection strips the suffix to join against `cost.by_model[].model` (bare). */
+  resolved_model?: string;
+  summary?: string;
+  /** Present only when this delegation was escalated from another role. */
+  escalated_from?: string;
+  /** >1 means the orchestrator re-prompted this delegate. */
+  dispatch_count?: number;
+  outcome?: EconomicsDelegationOutcome;
+}
+
+/** Full outcome coverage on this harness; `partial` = some delegations carry outcomes. */
+export type EconomicsPerDelegationOutcome = "full" | "partial" | "none" | "n/a";
+
+/** Harness-capability declaration (flow-agents #415). The panel is gated on these:
+ *  `per_delegation_tokens` is false on every runtime today → per-delegation cost is a
+ *  MODEL-GRANULARITY PROXY, never real per-sub-agent spend (honesty rule 1 + 3). */
+export interface EconomicsSignals {
+  runtime?: string;
+  /** False on every runtime today → per-delegation cost is UNAVAILABLE (proxy only). */
+  per_delegation_tokens?: boolean;
+  /** How much outcome is measurable on this harness. */
+  per_delegation_outcome?: EconomicsPerDelegationOutcome;
+}
+
 export interface ConsoleEconomicsRecord extends ConsoleRecordBase {
   schema: "kontour.console.economics";
   version: "0.1";
@@ -278,6 +313,11 @@ export interface ConsoleEconomicsRecord extends ConsoleRecordBase {
   kit_condition?: EconomicsKitCondition;
   /** The INDEPENDENT oracle's verdict — never re-derived from kit gates (call 4). */
   acceptance_label?: EconomicsAcceptanceLabel;
+  // ── #415 delegation efficiency (OPTIONAL; passed through ingest untouched) ──
+  /** One entry per delegated sub-agent; `[]` when none. */
+  delegations?: EconomicsDelegation[];
+  /** Harness-capability declaration gating the delegation panel's honesty labels. */
+  signals?: EconomicsSignals;
 }
 
 /** Cost + paired-defect trend for one task_slug over one day (R5: never cost-only). */
@@ -354,6 +394,64 @@ export interface ValueComparison {
     /** largeBare$/acceptable ÷ smallPlusKit$/acceptable (>1 ⇒ small+kit is cheaper). */
     ratio: number | null;
   };
+}
+
+// ── Delegation efficiency read-model (flow-agents #415, part 4) ────────────────
+//    HONESTY: cost here is a MODEL-GRANULARITY PROXY joined from `cost.by_model`,
+//    never real per-sub-agent spend (no runtime isolates per-delegation tokens).
+//    `unavailable` outcomes are excluded from acceptanceRate — never a success/fail.
+
+/** How the (role, model) cost was derived. Always `model-proxy` today — there is no
+ *  per-delegation token isolation, so cost is attributed at model granularity. */
+export type EconomicsDelegationCostGranularity = "model-proxy";
+
+/** One `(role, model)` rollup of delegation outcomes + proxy cost. */
+export interface EconomicsRoleModelRollup {
+  role: string;
+  /** Bare model name (the `@provider` suffix is stripped to join `cost.by_model`). */
+  model: string;
+  /** Count of delegation entries in this (role, model) group. */
+  delegations: number;
+  reworkCount: number;
+  divergedCount: number;
+  failedCount: number;
+  acceptedCount: number;
+  /** NOT a success or failure — excluded from the acceptanceRate denominator. */
+  unavailableCount: number;
+  /** accepted / (accepted+rework+diverged+failed); `null` when that denominator is 0. */
+  acceptanceRate: number | null;
+  /** PROXY cost: the model's `estimated_cost_usd` from `cost.by_model` summed over the
+   *  runs in this group; `null` when the model isn't present in `by_model`. */
+  costUsd: number | null;
+  /** Always `model-proxy` — never real per-delegation spend. */
+  costGranularity: EconomicsDelegationCostGranularity;
+}
+
+/** Outcome coverage across ALL delegations: how many were measurable vs `unavailable`. */
+export interface EconomicsDelegationCoverage {
+  measurable: number;
+  unavailable: number;
+}
+
+/** Signals aggregated (worst-case) across the tenant's records. */
+export interface EconomicsDelegationSignals {
+  /** False on every runtime today → the cost column is a proxy, not exact spend. */
+  perDelegationTokens: boolean;
+  /** Worst/aggregated coverage; `mixed` when records disagree. */
+  perDelegationOutcome: "full" | "partial" | "none" | "n/a" | "mixed";
+}
+
+export interface EconomicsDelegationRollup {
+  generatedAt: string;
+  tenantId: string;
+  /** Runs that carried any delegations. */
+  runCount: number;
+  /** Per-(role, model) rollups; model is the bare name. */
+  perRoleModel: EconomicsRoleModelRollup[];
+  /** Outcome coverage across all delegations. */
+  coverage: EconomicsDelegationCoverage;
+  /** Harness-capability signals gating the panel's honesty rendering. */
+  signals: EconomicsDelegationSignals;
 }
 
 export interface ConsoleObjectRecord extends JsonObject {

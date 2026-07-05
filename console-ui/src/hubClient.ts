@@ -11,6 +11,7 @@ import type {
   ConsoleTelemetryResponse,
   ConsoleEconomicsRollup,
   ConsoleValueComparison,
+  ConsoleEconomicsDelegationRollup,
   TelemetryQueryInput
 } from "./serverApiTypes";
 import { normalizeTelemetryQuery } from "./utils/telemetryQuery";
@@ -74,6 +75,12 @@ export async function getEconomics(hubUrl: string, auth: HubAuthOptions = {}): P
 
 export async function getEconomicsValue(hubUrl: string, auth: HubAuthOptions = {}): Promise<ConsoleValueComparison> {
   return getJson<ConsoleValueComparison>(hubUrl, "/api/economics/value", auth);
+}
+
+// Delegation efficiency read-model (flow-agents #415). Per-(role, model) rollups
+// with proxy cost + honest outcome coverage; tenant-scoped server-side.
+export async function getEconomicsDelegations(hubUrl: string, auth: HubAuthOptions = {}): Promise<ConsoleEconomicsDelegationRollup> {
+  return getJson<ConsoleEconomicsDelegationRollup>(hubUrl, "/api/economics/delegations", auth);
 }
 
 /**

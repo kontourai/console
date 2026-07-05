@@ -1,9 +1,9 @@
 import type { FormEvent } from "react";
 import { useEffect, useState } from "react";
-import { DEFAULT_HUB_URL, IS_SAME_ORIGIN, getTelemetry, getEconomics, getEconomicsValue, getSession, getFlowRunProjection, postSessionLogout } from "./hubClient";
+import { DEFAULT_HUB_URL, IS_SAME_ORIGIN, getTelemetry, getEconomics, getEconomicsValue, getEconomicsDelegations, getSession, getFlowRunProjection, postSessionLogout } from "./hubClient";
 import { useHubConnection } from "./hooks/useHubConnection";
 import { useTheme } from "./hooks/useTheme";
-import type { ConsoleEconomicsRollup, ConsoleTelemetryResponse, ConsoleValueComparison, TelemetryQueryInput } from "./serverApiTypes";
+import type { ConsoleEconomicsRollup, ConsoleEconomicsDelegationRollup, ConsoleTelemetryResponse, ConsoleValueComparison, TelemetryQueryInput } from "./serverApiTypes";
 import { ConnectionBar } from "./sections/ConnectionBar";
 import { EconomicsSection } from "./sections/EconomicsSection";
 import { EnvironmentSection } from "./sections/EnvironmentSection";
@@ -64,6 +64,7 @@ export default function App() {
   const [telemetryError, setTelemetryError] = useState<string | null>(null);
   const [economics, setEconomics] = useState<ConsoleEconomicsRollup | null>(null);
   const [economicsValue, setEconomicsValue] = useState<ConsoleValueComparison | null>(null);
+  const [economicsDelegations, setEconomicsDelegations] = useState<ConsoleEconomicsDelegationRollup | null>(null);
   const [economicsError, setEconomicsError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const { theme, toggleTheme } = useTheme();
@@ -139,13 +140,15 @@ export default function App() {
 
     async function refreshEconomics() {
       try {
-        const [rollup, value] = await Promise.all([
+        const [rollup, value, delegationsRollup] = await Promise.all([
           getEconomics(hubUrl, auth),
-          getEconomicsValue(hubUrl, auth)
+          getEconomicsValue(hubUrl, auth),
+          getEconomicsDelegations(hubUrl, auth)
         ]);
         if (cancelled) return;
         setEconomics(rollup);
         setEconomicsValue(value);
+        setEconomicsDelegations(delegationsRollup);
         setEconomicsError(null);
       } catch (refreshError) {
         if (cancelled) return;
@@ -266,6 +269,7 @@ export default function App() {
         <EconomicsSection
           rollup={economics}
           value={economicsValue}
+          delegations={economicsDelegations}
           error={economicsError}
           liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
           lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
