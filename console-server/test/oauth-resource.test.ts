@@ -93,6 +93,26 @@ test("verifyAccessToken accepts a valid token and resolves tenant + scopes", asy
   assert.deepEqual(result.scopes, ["telemetry:write", "records:read"]);
 });
 
+test("verifyAccessToken: a user token (sub, no client_id) is not a machine", async () => {
+  const result = await verifyAccessToken(await mint({ sub: "user-42" }), CONFIG);
+  assert.equal(result.isMachine, false);
+  assert.equal(result.subject, "user-42");
+  assert.equal(result.clientId, undefined);
+  assert.equal(result.issuer, ISSUER);
+});
+
+test("verifyAccessToken: a client_id claim marks a machine (M2M) principal", async () => {
+  const result = await verifyAccessToken(await mint({ client_id: "svc-eval-harness" }), CONFIG);
+  assert.equal(result.isMachine, true);
+  assert.equal(result.clientId, "svc-eval-harness");
+});
+
+test("verifyAccessToken: a `cid` claim is accepted as the client id (provider variant)", async () => {
+  const result = await verifyAccessToken(await mint({ cid: "svc-ci" }), CONFIG);
+  assert.equal(result.isMachine, true);
+  assert.equal(result.clientId, "svc-ci");
+});
+
 test("verifyAccessToken rejects wrong audience (RFC 8707 binding)", async () => {
   const token = await mint({}, { aud: "https://someone-else.test" });
   await assert.rejects(() => verifyAccessToken(token, CONFIG));
