@@ -5,7 +5,6 @@ import { useHubConnection } from "./hooks/useHubConnection";
 import { useTheme } from "./hooks/useTheme";
 import type { ConsoleTelemetryResponse, TelemetryQueryInput } from "./serverApiTypes";
 import { ConnectionBar } from "./sections/ConnectionBar";
-import { EnvironmentSection } from "./sections/EnvironmentSection";
 import { StageBand } from "./sections/StageBand";
 import { TelemetrySection } from "./sections/TelemetrySection";
 import { TimelineSection } from "./sections/TimelineSection";
@@ -13,7 +12,7 @@ import { DEFAULT_TELEMETRY_QUERY, parseTelemetryRoute, serializeTelemetryRoute, 
 import { WorkGrid } from "./sections/WorkGrid";
 import { OverviewSection, type OverviewTarget } from "./sections/OverviewSection";
 
-type AppView = "overview" | "operate" | "telemetry" | "environment";
+type AppView = "overview" | "operate" | "telemetry";
 
 const CONNECTION_STORAGE_KEY = "kontour.console.connection.v1";
 
@@ -151,11 +150,9 @@ export default function App() {
     setView(nextView);
     const nextPath = nextView === "telemetry"
       ? serializeTelemetryRoute(telemetryQuery, telemetryRoute.drilldown)
-      : nextView === "environment"
-        ? "/environment"
-        : nextView === "operate"
-          ? "/operate"
-          : "/";
+      : nextView === "operate"
+        ? "/operate"
+        : "/";
     if (`${window.location.pathname}${window.location.search}` !== nextPath) {
       window.history.pushState(null, "", nextPath);
     }
@@ -203,7 +200,6 @@ export default function App() {
         <button type="button" className={view === "overview" ? "active" : ""} onClick={() => selectView("overview")}>Overview</button>
         <button type="button" className={view === "operate" ? "active" : ""} onClick={() => selectView("operate")}>Operate</button>
         <button type="button" className={view === "telemetry" ? "active" : ""} onClick={() => selectView("telemetry")}>Telemetry</button>
-        <button type="button" className={view === "environment" ? "active" : ""} onClick={() => selectView("environment")}>Environment</button>
       </nav>
       {view === "overview" ? (
         <OverviewSection
@@ -224,7 +220,7 @@ export default function App() {
           />
           <TimelineSection state={state} lastAccepted={lastAccepted} />
         </>
-      ) : view === "telemetry" ? (
+      ) : (
         <TelemetrySection
           telemetry={telemetry}
           error={telemetryError}
@@ -235,13 +231,6 @@ export default function App() {
           liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
           lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
         />
-      ) : (
-        <EnvironmentSection
-          state={state}
-          telemetry={telemetry}
-          liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
-          lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
-        />
       )}
     </main>
   );
@@ -249,7 +238,6 @@ export default function App() {
 
 function viewFromPath(pathname: string): AppView {
   if (pathname === "/telemetry" || pathname.startsWith("/telemetry/")) return "telemetry";
-  if (pathname === "/environment") return "environment";
   if (pathname === "/operate") return "operate";
   return "overview";
 }

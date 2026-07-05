@@ -7,6 +7,9 @@ import {
   type AttentionItem,
   type AttentionKind,
 } from "./environment/derive";
+import { HappeningNowSection } from "./HappeningNowSection";
+import { FleetSection } from "./FleetSection";
+import { CostSection } from "./CostSection";
 
 // The unified operator home ("Overview"). This is the front door of the redesign: it answers
 // "what needs me right now?" FIRST (triage), backed by an at-a-glance health strip, and links out
@@ -16,7 +19,7 @@ import {
 // Slice 1 scope (this file): the "Needs you" triage + the at-a-glance strip. Subsequent slices fold
 // "Happening now", "The fleet", and "What it's costing" into this same surface and retire the tabs.
 
-export type OverviewTarget = "operate" | "telemetry" | "environment";
+export type OverviewTarget = "operate" | "telemetry";
 
 interface OverviewSectionProps {
   state: OperatingState;
@@ -88,33 +91,18 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen }: Overvi
           <GlanceStat label="Gates blocked" value={health.gatesBlocked} tone={health.gatesBlocked > 0 ? "negative" : undefined} onClick={() => onOpen("operate")} />
           <GlanceStat label="Claims verified" value={health.claimsOk} tone="positive" />
           <GlanceStat label="Claims at risk" value={health.claimsAtRisk + health.claimsStale} tone={health.claimsAtRisk + health.claimsStale > 0 ? "caution" : undefined} />
-          <GlanceStat label="Open inquiries" value={health.openInquiries} onClick={() => onOpen("environment")} />
+          <GlanceStat label="Open inquiries" value={health.openInquiries} onClick={() => onOpen("operate")} />
         </div>
       </section>
 
-      {/* ── Where the rest is going (migration signposts, retired as slices land) ─── */}
-      <section className="ov-section">
-        <div className="ov-signposts">
-          <SignpostCard
-            title="Happening now"
-            body="The live flow, current stage, and activity stream."
-            cta="Open Operate"
-            onClick={() => onOpen("operate")}
-          />
-          <SignpostCard
-            title="The fleet"
-            body="Who's working what — sessions, claims, and coordination state."
-            cta="Coming next"
-            disabled
-          />
-          <SignpostCard
-            title="What it's costing"
-            body="Spend, tokens, and usage by model, project, and agent."
-            cta="Open usage"
-            onClick={() => onOpen("telemetry")}
-          />
-        </div>
-      </section>
+      {/* ── ② Happening now — the live flow + activity ───────────────────────────── */}
+      <HappeningNowSection state={state} onOpen={() => onOpen("operate")} />
+
+      {/* ── ③ The fleet — who's active (coordination state arrives with #295) ─────── */}
+      <FleetSection telemetry={telemetry} onOpen={() => onOpen("telemetry")} />
+
+      {/* ── ④ What it's costing — usage & economics ──────────────────────────────── */}
+      <CostSection telemetry={telemetry} onOpen={() => onOpen("telemetry")} />
     </div>
   );
 }
@@ -158,24 +146,3 @@ function GlanceStat({
   );
 }
 
-function SignpostCard({
-  title,
-  body,
-  cta,
-  onClick,
-  disabled,
-}: {
-  title: string;
-  body: string;
-  cta: string;
-  onClick?: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <div className={`signpost${disabled ? " is-disabled" : ""}`}>
-      <h3 className="signpost-title">{title}</h3>
-      <p className="signpost-body">{body}</p>
-      <button type="button" className="signpost-cta" onClick={onClick} disabled={disabled}>{cta}</button>
-    </div>
-  );
-}
