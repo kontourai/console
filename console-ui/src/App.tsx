@@ -11,8 +11,9 @@ import { TelemetrySection } from "./sections/TelemetrySection";
 import { TimelineSection } from "./sections/TimelineSection";
 import { DEFAULT_TELEMETRY_QUERY, parseTelemetryRoute, serializeTelemetryRoute, withDrilldownFilter, type TelemetryRouteState } from "./utils/telemetryQuery";
 import { WorkGrid } from "./sections/WorkGrid";
+import { OverviewSection, type OverviewTarget } from "./sections/OverviewSection";
 
-type AppView = "operate" | "telemetry" | "environment";
+type AppView = "overview" | "operate" | "telemetry" | "environment";
 
 const CONNECTION_STORAGE_KEY = "kontour.console.connection.v1";
 
@@ -152,7 +153,9 @@ export default function App() {
       ? serializeTelemetryRoute(telemetryQuery, telemetryRoute.drilldown)
       : nextView === "environment"
         ? "/environment"
-        : "/";
+        : nextView === "operate"
+          ? "/operate"
+          : "/";
     if (`${window.location.pathname}${window.location.search}` !== nextPath) {
       window.history.pushState(null, "", nextPath);
     }
@@ -197,11 +200,19 @@ export default function App() {
         onSignOut={handleSignOut}
       />
       <nav className="view-tabs" aria-label="Console views">
+        <button type="button" className={view === "overview" ? "active" : ""} onClick={() => selectView("overview")}>Overview</button>
         <button type="button" className={view === "operate" ? "active" : ""} onClick={() => selectView("operate")}>Operate</button>
         <button type="button" className={view === "telemetry" ? "active" : ""} onClick={() => selectView("telemetry")}>Telemetry</button>
         <button type="button" className={view === "environment" ? "active" : ""} onClick={() => selectView("environment")}>Environment</button>
       </nav>
-      {view === "operate" ? (
+      {view === "overview" ? (
+        <OverviewSection
+          state={state}
+          telemetry={telemetry}
+          liveStatus={status === "connected" ? "live" : `stream ${status}`}
+          onOpen={(target: OverviewTarget) => selectView(target)}
+        />
+      ) : view === "operate" ? (
         <>
           <StageBand state={state} />
           {error ? <div className="notice">{error}</div> : null}
@@ -239,5 +250,6 @@ export default function App() {
 function viewFromPath(pathname: string): AppView {
   if (pathname === "/telemetry" || pathname.startsWith("/telemetry/")) return "telemetry";
   if (pathname === "/environment") return "environment";
-  return "operate";
+  if (pathname === "/operate") return "operate";
+  return "overview";
 }

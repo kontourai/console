@@ -2531,3 +2531,66 @@ flow-run-panel {
   font-size: 0.85rem;
   color: var(--muted);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Overview — the unified triage-first operator home (redesign slice 1, #295 IA).
+   Reading order: Needs you → At a glance → signposts to Now / Fleet / Cost.
+   All values are @kontourai/ui --k-* tokens; no ad-hoc colors/spacing.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.overview { display: flex; flex-direction: column; gap: var(--k-space-6); padding-top: var(--k-space-5); }
+.ov-section { display: flex; flex-direction: column; gap: var(--k-space-4); }
+.ov-head { display: flex; align-items: baseline; gap: var(--k-space-3); }
+.ov-title { font-family: var(--k-font-display); font-size: var(--k-text-xl); font-weight: 600; letter-spacing: -0.01em; color: var(--k-text); }
+.ov-sub { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); letter-spacing: 0.04em; }
+.ov-grow { flex: 1; }
+.ov-live { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-muted); }
+.ov-link { background: none; border: none; cursor: pointer; font-family: var(--k-font-mono); font-size: var(--k-text-sm); color: var(--k-brand); padding: 0; }
+.ov-link:hover { text-decoration: underline; }
+
+/* Needs-you triage cards */
+.triage { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--k-space-3); }
+@media (max-width: 900px) { .triage { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .triage { grid-template-columns: 1fr; } }
+.tcard { position: relative; background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-4); overflow: hidden; box-shadow: var(--k-shadow); }
+.tcard::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tcard-accent, var(--k-neutral)); }
+.tcard.tone-negative { --tcard-accent: var(--k-negative); }
+.tcard.tone-caution { --tcard-accent: var(--k-caution); }
+.tcard.tone-active { --tcard-accent: var(--k-active); }
+.tcard-kind { font-family: var(--k-font-mono); font-size: var(--k-text-xs); letter-spacing: 0.09em; text-transform: uppercase; color: var(--tcard-accent); }
+.tcard-title { font-family: var(--k-font-ui); font-size: var(--k-text-md); font-weight: 600; letter-spacing: -0.005em; color: var(--k-text); margin: var(--k-space-2) 0 var(--k-space-1); overflow-wrap: anywhere; }
+.tcard-detail { font-size: var(--k-text-sm); color: var(--k-text-muted); margin: 0; overflow-wrap: anywhere; }
+.tcard-actions { margin-top: var(--k-space-3); display: flex; gap: var(--k-space-2); }
+.tcard-btn { font-family: var(--k-font-ui); font-size: var(--k-text-sm); font-weight: 600; padding: 5px 11px; border-radius: var(--k-radius-control); border: 1px solid var(--k-line-strong); background: transparent; color: var(--k-text-muted); cursor: pointer; transition: background var(--k-dur) var(--k-ease); }
+.tcard-btn.primary { background: var(--k-brand); color: var(--k-brand-contrast); border-color: transparent; }
+.tcard-btn:hover { border-color: var(--k-brand); }
+.tcard-btn.primary:hover { filter: brightness(1.06); }
+
+/* At-a-glance health strip */
+.glance { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--k-space-3); }
+@media (max-width: 900px) { .glance { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 480px) { .glance { grid-template-columns: repeat(2, 1fr); } }
+.glance-stat { display: flex; flex-direction: column; gap: 2px; background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-3) var(--k-space-4); text-align: left; }
+button.glance-stat { cursor: pointer; font: inherit; }
+button.glance-stat:hover { border-color: var(--k-line-strong); }
+.glance-value { font-family: var(--k-font-display); font-size: var(--k-text-2xl); font-weight: 600; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--k-text); }
+.glance-stat.tone-positive .glance-value { color: var(--k-positive); }
+.glance-stat.tone-negative .glance-value { color: var(--k-negative); }
+.glance-stat.tone-caution .glance-value { color: var(--k-caution); }
+.glance-label { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); letter-spacing: 0.03em; }
+
+/* Migration signposts (retired as each section folds into Overview) */
+.ov-signposts { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--k-space-3); }
+@media (max-width: 720px) { .ov-signposts { grid-template-columns: 1fr; } }
+.signpost { display: flex; flex-direction: column; gap: var(--k-space-2); background: var(--k-panel-raised); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-4); }
+.signpost.is-disabled { opacity: 0.6; }
+.signpost-title { font-family: var(--k-font-display); font-size: var(--k-text-lg); font-weight: 600; color: var(--k-text); }
+.signpost-body { font-size: var(--k-text-sm); color: var(--k-text-muted); margin: 0; flex: 1; }
+.signpost-cta { align-self: flex-start; margin-top: var(--k-space-2); font-family: var(--k-font-mono); font-size: var(--k-text-sm); color: var(--k-brand); background: none; border: none; padding: 0; cursor: pointer; }
+.signpost-cta:disabled { color: var(--k-text-faint); cursor: default; }
+.signpost-cta:not(:disabled):hover { text-decoration: underline; }
+
+/* All-clear state for Needs-you (custom; installed @kontourai/ui Empty is label-only) */
+.ov-allclear { display: flex; align-items: center; gap: var(--k-space-4); background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-5); }
+.ov-allclear-mark { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; background: var(--k-positive-soft, rgba(52,211,153,0.14)); color: var(--k-positive); font-size: 20px; font-weight: 700; }
+.ov-allclear-title { font-family: var(--k-font-display); font-size: var(--k-text-lg); font-weight: 600; color: var(--k-text); margin: 0 0 2px; }
+.ov-allclear-body { font-size: var(--k-text-sm); color: var(--k-text-muted); margin: 0; max-width: 60ch; }
