@@ -1,0 +1,40 @@
+{
+  "_comment": "A {small,large}×{bare,+kit} matrix. Each record is a full flow-agents #349 base record PLUS the OPTIONAL #350 harness tags (model_tier, kit_condition, acceptance_label). acceptance_label is the INDEPENDENT oracle's verdict and travels in each record — Console renders it, never re-derives it. Two runs per cell; the headline is small+kit vs large-bare. defects_caught per run is encoded in findings_by_severity totals.",
+  "records": [
+    { "schema": "kontour.console.economics", "version": "0.1", "run_id": "sk-1", "at": "1751706000000", "task_slug": "t1", "model_tier": "small", "kit_condition": "+kit", "acceptance_label": "accepted",
+      "cost": { "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "estimated_cost_usd": 0.20, "by_model": [] },
+      "time": { "wall_clock_s": 10, "human_wait_s": 0 }, "iterations": { "count": 1, "route_backs": 0 },
+      "defects": { "gate_fires": 0, "findings_by_severity": { "critical": 0, "high": 2, "medium": 0, "low": 0 }, "caught_false_completions": 0, "verification_verdict": "PASS" } },
+    { "schema": "kontour.console.economics", "version": "0.1", "run_id": "sk-2", "at": "1751706600000", "task_slug": "t2", "model_tier": "small", "kit_condition": "+kit", "acceptance_label": "accepted",
+      "cost": { "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "estimated_cost_usd": 0.60, "by_model": [] },
+      "time": { "wall_clock_s": 10, "human_wait_s": 0 }, "iterations": { "count": 3, "route_backs": 1 },
+      "defects": { "gate_fires": 0, "findings_by_severity": { "critical": 1, "high": 1, "medium": 1, "low": 1 }, "caught_false_completions": 0, "verification_verdict": "PASS" } },
+
+    { "schema": "kontour.console.economics", "version": "0.1", "run_id": "sb-1", "at": "1751707200000", "task_slug": "t1", "model_tier": "small", "kit_condition": "bare", "acceptance_label": "rejected",
+      "cost": { "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "estimated_cost_usd": 0.15, "by_model": [] },
+      "time": { "wall_clock_s": 10, "human_wait_s": 0 }, "iterations": { "count": 2, "route_backs": 0 },
+      "defects": { "gate_fires": 0, "findings_by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 0 }, "caught_false_completions": 0, "verification_verdict": "FAIL" } },
+    { "schema": "kontour.console.economics", "version": "0.1", "run_id": "sb-2", "at": "1751707800000", "task_slug": "t2", "model_tier": "small", "kit_condition": "bare", "acceptance_label": "accepted",
+      "cost": { "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "estimated_cost_usd": 0.35, "by_model": [] },
+      "time": { "wall_clock_s": 10, "human_wait_s": 0 }, "iterations": { "count": 4, "route_backs": 2 },
+      "defects": { "gate_fires": 0, "findings_by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 1 }, "caught_false_completions": 0, "verification_verdict": "PASS" } },
+
+    { "schema": "kontour.console.economics", "version": "0.1", "run_id": "lk-1", "at": "1751708400000", "task_slug": "t1", "model_tier": "large", "kit_condition": "+kit", "acceptance_label": "accepted",
+      "cost": { "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "estimated_cost_usd": 1.00, "by_model": [] },
+      "time": { "wall_clock_s": 10, "human_wait_s": 0 }, "iterations": { "count": 1, "route_backs": 0 },
+      "defects": { "gate_fires": 0, "findings_by_severity": { "critical": 1, "high": 1, "medium": 1, "low": 0 }, "caught_false_completions": 0, "verification_verdict": "PASS" } },
+    { "schema": "kontour.console.economics", "version": "0.1", "run_id": "lk-2", "at": "1751709000000", "task_slug": "t2", "model_tier": "large", "kit_condition": "+kit", "acceptance_label": "accepted",
+      "cost": { "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "estimated_cost_usd": 1.40, "by_model": [] },
+      "time": { "wall_clock_s": 10, "human_wait_s": 0 }, "iterations": { "count": 2, "route_backs": 0 },
+      "defects": { "gate_fires": 0, "findings_by_severity": { "critical": 0, "high": 2, "medium": 0, "low": 0 }, "caught_false_completions": 0, "verification_verdict": "PASS" } },
+
+    { "schema": "kontour.console.economics", "version": "0.1", "run_id": "lb-1", "at": "1751709600000", "task_slug": "t1", "model_tier": "large", "kit_condition": "bare", "acceptance_label": "accepted",
+      "cost": { "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "estimated_cost_usd": 1.60, "by_model": [] },
+      "time": { "wall_clock_s": 10, "human_wait_s": 0 }, "iterations": { "count": 2, "route_backs": 0 },
+      "defects": { "gate_fires": 0, "findings_by_severity": { "critical": 0, "high": 1, "medium": 0, "low": 0 }, "caught_false_completions": 0, "verification_verdict": "PASS" } },
+    { "schema": "kontour.console.economics", "version": "0.1", "run_id": "lb-2", "at": "1751710200000", "task_slug": "t2", "model_tier": "large", "kit_condition": "bare", "acceptance_label": "rejected",
+      "cost": { "input_tokens": 0, "output_tokens": 0, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0, "estimated_cost_usd": 1.20, "by_model": [] },
+      "time": { "wall_clock_s": 10, "human_wait_s": 0 }, "iterations": { "count": 3, "route_backs": 1 },
+      "defects": { "gate_fires": 0, "findings_by_severity": { "critical": 0, "high": 0, "medium": 0, "low": 0 }, "caught_false_completions": 0, "verification_verdict": "FAIL" } }
+  ]
+}

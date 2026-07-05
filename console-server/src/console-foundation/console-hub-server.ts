@@ -9,6 +9,7 @@ import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, vali
 import { validateFlowIngestRequest, wrapFlowIngestRecord } from "./flow-ingest";
 import { getRegistry } from "@kontourai/console-telemetry";
 import type {
+  ConsoleEconomicsRecord,
   ConsoleEventRecord,
   ConsoleRecord,
   ConsoleHubServer,
@@ -26,6 +27,8 @@ import type {
   RequestError,
   ValidationIssue
 } from "./types";
+import { createEconomicsStore, type EconomicsStore } from "./economics-store";
+import { createEconomicsProjection, type EconomicsProjection } from "./economics-projection";
 import { CoreRecordsRepository } from "./core-records";
 import { looksLikeJwt, verifyAccessToken, verifyOidcIdToken, protectedResourceMetadata } from "./oauth-resource";
 import { buildAuthorizeRedirect, exchangeCodeForToken, signLoginState, verifyLoginState } from "./oidc-login";
@@ -37,7 +40,7 @@ const { LocalConsoleHub } = require("./console-hub");
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
+export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/api/economics", "/api/economics/value", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -113,6 +116,12 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
   const localEvents = createSseBroker();
   const hostedHubs = new Map<string, Hub>();
   const hostedEvents = new Map<string, SseBroker>();
+  // Per-tenant economics store + rebuildable projection (console #117, ADR 0003
+  // calls 1/3). Keyed by the authoritative tenantId, exactly like `hostedHubs`;
+  // isolation (AC6) is therefore by construction — one tenant never sees
+  // another's economics. In-memory v1 (mirrors telemetry's local adapter);
+  // per-tenant persistence is a documented follow-up.
+  const economics = new Map<string, { store: EconomicsStore; projection: EconomicsProjection }>();
   // Flow ingest in-memory dedup + read store, scoped to this server instance.
   // `ingestSeen` maps idempotencyKey -> the recordId returned the first time, so
   // a re-POST is a no-op that returns the same recordId (no second append).
@@ -145,6 +154,7 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
       localEvents,
       hostedHubs,
       hostedEvents,
+      economics,
       telemetry,
       ingestState,
       options,
@@ -192,6 +202,7 @@ async function routeRequest(input: {
   localEvents: SseBroker;
   hostedHubs: Map<string, Hub>;
   hostedEvents: Map<string, SseBroker>;
+  economics: Map<string, { store: EconomicsStore; projection: EconomicsProjection }>;
   telemetry: TelemetryStore;
   ingestState: FlowIngestServerState;
   options: ConsoleHubServerOptions;
@@ -201,7 +212,7 @@ async function routeRequest(input: {
   request: IncomingMessage;
   response: ServerResponse;
 }): Promise<void> {
-  const { telemetry, ingestState, options, runtimeConfig, coreSqlClient, uiDistDir, request, response } = input;
+  const { telemetry, ingestState, economics, options, runtimeConfig, coreSqlClient, uiDistDir, request, response } = input;
   const url = new URL(request.url || "/", `http://${request.headers.host || DEFAULT_HOST}`);
   if (!applyCorsPolicy(request, response, runtimeConfig)) return;
 
@@ -389,7 +400,22 @@ async function routeRequest(input: {
     }
 
     if (request.method === "POST" && url.pathname === "/records") {
-      await handleRecords(hub, events, request, response, context);
+      await handleRecords(hub, events, request, response, context, () => economicsForTenant(economics, context.tenantId));
+      return;
+    }
+
+    // Economics read-models (console #117, ADR 0003 calls 3 + 4). Rebuildable
+    // projections, tenant-scoped by construction via the per-tenant map. Gated by
+    // the economics:read scope (reuses the #98 per-route scope pattern).
+    if (request.method === "GET" && url.pathname === "/api/economics") {
+      const { projection } = economicsForTenant(economics, context.tenantId);
+      writeJson(response, 200, projection.materialize(context.tenantId));
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/economics/value") {
+      const { projection } = economicsForTenant(economics, context.tenantId);
+      writeJson(response, 200, projection.materializeValue(context.tenantId));
       return;
     }
 
@@ -973,7 +999,14 @@ function handleEvents(hub: Hub, events: SseBroker, request: IncomingMessage, res
   openEventStream(hub, events, request, response);
 }
 
-async function handleRecords(hub: Hub, events: SseBroker, request: IncomingMessage, response: ServerResponse, context: ConsoleRequestContext): Promise<void> {
+async function handleRecords(
+  hub: Hub,
+  events: SseBroker,
+  request: IncomingMessage,
+  response: ServerResponse,
+  context: ConsoleRequestContext,
+  economicsForContext: () => { store: EconomicsStore; projection: EconomicsProjection }
+): Promise<void> {
   const body = await readJsonBody(request);
   const record = validateRecordBody(body);
 
@@ -983,6 +1016,19 @@ async function handleRecords(hub: Hub, events: SseBroker, request: IncomingMessa
   const stamped = stampTenantFromPrincipal(record, context);
   if (!stamped.ok) {
     writeApiError(response, 403, stamped.error, stamped.safeMessage);
+    return;
+  }
+
+  // Economics is a telemetry-plane KIND: route the tenant-stamped record to the
+  // per-tenant economics store + rebuildable projection, NOT `hub.append` (the
+  // control plane). ADR 0003 calls 1 + 3.
+  if (stamped.record.schema === "kontour.console.economics") {
+    const { store, projection } = economicsForContext();
+    const economicsRecord = stamped.record as ConsoleEconomicsRecord;
+    store.append(economicsRecord);
+    projection.apply(economicsRecord);
+    events.broadcast("record.accepted", { delivery: { recordKind: "economics", recordId: economicsRecord.run_id, outcome: "accepted" } });
+    writeJson(response, 202, { recordKind: "economics", recordId: economicsRecord.run_id, outcome: "accepted" });
     return;
   }
 
@@ -1201,8 +1247,15 @@ function validateRecordBody(body: unknown): ConsoleRecord {
   if (!isOpenRecord(body)) {
     throw requestError("INVALID_BODY", 400, "request body must be a JSON object");
   }
+  // Economics is an additive KIND on the one `/records` ingress (ADR 0003 call 1).
+  // It is validated by its own schema (with the Goodhart invariant) and routed to
+  // the economics store, NOT `hub.append` — so it returns here as a ConsoleRecord
+  // for tenant-stamping, and handleRecords branches on the schema before append.
+  if (body.schema === "kontour.console.economics") {
+    return validateEconomicsRecordBody(body);
+  }
   if (body.schema !== "kontour.console.event" && body.schema !== "kontour.console.projection") {
-    throw requestError("INVALID_RECORD", 400, "record.schema must be kontour.console.event or kontour.console.projection");
+    throw requestError("INVALID_RECORD", 400, "record.schema must be kontour.console.event, kontour.console.projection, or kontour.console.economics");
   }
 
   const record = body as ConsoleRecord;
@@ -1216,6 +1269,115 @@ function validateRecordBody(body: unknown): ConsoleRecord {
     throw error;
   }
   return record;
+}
+
+/**
+ * Validate a `kontour.console.economics` v0.1 record — the AUTHORITATIVE flow-agents
+ * #349 contract (snake_case, nested objects). Enforces the R7 Goodhart invariant at
+ * the SCHEMA boundary: `cost` and `defects` are CO-REQUIRED. A record carrying `cost`
+ * but no `defects` is rejected `400 INVALID_RECORD` — no consumer can render "cheaper"
+ * without "and here is what it caught / missed."
+ *
+ * Top-level required: `schema, version, run_id, cost, time, iterations, defects`.
+ * The value-experiment tags (`model_tier`, `kit_condition`, `acceptance_label`) are
+ * NOT on the base record — they are #350 harness extensions, so they are OPTIONAL and
+ * only validated for enum-correctness when present. Throws a RequestError with a
+ * diagnostic `validation[]` on any failure.
+ */
+export function validateEconomicsRecordBody(body: unknown): ConsoleEconomicsRecord {
+  if (!isOpenRecord(body)) {
+    throw requestError("INVALID_BODY", 400, "request body must be a JSON object");
+  }
+  const issues: ValidationIssue[] = [];
+  const record = body as Record<string, unknown>;
+
+  const isObject = (value: unknown): value is Record<string, unknown> =>
+    Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  const isFiniteNumber = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
+
+  if (record.version !== "0.1") {
+    issues.push({ severity: "error", path: "economics.version", message: "version must be \"0.1\"" });
+  }
+  if (typeof record.run_id !== "string" || !record.run_id) {
+    issues.push({ severity: "error", path: "economics.run_id", message: "run_id is required and must be a non-empty string" });
+  }
+
+  // `time` and `iterations` are required objects with numeric fields.
+  const time = record.time;
+  if (!isObject(time)) {
+    issues.push({ severity: "error", path: "economics.time", message: "time is required and must be an object" });
+  } else {
+    if (!isFiniteNumber(time.wall_clock_s)) issues.push({ severity: "error", path: "economics.time.wall_clock_s", message: "time.wall_clock_s must be a finite number" });
+    if (!isFiniteNumber(time.human_wait_s)) issues.push({ severity: "error", path: "economics.time.human_wait_s", message: "time.human_wait_s must be a finite number" });
+  }
+  const iterations = record.iterations;
+  if (!isObject(iterations)) {
+    issues.push({ severity: "error", path: "economics.iterations", message: "iterations is required and must be an object" });
+  } else {
+    if (!isFiniteNumber(iterations.count)) issues.push({ severity: "error", path: "economics.iterations.count", message: "iterations.count must be a finite number" });
+    if (!isFiniteNumber(iterations.route_backs)) issues.push({ severity: "error", path: "economics.iterations.route_backs", message: "iterations.route_backs must be a finite number" });
+  }
+
+  // ── The R7 Goodhart invariant: cost and defects are CO-REQUIRED. ──
+  const cost = record.cost;
+  if (!isObject(cost)) {
+    issues.push({ severity: "error", path: "economics.cost", message: "cost is required and must be an object" });
+  } else if (!isFiniteNumber(cost.estimated_cost_usd)) {
+    issues.push({ severity: "error", path: "economics.cost.estimated_cost_usd", message: "cost.estimated_cost_usd is required and must be a finite number" });
+  }
+  const defects = record.defects;
+  if (!isObject(defects)) {
+    // The load-bearing Goodhart rejection: a cost-only record has no defects block.
+    issues.push({ severity: "error", path: "economics.defects", message: "a record carrying cost MUST also carry defects (R7 Goodhart invariant): defects is required and must be an object" });
+  } else {
+    if (!isFiniteNumber(defects.caught_false_completions)) {
+      issues.push({ severity: "error", path: "economics.defects.caught_false_completions", message: "defects.caught_false_completions must be a finite number" });
+    }
+    if (typeof defects.verification_verdict !== "string" || !["PASS", "FAIL", "NOT_VERIFIED"].includes(defects.verification_verdict as string)) {
+      issues.push({ severity: "error", path: "economics.defects.verification_verdict", message: "defects.verification_verdict must be one of: PASS, FAIL, NOT_VERIFIED" });
+    }
+    const sev = defects.findings_by_severity;
+    if (!isObject(sev)) {
+      issues.push({ severity: "error", path: "economics.defects.findings_by_severity", message: "defects.findings_by_severity must be an object of severity → count" });
+    } else {
+      for (const key of ["critical", "high", "medium", "low"]) {
+        if (!isFiniteNumber(sev[key])) issues.push({ severity: "error", path: `economics.defects.findings_by_severity.${key}`, message: `findings_by_severity.${key} must be a finite number` });
+      }
+    }
+  }
+
+  // ── Optional #350 harness tags: enum-check only when present. ──
+  if (record.model_tier !== undefined && !["small", "large"].includes(record.model_tier as string)) {
+    issues.push({ severity: "error", path: "economics.model_tier", message: "model_tier, when present, must be one of: small, large" });
+  }
+  if (record.kit_condition !== undefined && !["bare", "+kit"].includes(record.kit_condition as string)) {
+    issues.push({ severity: "error", path: "economics.kit_condition", message: "kit_condition, when present, must be one of: bare, +kit" });
+  }
+  if (record.acceptance_label !== undefined && !["accepted", "rejected"].includes(record.acceptance_label as string)) {
+    issues.push({ severity: "error", path: "economics.acceptance_label", message: "acceptance_label, when present, must be one of: accepted, rejected" });
+  }
+
+  if (issues.length) {
+    const error = requestError("INVALID_RECORD", 400, "economics record validation failed");
+    error.validation = issues;
+    throw error;
+  }
+  return body as ConsoleEconomicsRecord;
+}
+
+/** Lazily create (and cache) the per-tenant economics store + projection. */
+function economicsForTenant(
+  economics: Map<string, { store: EconomicsStore; projection: EconomicsProjection }>,
+  tenantId: string
+): { store: EconomicsStore; projection: EconomicsProjection } {
+  const key = safePathToken(tenantId);
+  let existing = economics.get(key);
+  if (!existing) {
+    existing = { store: createEconomicsStore(), projection: createEconomicsProjection() };
+    economics.set(key, existing);
+  }
+  return existing;
 }
 
 function foundation() {
@@ -1303,6 +1465,7 @@ export function requiredScopeForRoute(method: string, pathname: string): string 
     return m === "POST" ? "telemetry:write" : "telemetry:read";
   }
   if (pathname === "/records") return "records:write"; // only POST is handled at /records
+  if (pathname === "/api/economics" || pathname === "/api/economics/value") return "economics:read"; // only GET is handled
   if (pathname === "/mcp") return "telemetry:read"; // MCP tools expose telemetry/cost analytics
   if (pathname === "/state" || pathname === "/inspect" || pathname === "/events" || pathname === "/stream") {
     return "records:read";

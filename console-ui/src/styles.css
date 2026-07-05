@@ -442,12 +442,18 @@ h2 {
   margin-top: 18px;
   border-bottom: 1px solid var(--line);
   background: transparent;
+  /* The tab row scrolls within itself on narrow viewports so adding a view
+     (e.g. Economics) never widens the page body past the mobile viewport. */
+  overflow-x: auto;
+  flex-wrap: nowrap;
 }
 
 .view-tabs button {
   position: relative;
   min-height: 40px;
   padding: 0 20px;
+  flex: 0 0 auto;
+  white-space: nowrap;
   color: var(--muted);
   font-size: var(--k-text-md);
   font-weight: 500;
@@ -2530,4 +2536,160 @@ flow-run-panel {
   margin: 0;
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+/* ── Economics (the ROI surface; console #117) ──────────────────────────────── */
+.economics-section {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  margin-top: 16px;
+  padding: 16px;
+}
+
+.economics-notice {
+  margin: 14px 0 0;
+  box-shadow: none;
+}
+
+.economics-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.economics-tabs button {
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.economics-tabs button:hover {
+  border-color: var(--k-accent, #5ce0c6);
+}
+
+.economics-tabs button.active {
+  background: var(--k-accent, #5ce0c6);
+  color: var(--panel, #0b0f14);
+  border-color: var(--k-accent, #5ce0c6);
+}
+
+.economics-empty {
+  margin-top: 16px;
+}
+
+.economics-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  margin-top: 14px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.economics-metrics > * {
+  min-width: 0;
+  padding: 12px;
+  background: var(--panel-2);
+}
+
+.economics-headline {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.economics-verdict {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 1.25rem;
+  font-weight: 500;
+  margin: 6px 0 12px;
+}
+
+.economics-headline-cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.economics-headline-cell {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.economics-headline-cell.highlight {
+  border-color: var(--k-accent, #5ce0c6);
+}
+
+.economics-oracle-note {
+  margin-top: 12px;
+  font-size: 0.85rem;
+  opacity: 0.72;
+}
+
+.economics-usage-breakdown {
+  margin-top: 18px;
+}
+
+.economics-usage-breakdown h4 {
+  margin: 0 0 8px;
+}
+
+.economics-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.economics-usage-breakdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--k-font-mono);
+  font-size: 0.85rem;
+}
+
+.economics-usage-breakdown th,
+.economics-usage-breakdown td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.economics-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.economics-phase {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.economics-phase.unattributed {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.economics-chart {
+  display: block;
+  max-width: 100%;
+  margin: 8px 0 12px;
+  color: inherit;
+  opacity: 0.92;
 }

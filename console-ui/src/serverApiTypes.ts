@@ -236,3 +236,71 @@ export interface ConsoleSsePayloadMap {
   "record.accepted": ConsoleAcceptedRecordSsePayload;
   "telemetry.updated": ConsoleTelemetryUpdatedSsePayload;
 }
+
+// ── Economics read-models (console #117 / flow-agents #349) ────────────────────
+//    Mirror console-server/types.ts. The record is the #349 shape (snake_case,
+//    nested); these are the projection READ-MODELS the UI renders.
+export interface ConsoleEconomicsFindingsBySeverity {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+export interface ConsoleEconomicsTaskDayRollup {
+  taskSlug: string;
+  day: string;
+  runs: number;
+  totalCostUsd: number;
+  costByPhase: Record<string, number>;
+  defectsCaught: number;
+  caughtFalseCompletions: number;
+}
+
+export interface ConsoleEconomicsCaughtDefects {
+  defectsCaught: number;
+  bySeverity: ConsoleEconomicsFindingsBySeverity;
+  caughtFalseCompletions: number;
+  gateFires: number;
+}
+
+export interface ConsoleEconomicsFunnel {
+  runs: number;
+  totalIterations: number;
+  totalRouteBacks: number;
+  firstPassRate: number;
+  humanWaitS: number;
+}
+
+export interface ConsoleEconomicsRollup {
+  generatedAt: string;
+  tenantId: string;
+  runCount: number;
+  cost: ConsoleEconomicsTaskDayRollup[];
+  caughtDefects: ConsoleEconomicsCaughtDefects;
+  funnel: ConsoleEconomicsFunnel;
+}
+
+export interface ConsoleValueCell {
+  model_tier: string;
+  kit_condition: string;
+  runs: number;
+  acceptanceRate: number;
+  iterationsToAccept: number;
+  defectsCaught: number;
+  dollarsPerAcceptable: number | null;
+}
+
+export interface ConsoleValueComparison {
+  generatedAt: string;
+  tenantId: string;
+  /** How many records carried the optional (model_tier, kit_condition) tags. */
+  taggedRunCount: number;
+  cells: ConsoleValueCell[];
+  headline: {
+    smallPlusKit: ConsoleValueCell | null;
+    largeBare: ConsoleValueCell | null;
+    verdict: "meets" | "below" | "exceeds" | "unknown";
+    ratio: number | null;
+  };
+}

@@ -189,7 +189,7 @@ test("protectedResourceMetadata returns an RFC 9728 document", () => {
   assert.ok(Array.isArray(scopes));
   // Every scope the server enforces must be discoverable here (else clients
   // following RFC 9728 can never request it → silent 403). Phase 2a enforces these:
-  for (const s of ["telemetry:read", "telemetry:write", "records:read", "records:write", "pricing:read"]) {
+  for (const s of ["telemetry:read", "telemetry:write", "records:read", "records:write", "pricing:read", "economics:read"]) {
     assert.ok(scopes.includes(s), `scopes_supported missing ${s}`);
   }
 });

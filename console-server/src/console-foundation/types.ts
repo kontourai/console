@@ -1,4 +1,4 @@
-export type RecordKind = "event" | "projection";
+export type RecordKind = "event" | "projection" | "economics";
 export type DeliveryOutcome = "accepted" | "skipped" | "failed";
 export type ValidationSeverity = "error" | "warning";
 export type SourceKind = "fixture" | "local";
@@ -172,6 +172,189 @@ export interface ConsoleProjectionRecord extends ConsoleRecordBase {
 }
 
 export type ConsoleRecord = ConsoleEventRecord | ConsoleProjectionRecord | ConsoleRecordBase;
+
+// ── Economics (ADR 0003 calls 1, 3, 4; console #117 / flow-agents #349) ───────
+//
+// A per-run economics FACT — an additive versioned KIND on the one `/records`
+// ingress (call 1), routed to the telemetry plane (operational), never
+// `hub.append`. The rollups and the value comparison are REBUILDABLE projections
+// over the record stream (call 3).
+//
+// The record shape is the AUTHORITATIVE flow-agents #349 `kontour.console.economics`
+// v0.1 contract (snake_case, nested): `cost`/`time`/`iterations`/`defects` objects,
+// with `cost` and `defects` co-required (the R7 Goodhart guard — a cost-only record
+// is schema-invalid). Per-phase attribution lives in the top-level `phases[]` array
+// (never a `cost.by_phase`); when no phase context exists, everything lands in a
+// single `{phase:"unattributed", ...}` entry (the phase-sum invariant).
+//
+// The value-experiment dimensions `model_tier` / `kit_condition` / `acceptance_label`
+// are NOT on the base record — they are #350 HARNESS tags that EXTEND it on harness
+// runs only (the schema is `additionalProperties: true`). They are therefore OPTIONAL
+// here. `acceptance_label`, when present, is the INDEPENDENT kontourai/evals oracle's
+// verdict (call 4) — Console renders it verbatim and NEVER re-derives acceptance from
+// kit gates.
+
+export type EconomicsModelTier = "small" | "large";
+export type EconomicsKitCondition = "bare" | "+kit";
+export type EconomicsAcceptanceLabel = "accepted" | "rejected";
+export type EconomicsVerificationVerdict = "PASS" | "FAIL" | "NOT_VERIFIED";
+
+export interface EconomicsCostByModel {
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  estimated_cost_usd?: number;
+}
+
+export interface EconomicsCost {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  estimated_cost_usd: number;
+  by_model: EconomicsCostByModel[];
+}
+
+export interface EconomicsTime {
+  wall_clock_s: number;
+  human_wait_s: number;
+}
+
+export interface EconomicsPhase {
+  phase: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  estimated_cost_usd?: number;
+  wall_clock_s?: number;
+}
+
+export interface EconomicsIterations {
+  count: number;
+  route_backs: number;
+}
+
+export interface EconomicsFindingsBySeverity {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+export interface EconomicsDefects {
+  gate_fires: number;
+  findings_by_severity: EconomicsFindingsBySeverity;
+  /** Claimed passes contradicted by a trusted backstop — the strongest ROI evidence. */
+  caught_false_completions: number;
+  verification_verdict: EconomicsVerificationVerdict;
+}
+
+export interface ConsoleEconomicsRecord extends ConsoleRecordBase {
+  schema: "kontour.console.economics";
+  version: "0.1";
+  run_id: string;
+  /** Epoch-millis string of the run end (session.end). Nullable per #349. */
+  at?: string | null;
+  /** The task the run served — the natural per-run join dimension. Nullable per #349. */
+  task_slug?: string | null;
+  model?: string | null;
+  pricing_version?: string | null;
+  cost: EconomicsCost;
+  time: EconomicsTime;
+  phases?: EconomicsPhase[];
+  iterations: EconomicsIterations;
+  defects: EconomicsDefects;
+  /**
+   * Self-description only; ingest STAMPS the authoritative tenant from the
+   * principal. #349 permits a body `null`, but ingest always overwrites this with
+   * the principal's tenant before append, so the stored value is a string.
+   */
+  tenant_id?: string;
+  // ── #350 harness experiment tags (OPTIONAL; present only on harness runs) ──
+  model_tier?: EconomicsModelTier;
+  kit_condition?: EconomicsKitCondition;
+  /** The INDEPENDENT oracle's verdict — never re-derived from kit gates (call 4). */
+  acceptance_label?: EconomicsAcceptanceLabel;
+}
+
+/** Cost + paired-defect trend for one task_slug over one day (R5: never cost-only). */
+export interface EconomicsTaskDayRollup {
+  /** The run's `task_slug`, or `unattributed` when the record carries none. */
+  taskSlug: string;
+  /** Calendar day (UTC), `YYYY-MM-DD`. */
+  day: string;
+  runs: number;
+  totalCostUsd: number;
+  /** Per-phase cost from the top-level `phases[]`; an `unattributed` bucket otherwise. */
+  costByPhase: Record<string, number>;
+  /** All findings caught pre-merge (sum over findings_by_severity). */
+  defectsCaught: number;
+  caughtFalseCompletions: number;
+}
+
+export interface EconomicsCaughtDefects {
+  /** Findings caught pre-merge across all runs (sum of every severity). */
+  defectsCaught: number;
+  /** Per-severity totals. */
+  bySeverity: EconomicsFindingsBySeverity;
+  /** The strongest ROI evidence — surfaced distinctly (R3). */
+  caughtFalseCompletions: number;
+  /** Total gate fires across runs. */
+  gateFires: number;
+}
+
+export interface EconomicsFunnel {
+  runs: number;
+  totalIterations: number;
+  totalRouteBacks: number;
+  /** Share of runs completed in a single iteration with no route-backs. */
+  firstPassRate: number;
+  /** Aggregate human-decision wait, seconds (from time.human_wait_s). */
+  humanWaitS: number;
+}
+
+export interface EconomicsRollup {
+  generatedAt: string;
+  tenantId: string;
+  runCount: number;
+  /** task_slug×day cost trend with the paired defect counts on the same row (R5). */
+  cost: EconomicsTaskDayRollup[];
+  caughtDefects: EconomicsCaughtDefects;
+  funnel: EconomicsFunnel;
+}
+
+/** One `(model_tier, kit_condition)` cell of the value comparison. */
+export interface ValueCell {
+  model_tier: string;
+  kit_condition: string;
+  runs: number;
+  acceptanceRate: number;
+  iterationsToAccept: number;
+  defectsCaught: number;
+  /** `totalCost / acceptedCount`; `null` when nothing was accepted (never a fake 0). */
+  dollarsPerAcceptable: number | null;
+}
+
+export interface ValueComparison {
+  generatedAt: string;
+  tenantId: string;
+  /** How many records carried the optional `(model_tier, kit_condition)` tags. */
+  taggedRunCount: number;
+  /** Grouped by `(model_tier, kit_condition)` — only over tagged (harness) records. */
+  cells: ValueCell[];
+  /** The headline claim: `small+kit` vs `large-bare`. Null cells → no verdict yet. */
+  headline: {
+    smallPlusKit: ValueCell | null;
+    largeBare: ValueCell | null;
+    /** `meets`/`exceeds`/`below` on $/acceptable; `unknown` until both cells exist. */
+    verdict: "meets" | "below" | "exceeds" | "unknown";
+    /** largeBare$/acceptable ÷ smallPlusKit$/acceptable (>1 ⇒ small+kit is cheaper). */
+    ratio: number | null;
+  };
+}
 
 export interface ConsoleObjectRecord extends JsonObject {
   id?: string;
