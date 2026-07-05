@@ -141,6 +141,13 @@ export interface ConsoleRecordBase {
   id?: string;
   producer?: Record<string, unknown>;
   scope?: Record<string, unknown>;
+  /**
+   * Tenant a record belongs to. Self-description only — the authoritative tenant
+   * is bound from the verified principal at ingest (ADR 0003 call 2). A body that
+   * disagrees with the principal's tenant is rejected; otherwise ingest stamps
+   * this field from the principal before the record is appended.
+   */
+  tenant_id?: string;
   [key: string]: unknown;
 }
 
