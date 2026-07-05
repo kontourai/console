@@ -808,6 +808,162 @@ test("hosted hub server partitions core hub records by tenant", async () => {
   }
 });
 
+test("hosted ingest stamps tenant from the principal when the body omits tenant_id", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const event = { ...surfaceFlowHandoffStream().events[0], id: "evt-stamp-none" };
+    assert.equal("tenant_id" in event, false);
+
+    const accepted = await requestJson("POST", `${baseUrl}/records`, event, { authorization: "Bearer token-a" });
+    const inspection = await requestJson("GET", `${baseUrl}/inspect`, undefined, { authorization: "Bearer token-a" });
+
+    assert.equal(accepted.statusCode, 202);
+    const stored = storedRecordById(inspection.body, "evt-stamp-none");
+    assert.ok(stored, "record should be persisted");
+    assert.equal(stored.tenant_id, "tenant-a");
+  } finally {
+    await close(app);
+  }
+});
+
+test("hosted ingest accepts a record whose body tenant_id agrees with the principal", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const event = { ...surfaceFlowHandoffStream().events[0], id: "evt-stamp-agree", tenant_id: "tenant-a" };
+
+    const accepted = await requestJson("POST", `${baseUrl}/records`, event, { authorization: "Bearer token-a" });
+    const inspection = await requestJson("GET", `${baseUrl}/inspect`, undefined, { authorization: "Bearer token-a" });
+
+    assert.equal(accepted.statusCode, 202);
+    const stored = storedRecordById(inspection.body, "evt-stamp-agree");
+    assert.ok(stored, "record should be persisted");
+    assert.equal(stored.tenant_id, "tenant-a");
+  } finally {
+    await close(app);
+  }
+});
+
+test("hosted ingest rejects a record whose body tenant_id disagrees with the principal (403 TENANT_MISMATCH) and does not append it", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [
+      { token: "token-a", tenantId: "tenant-a" },
+      { token: "token-b", tenantId: "tenant-b" }
+    ]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    // Principal is tenant-a, but the body claims tenant-b — a cross-tenant write attempt.
+    const spoof = { ...surfaceFlowHandoffStream().events[0], id: "evt-stamp-mismatch", tenant_id: "tenant-b" };
+
+    const rejected = await requestJson("POST", `${baseUrl}/records`, spoof, { authorization: "Bearer token-a" });
+    const inspectA = await requestJson("GET", `${baseUrl}/inspect`, undefined, { authorization: "Bearer token-a" });
+    const inspectB = await requestJson("GET", `${baseUrl}/inspect`, undefined, { authorization: "Bearer token-b" });
+
+    assert.equal(rejected.statusCode, 403);
+    assert.equal(rejected.body.error, "TENANT_MISMATCH");
+    assert.equal(rejected.body.safeMessage, "record tenant does not match the authenticated principal");
+    // Not appended for either tenant — no cross-tenant write, no self write.
+    assert.equal(storedRecordById(inspectA.body, "evt-stamp-mismatch"), undefined);
+    assert.equal(storedRecordById(inspectB.body, "evt-stamp-mismatch"), undefined);
+  } finally {
+    await close(app);
+  }
+});
+
+test("hosted ingest keeps two principals isolated even when each stamps their own tenant", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [
+      { token: "token-a", tenantId: "tenant-a" },
+      { token: "token-b", tenantId: "tenant-b" }
+    ]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const eventA = { ...surfaceFlowHandoffStream().events[0], id: "evt-iso-a", tenant_id: "tenant-a" };
+    const eventB = { ...surfaceFlowHandoffStream().events[0], id: "evt-iso-b", tenant_id: "tenant-b" };
+
+    const [acceptedA, acceptedB] = await Promise.all([
+      requestJson("POST", `${baseUrl}/records`, eventA, { authorization: "Bearer token-a" }),
+      requestJson("POST", `${baseUrl}/records`, eventB, { authorization: "Bearer token-b" })
+    ]);
+    const inspectA = await requestJson("GET", `${baseUrl}/inspect`, undefined, { authorization: "Bearer token-a" });
+    const inspectB = await requestJson("GET", `${baseUrl}/inspect`, undefined, { authorization: "Bearer token-b" });
+    const stateB = await requestJson("GET", `${baseUrl}/state`, undefined, { authorization: "Bearer token-b" });
+
+    assert.equal(acceptedA.statusCode, 202);
+    assert.equal(acceptedB.statusCode, 202);
+    // Each tenant sees only its own record, stamped with its own tenant.
+    assert.equal(storedRecordById(inspectA.body, "evt-iso-a").tenant_id, "tenant-a");
+    assert.equal(storedRecordById(inspectA.body, "evt-iso-b"), undefined);
+    assert.equal(storedRecordById(inspectB.body, "evt-iso-b").tenant_id, "tenant-b");
+    assert.equal(storedRecordById(inspectB.body, "evt-iso-a"), undefined);
+    // A's record never leaks into B's operating-state timeline.
+    assert.equal(stateB.body.timeline.some((item: any) => item.id === "evt-iso-a"), false);
+  } finally {
+    await close(app);
+  }
+});
+
+test("local (non-hosted) ingest stamps the default tenant and is not regressed", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const event = { ...surfaceFlowHandoffStream().events[0], id: "evt-local-stamp" };
+
+    const accepted = await requestJson("POST", `${baseUrl}/records`, event);
+    const inspection = await requestJson("GET", `${baseUrl}/inspect`);
+
+    assert.equal(accepted.statusCode, 202);
+    const stored = storedRecordById(inspection.body, "evt-local-stamp");
+    assert.ok(stored, "record should be persisted");
+    // Local mode has a single default tenant; the record is stamped with it.
+    assert.equal(typeof stored.tenant_id, "string");
+    assert.ok(stored.tenant_id.length > 0);
+  } finally {
+    await close(app);
+  }
+});
+
 test("hosted hub server rejects auth tokens outside tenant allowlist", () => {
   const rootDir = tempRoot();
 
@@ -1949,6 +2105,17 @@ function telemetryRecord(eventId: string, eventType: string, sessionId: string, 
     event_type: eventType,
     agent: { name: "dev", runtime: "codex" }
   };
+}
+
+// Find a persisted record by id across a tenant's inspected event streams.
+// Records reload from disk, so the stamped tenant_id survives round-trip.
+function storedRecordById(inspection: any, id: string): any {
+  for (const stream of inspection.eventStreams || []) {
+    for (const event of stream.events || []) {
+      if (event.id === id) return event;
+    }
+  }
+  return undefined;
 }
 
 function listen(app: any) {

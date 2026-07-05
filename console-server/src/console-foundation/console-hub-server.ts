@@ -384,7 +384,7 @@ async function routeRequest(input: {
     }
 
     if (request.method === "POST" && url.pathname === "/records") {
-      await handleRecords(hub, events, request, response);
+      await handleRecords(hub, events, request, response, context);
       return;
     }
 
@@ -968,10 +968,20 @@ function handleEvents(hub: Hub, events: SseBroker, request: IncomingMessage, res
   openEventStream(hub, events, request, response);
 }
 
-async function handleRecords(hub: Hub, events: SseBroker, request: IncomingMessage, response: ServerResponse): Promise<void> {
+async function handleRecords(hub: Hub, events: SseBroker, request: IncomingMessage, response: ServerResponse, context: ConsoleRequestContext): Promise<void> {
   const body = await readJsonBody(request);
   const record = validateRecordBody(body);
-  const result = await hub.append(record);
+
+  // Bind tenancy from the verified principal, never from the payload (ADR 0003
+  // call 2). The body tenant_id is advisory; a disagreement is a 403, otherwise
+  // the record is stamped with the principal's tenant before it is appended.
+  const stamped = stampTenantFromPrincipal(record, context);
+  if (!stamped.ok) {
+    writeApiError(response, 403, stamped.error, stamped.safeMessage);
+    return;
+  }
+
+  const result = await hub.append(stamped.record);
   if (result.outcome !== "accepted") {
     writeApiError(response, 500, result.errorCode || "SINK_DELIVERY_FAILED", result.safeMessage || "record delivery failed");
     return;
@@ -982,6 +992,39 @@ async function handleRecords(hub: Hub, events: SseBroker, request: IncomingMessa
     state: hub.currentOperatingState()
   });
   writeJson(response, 202, result);
+}
+
+/**
+ * Bind a record's tenant from the verified principal (ADR 0003 call 2).
+ *
+ * `context.tenantId` is authoritative: it is resolved at auth time from the
+ * principal (hosted mode) or from the runtime default (local/self-hosted mode),
+ * and it already scopes which tenant hub the record lands in. A record MAY carry
+ * a `tenant_id`/`tenantId` for self-description, but it is never trusted:
+ *   - if the body carries a tenant that is present AND disagrees with the
+ *     principal's tenant, the record is rejected (caller returns 403); a
+ *     hostile or buggy producer cannot write across tenants by editing a field.
+ *   - otherwise the record is stamped with the authoritative tenant so it is
+ *     self-consistent with the hub it lands in.
+ *
+ * Local (non-hosted) mode has a single default tenant, so this simply stamps
+ * that default — behaviour is unchanged for the common case where no body
+ * tenant is present.
+ */
+function stampTenantFromPrincipal(
+  record: ConsoleRecord,
+  context: ConsoleRequestContext
+): { ok: true; record: ConsoleRecord } | { ok: false; error: string; safeMessage: string } {
+  const authoritative = context.tenantId;
+  const bodyTenant = (record as { tenant_id?: unknown }).tenant_id ?? (record as { tenantId?: unknown }).tenantId;
+  if (typeof bodyTenant === "string" && bodyTenant && bodyTenant !== authoritative) {
+    return {
+      ok: false,
+      error: "TENANT_MISMATCH",
+      safeMessage: "record tenant does not match the authenticated principal"
+    };
+  }
+  return { ok: true, record: { ...record, tenant_id: authoritative } };
 }
 
 /**
