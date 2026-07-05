@@ -4,7 +4,7 @@ Date: 2026-07-05
 
 ## Status
 
-Proposed
+Accepted (ratified by Brian Anderson, 2026-07-05)
 
 ## Context
 
