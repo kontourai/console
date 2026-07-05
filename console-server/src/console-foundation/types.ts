@@ -466,7 +466,39 @@ export interface ConsoleHostedAuthToken {
   label?: string;
 }
 
+export type ConsolePrincipalKind = "user" | "machine";
+
+/**
+ * The verified identity a request authenticated as (console #98, ADR 0003 call 2).
+ *
+ * This is the load-bearing security object: `tenantId` here is the ONLY
+ * authoritative tenant. It is the verified tenant claim from an OIDC/M2M access
+ * token — never a value read from the request payload. Ingest stamps the tenant
+ * from `principal.tenantId` and rejects a record whose body disagrees, so cross-
+ * tenant writes are impossible by construction.
+ *
+ * Present only for OIDC/M2M-authenticated (JWT) requests. Loopback-local and the
+ * legacy static-token / cookie-session paths leave it undefined (ADR 0003 call 6,
+ * local-first): scope enforcement never applies to a request with no principal.
+ */
+export interface ConsolePrincipal {
+  /** "user" = OIDC human (identified by `sub`); "machine" = M2M client credential. */
+  kind: ConsolePrincipalKind;
+  /** OIDC `sub` (human) or the client identity (machine). Stable subject id. */
+  subject: string;
+  /** AUTHORITATIVE tenant — the verified tenant claim; the only source of truth. */
+  tenantId: string;
+  /** OAuth scopes granted to the token, e.g. ["records:read","telemetry:write"]. */
+  scopes: string[];
+  /** OAuth client id for kind:"machine" (from the `client_id`/`cid` claim). */
+  clientId?: string;
+  /** Verified token issuer (`iss`), for provenance. */
+  issuer?: string;
+}
+
 export interface ConsoleRequestContext {
+  /** Authoritative tenant. Equals `principal.tenantId` when authenticated via
+   *  OIDC/M2M; otherwise the tenant bound to the legacy credential / local default. */
   tenantId: string;
   runtimeMode: ConsoleRuntimeMode;
   /** How the request was authenticated (ADR 0003). Required — it is the predicate
@@ -474,8 +506,12 @@ export interface ConsoleRequestContext {
    *  so an unset/new method fails safe (gets scope-enforced). */
   authMethod: "local" | "session" | "token" | "jwt";
   /** OAuth scopes granted to a JWT-authenticated request (ADR 0003, Phase 2).
-   *  Only populated for authMethod "jwt"; undefined for legacy credentials. */
+   *  Only populated for authMethod "jwt"; undefined for legacy credentials.
+   *  Mirrors `principal.scopes` when a principal is present. */
   scopes?: string[];
+  /** The verified identity (console #98). Present for JWT (OIDC/M2M) requests;
+   *  undefined for loopback-local and legacy static-token/session credentials. */
+  principal?: ConsolePrincipal;
 }
 
 export interface ConsoleSqlQueryResult<Row = OpenRecord> {

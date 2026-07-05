@@ -13,6 +13,7 @@ import type {
   ConsoleRecord,
   ConsoleHubServer,
   ConsoleHubServerOptions,
+  ConsolePrincipal,
   ConsoleRequestContext,
   ConsoleSqlClient,
   CurrentOperatingStateOptions,
@@ -335,7 +336,11 @@ async function routeRequest(input: {
       && (context.authMethod === "local" || context.authMethod === "session" || context.authMethod === "token");
     if (!scopeExempt) {
       const requiredScope = requiredScopeForRoute(request.method || "GET", url.pathname);
-      if (requiredScope && !(context.scopes || []).includes(requiredScope)) {
+      // scopes come from the principal when present (verified JWT/M2M), else from the
+      // context (OIDC session cookie). requireScope alone is not sufficient here
+      // because scope-carrying sessions have no principal; keep the context fallback.
+      const grantedScopes = context.principal?.scopes ?? context.scopes ?? [];
+      if (requiredScope && !grantedScopes.includes(requiredScope)) {
         response.setHeader("WWW-Authenticate", `Bearer error="insufficient_scope", scope="${requiredScope}"`);
         writeApiError(response, 403, "INSUFFICIENT_SCOPE", `missing required scope: ${requiredScope}`);
         return;
@@ -1305,6 +1310,33 @@ export function requiredScopeForRoute(method: string, pathname: string): string 
   return undefined;
 }
 
+/**
+ * Per-route scope enforcement (console #98, ADR 0003, Phase 2).
+ *
+ * Returns `{ ok: true }` when the request may proceed, or a 403 INSUFFICIENT_SCOPE
+ * descriptor when the authenticated principal lacks `scope`. Callers translate the
+ * descriptor into a response (WWW-Authenticate + writeApiError).
+ *
+ * Exemption keys on LOCAL MODE, not on absence-of-principal (ADR 0003 call 6): the local
+ * single-tenant self-host console must never require an OIDC scope. In HOSTED mode this is
+ * fail-closed and mirrors the active route gate exactly — scopes come from a verified JWT
+ * principal or a scope-carrying session (`principal?.scopes ?? context.scopes`), and a request
+ * lacking the scope is REJECTED. It is deliberately NOT exempted just because it carries no
+ * structured principal (e.g. a hosted legacy static token) — exempting on "no principal" would be
+ * a scope-bypass footgun the moment this helper is wired onto a hosted route.
+ */
+export function requireScope(
+  context: ConsoleRequestContext,
+  scope: string
+): { ok: true } | { ok: false; statusCode: 403; error: "INSUFFICIENT_SCOPE"; safeMessage: string; scope: string } {
+  // Local-first: the local single-tenant console is never scope-gated.
+  if (context.runtimeMode === "local") return { ok: true };
+  // Hosted: fail-closed, same source of scopes as the active route gate.
+  const granted = context.principal?.scopes ?? context.scopes ?? [];
+  if (granted.includes(scope)) return { ok: true };
+  return { ok: false, statusCode: 403, error: "INSUFFICIENT_SCOPE", safeMessage: `missing required scope: ${scope}`, scope };
+}
+
 function isAllowedOrigin(origin: string | undefined, runtimeConfig: ConsoleRuntimeConfig): boolean {
   if (!origin) return true;
   const allowedOrigins = runtimeConfig.mode === "hosted"
@@ -1351,7 +1383,18 @@ async function authenticateRequest(request: IncomingMessage, runtimeConfig: Cons
       if (runtimeConfig.hostedTenantIds.length && !runtimeConfig.hostedTenantIds.includes(verified.tenantId)) {
         return { ok: false, statusCode: 403, error: "TENANT_FORBIDDEN", safeMessage: "tenant is not allowed" };
       }
-      return { ok: true, context: { tenantId: verified.tenantId, runtimeMode: "hosted", authMethod: "jwt", scopes: verified.scopes } };
+      // Build the verified principal (console #98, ADR 0003 call 2). tenantId is the
+      // authoritative tenant claim; kind is "machine" when a client_id/cid claim
+      // identifies an M2M client, else "user" (an OIDC human, identified by sub).
+      const principal: ConsolePrincipal = {
+        kind: verified.isMachine ? "machine" : "user",
+        subject: verified.clientId || verified.subject || verified.tenantId,
+        tenantId: verified.tenantId,
+        scopes: verified.scopes,
+        clientId: verified.clientId,
+        issuer: verified.issuer
+      };
+      return { ok: true, context: { tenantId: verified.tenantId, runtimeMode: "hosted", authMethod: "jwt", scopes: verified.scopes, principal } };
     } catch {
       return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "access token is invalid" };
     }

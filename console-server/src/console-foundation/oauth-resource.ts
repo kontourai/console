@@ -64,6 +64,16 @@ export interface VerifiedAccessToken {
   tenantId: string;
   subject?: string;
   scopes: string[];
+  /** Verified token issuer (`iss`) — carried onto the principal for provenance. */
+  issuer?: string;
+  /** OAuth client that presented the token, from the `client_id`/`cid` claim.
+   *  Present ⇒ a machine (client-credentials / M2M) principal. WorkOS and most
+   *  providers stamp `client_id` on client-credentials tokens; some use `cid`. */
+  clientId?: string;
+  /** Whether this token was issued to a machine client (client-credentials/M2M)
+   *  rather than a human. True when a `client_id`/`cid` claim is present. Downstream
+   *  maps this to `ConsolePrincipal.kind` ("machine" vs "user"). */
+  isMachine: boolean;
 }
 
 /** A pluggable access-token verifier (JWKS today; introspection could be added). */
@@ -106,7 +116,18 @@ export const verifyAccessToken: AccessTokenVerifier = async (token, config) => {
   if (!tenantId) {
     throw new Error(`access token is missing a tenant claim (tried: ${config.tenantClaims.join(", ")})`);
   }
-  return { tenantId, subject: payload.sub, scopes: readScopes(payload) };
+  // Machine (client-credentials / M2M) tokens carry a client identity claim. WorkOS
+  // stamps `client_id`; some providers use `cid`. Its presence is what distinguishes
+  // an M2M principal from a human OIDC user (who is identified by `sub` alone).
+  const clientId = readStringClaim(payload, "client_id") ?? readStringClaim(payload, "cid");
+  return {
+    tenantId,
+    subject: payload.sub,
+    scopes: readScopes(payload),
+    issuer: typeof payload.iss === "string" ? payload.iss : config.issuer,
+    clientId,
+    isMachine: Boolean(clientId)
+  };
 };
 
 /** Map a JWS `alg` to the SHA variant used for OIDC `at_hash` (per OIDC Core). */
