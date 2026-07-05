@@ -40,7 +40,7 @@ const { LocalConsoleHub } = require("./console-hub");
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/api/economics", "/api/economics/value", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
+export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -416,6 +416,14 @@ async function routeRequest(input: {
     if (request.method === "GET" && url.pathname === "/api/economics/value") {
       const { projection } = economicsForTenant(economics, context.tenantId);
       writeJson(response, 200, projection.materializeValue(context.tenantId));
+      return;
+    }
+
+    // Delegation efficiency (flow-agents #415): per-(role, model) outcome rollups +
+    // MODEL-GRANULARITY PROXY cost. Same rebuildable projection, tenant-scoped.
+    if (request.method === "GET" && url.pathname === "/api/economics/delegations") {
+      const { projection } = economicsForTenant(economics, context.tenantId);
+      writeJson(response, 200, projection.materializeDelegations(context.tenantId));
       return;
     }
 
@@ -1465,7 +1473,7 @@ export function requiredScopeForRoute(method: string, pathname: string): string 
     return m === "POST" ? "telemetry:write" : "telemetry:read";
   }
   if (pathname === "/records") return "records:write"; // only POST is handled at /records
-  if (pathname === "/api/economics" || pathname === "/api/economics/value") return "economics:read"; // only GET is handled
+  if (pathname === "/api/economics" || pathname === "/api/economics/value" || pathname === "/api/economics/delegations") return "economics:read"; // only GET is handled
   if (pathname === "/mcp") return "telemetry:read"; // MCP tools expose telemetry/cost analytics
   if (pathname === "/state" || pathname === "/inspect" || pathname === "/events" || pathname === "/stream") {
     return "records:read";

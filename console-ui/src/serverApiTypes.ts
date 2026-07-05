@@ -304,3 +304,39 @@ export interface ConsoleValueComparison {
     ratio: number | null;
   };
 }
+
+// ── Delegation efficiency read-model (flow-agents #415) ────────────────────────
+//    HONESTY: costUsd is a MODEL-GRANULARITY PROXY (no per-sub-agent token
+//    isolation); `unavailable` outcomes are excluded from acceptanceRate.
+export interface ConsoleEconomicsRoleModelRollup {
+  role: string;
+  /** Bare model name (the `@provider` suffix is stripped to join cost.by_model). */
+  model: string;
+  delegations: number;
+  reworkCount: number;
+  divergedCount: number;
+  failedCount: number;
+  acceptedCount: number;
+  /** NOT a success or failure — excluded from acceptanceRate's denominator. */
+  unavailableCount: number;
+  /** accepted / (accepted+rework+diverged+failed); null when that denominator is 0. */
+  acceptanceRate: number | null;
+  /** PROXY cost from cost.by_model; null when the model isn't in by_model. */
+  costUsd: number | null;
+  costGranularity: "model-proxy";
+}
+
+export interface ConsoleEconomicsDelegationRollup {
+  generatedAt: string;
+  tenantId: string;
+  /** Runs that carried any delegations. */
+  runCount: number;
+  perRoleModel: ConsoleEconomicsRoleModelRollup[];
+  /** Outcome coverage across all delegations. */
+  coverage: { measurable: number; unavailable: number };
+  signals: {
+    /** False on every runtime today → the cost column is a proxy, not exact spend. */
+    perDelegationTokens: boolean;
+    perDelegationOutcome: "full" | "partial" | "none" | "n/a" | "mixed";
+  };
+}

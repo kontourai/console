@@ -188,3 +188,146 @@ test("empty projection materializes zero-state read-models (empty-state honesty)
   assert.equal(value.headline.smallPlusKit, null);
   assert.equal(value.headline.verdict, "unknown");
 });
+
+// ── #415 delegation efficiency ────────────────────────────────────────────────
+// Honesty rules under test:
+//   1. Cost is a MODEL-GRANULARITY PROXY joined from cost.by_model by bare model.
+//   2. `unavailable` outcomes are EXCLUDED from acceptanceRate's denominator and
+//      reported as coverage — never folded into success/failure.
+//   3. Records with per_delegation_outcome none/n/a report unavailable coverage and
+//      a null acceptanceRate, never a misleading 0%.
+const DEFAULT_SIGNALS = { runtime: "claude-code", per_delegation_tokens: false, per_delegation_outcome: "partial" };
+
+test("#415 delegations: groups per (role, model); model is the BARE name (@provider stripped)", () => {
+  const rec = baseRecord({
+    run_id: "d-1",
+    cost: { estimated_cost_usd: 0.9, by_model: [{ model: "claude-opus-4-8", estimated_cost_usd: 0.7 }] },
+    signals: DEFAULT_SIGNALS,
+    delegations: [
+      { agent_id: "w1", role: "delegate-design", resolved_model: "claude-opus-4-8@anthropic", outcome: "accepted" },
+      { agent_id: "w2", role: "delegate-design", resolved_model: "claude-opus-4-8@anthropic", outcome: "rework" }
+    ]
+  });
+  const del = project([rec]).materializeDelegations("t");
+  assert.equal(del.runCount, 1);
+  assert.equal(del.perRoleModel.length, 1);
+  const g = del.perRoleModel[0];
+  assert.equal(g.role, "delegate-design");
+  assert.equal(g.model, "claude-opus-4-8"); // BARE — @anthropic stripped
+  assert.equal(g.delegations, 2);
+  assert.equal(g.acceptedCount, 1);
+  assert.equal(g.reworkCount, 1);
+});
+
+test("#415 delegations: acceptanceRate EXCLUDES `unavailable` from the denominator", () => {
+  const rec = baseRecord({
+    run_id: "d-2",
+    signals: DEFAULT_SIGNALS,
+    delegations: [
+      { role: "delegate-impl", resolved_model: "m@anthropic", outcome: "accepted" },
+      { role: "delegate-impl", resolved_model: "m@anthropic", outcome: "failed" },
+      { role: "delegate-impl", resolved_model: "m@anthropic", outcome: "unavailable" },
+      { role: "delegate-impl", resolved_model: "m@anthropic", outcome: "unavailable" }
+    ]
+  });
+  const g = project([rec]).materializeDelegations("t").perRoleModel[0];
+  // denominator = accepted+rework+diverged+failed = 1+0+0+1 = 2 (the 2 unavailable excluded).
+  assert.equal(g.acceptedCount, 1);
+  assert.equal(g.failedCount, 1);
+  assert.equal(g.unavailableCount, 2);
+  assert.equal(g.acceptanceRate, 0.5); // 1/2, NOT 1/4
+});
+
+test("#415 delegations: `unavailable` is NEITHER accepted NOR failed (coverage counts it separately)", () => {
+  const rec = baseRecord({
+    run_id: "d-3",
+    signals: DEFAULT_SIGNALS,
+    delegations: [
+      { role: "r", resolved_model: "m@anthropic", outcome: "accepted" },
+      { role: "r", resolved_model: "m@anthropic", outcome: "unavailable" }
+    ]
+  });
+  const del = project([rec]).materializeDelegations("t");
+  assert.equal(del.coverage.measurable, 1);
+  assert.equal(del.coverage.unavailable, 1);
+  const g = del.perRoleModel[0];
+  assert.equal(g.acceptedCount, 1);
+  assert.equal(g.failedCount, 0);
+  assert.equal(g.unavailableCount, 1);
+});
+
+test("#415 delegations: PROXY cost joins cost.by_model at MODEL granularity; null when model absent", () => {
+  const rec = baseRecord({
+    run_id: "d-4",
+    cost: { estimated_cost_usd: 1.0, by_model: [
+      { model: "claude-opus-4-8", estimated_cost_usd: 0.8 },
+      { model: "claude-fable-5", estimated_cost_usd: 0.2 }
+    ] },
+    signals: DEFAULT_SIGNALS,
+    delegations: [
+      { role: "design", resolved_model: "claude-opus-4-8@anthropic", outcome: "accepted" },
+      { role: "impl", resolved_model: "claude-sonnet-9@anthropic", outcome: "accepted" } // NOT in by_model
+    ]
+  });
+  const del = project([rec]).materializeDelegations("t");
+  const byRole = new Map<string, any>(del.perRoleModel.map((g: any) => [g.role, g]));
+  assert.equal(byRole.get("design").costUsd, 0.8); // joined from by_model
+  assert.equal(byRole.get("design").costGranularity, "model-proxy");
+  assert.equal(byRole.get("impl").costUsd, null); // model not in by_model → null, not a fake 0
+});
+
+test("#415 delegations: a model shared by two roles attributes the model cost to EACH group (proxy imprecision)", () => {
+  const rec = baseRecord({
+    run_id: "d-5",
+    cost: { estimated_cost_usd: 0.5, by_model: [{ model: "shared-m", estimated_cost_usd: 0.5 }] },
+    signals: DEFAULT_SIGNALS,
+    delegations: [
+      { role: "design", resolved_model: "shared-m@anthropic", outcome: "accepted" },
+      { role: "impl", resolved_model: "shared-m@anthropic", outcome: "accepted" }
+    ]
+  });
+  const del = project([rec]).materializeDelegations("t");
+  // The shared model's cost is NOT split — attributed whole to each (role, model) group.
+  for (const g of del.perRoleModel) assert.equal(g.costUsd, 0.5);
+});
+
+test("#415 delegations: a no-measurable-outcome tenant reports coverage.unavailable + null acceptanceRate (NOT 0)", () => {
+  const rec = baseRecord({
+    run_id: "d-6",
+    signals: { runtime: "claude-code", per_delegation_tokens: false, per_delegation_outcome: "none" },
+    delegations: [
+      { role: "r", resolved_model: "m@anthropic", outcome: "unavailable" },
+      { role: "r", resolved_model: "m@anthropic", outcome: "unavailable" }
+    ]
+  });
+  const del = project([rec]).materializeDelegations("t");
+  assert.equal(del.coverage.measurable, 0);
+  assert.equal(del.coverage.unavailable, 2);
+  assert.equal(del.perRoleModel[0].acceptanceRate, null); // NOT 0% — nothing was measurable
+  assert.equal(del.signals.perDelegationOutcome, "none");
+  assert.equal(del.signals.perDelegationTokens, false);
+});
+
+test("#415 delegations: signals aggregate across records; disagreement → `mixed`; tokens AND is false today", () => {
+  const records = [
+    baseRecord({ run_id: "s-1", signals: { per_delegation_tokens: false, per_delegation_outcome: "full" }, delegations: [{ role: "r", resolved_model: "m@a", outcome: "accepted" }] }),
+    baseRecord({ run_id: "s-2", signals: { per_delegation_tokens: false, per_delegation_outcome: "partial" }, delegations: [{ role: "r", resolved_model: "m@a", outcome: "rework" }] })
+  ];
+  const del = project(records).materializeDelegations("t");
+  assert.equal(del.signals.perDelegationOutcome, "mixed"); // full + partial disagree
+  assert.equal(del.signals.perDelegationTokens, false);
+});
+
+test("#415 delegations: records with [] delegations don't count as delegation runs; empty projection is zero-state", () => {
+  const records = [
+    baseRecord({ run_id: "e-1", signals: DEFAULT_SIGNALS, delegations: [] }),
+    baseRecord({ run_id: "e-2", signals: DEFAULT_SIGNALS, delegations: [{ role: "r", resolved_model: "m@a", outcome: "accepted" }] })
+  ];
+  const del = project(records).materializeDelegations("t");
+  assert.equal(del.runCount, 1); // only e-2 carried delegations
+  const empty = createEconomicsProjection().materializeDelegations("t");
+  assert.equal(empty.runCount, 0);
+  assert.deepEqual(empty.perRoleModel, []);
+  assert.deepEqual(empty.coverage, { measurable: 0, unavailable: 0 });
+  assert.equal(empty.signals.perDelegationOutcome, "n/a");
+});

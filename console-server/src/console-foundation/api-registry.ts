@@ -107,6 +107,8 @@ export const API_ROUTES: ApiRoute[] = [
     responses: { "200": { description: "EconomicsRollup read-model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
   { method: "GET", path: "/api/economics/value", auth: "gate", scope: "economics:read", knownRoute: true, summary: "The value comparison: acceptance rate, iterations-to-accept, defects, and $/acceptable grouped by (model_tier, kit_condition); headline small+kit vs large-bare (ADR 0003 call 4).", tags: ["economics"],
     responses: { "200": { description: "ValueComparison read-model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
+  { method: "GET", path: "/api/economics/delegations", auth: "gate", scope: "economics:read", knownRoute: true, summary: "Delegation efficiency per (role, model): outcome mix + acceptance rate (excluding `unavailable`), outcome coverage, and MODEL-GRANULARITY PROXY cost (no runtime isolates per-sub-agent tokens) (flow-agents #415).", tags: ["economics"],
+    responses: { "200": { description: "EconomicsDelegationRollup read-model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
 
   { method: "POST", path: "/mcp", auth: "gate", scope: "telemetry:read", knownRoute: true, summary: "MCP server (JSON-RPC 2.0) over the telemetry/cost analytics.", tags: ["mcp"],
     request: { description: "JSON-RPC 2.0 request: initialize | ping | tools/list | tools/call." },

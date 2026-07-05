@@ -3,27 +3,36 @@ import { Badge, Empty, Metric } from "@kontourai/ui/react";
 import { formatTime } from "../utils/format";
 import type {
   ConsoleEconomicsRollup,
+  ConsoleEconomicsDelegationRollup,
   ConsoleValueCell,
   ConsoleValueComparison
 } from "../serverApiTypes";
 import {
   cellLabel,
+  costIsProxy,
   formatPct,
   formatUsd,
   hasHeadline,
   hasTaggedRuns,
+  isEmptyDelegations,
   isEmptyEconomics,
+  outcomeCoverageRate,
+  outcomeNotMeasurable,
+  outcomeSummary,
+  roleModelRows,
+  sharedModels,
   taskTotals,
   taskTrend,
   tasksInRollup,
   verdictLabel
 } from "./economics/derive";
 
-type EconomicsView = "value" | "cost" | "defects" | "funnel";
+type EconomicsView = "value" | "cost" | "defects" | "funnel" | "delegation";
 
 export interface EconomicsSectionProps {
   rollup: ConsoleEconomicsRollup | null;
   value: ConsoleValueComparison | null;
+  delegations: ConsoleEconomicsDelegationRollup | null;
   error: string | null;
   liveStatus: string;
   lastLiveAt: string | null;
@@ -35,7 +44,7 @@ const EMPTY_COPY =
   "No economics recorded yet. Runs emit these once the kit-economics relay is configured; " +
   "the value comparison needs harness runs (flow-agents #350) against the independent oracle.";
 
-export function EconomicsSection({ rollup, value, error, liveStatus, lastLiveAt }: EconomicsSectionProps) {
+export function EconomicsSection({ rollup, value, delegations, error, liveStatus, lastLiveAt }: EconomicsSectionProps) {
   const [view, setView] = useState<EconomicsView>("value");
   const empty = isEmptyEconomics(rollup);
 
@@ -58,6 +67,7 @@ export function EconomicsSection({ rollup, value, error, liveStatus, lastLiveAt 
         <button type="button" className={view === "cost" ? "active" : ""} onClick={() => setView("cost")}>Cost</button>
         <button type="button" className={view === "defects" ? "active" : ""} onClick={() => setView("defects")}>Caught defects</button>
         <button type="button" className={view === "funnel" ? "active" : ""} onClick={() => setView("funnel")}>Funnel</button>
+        <button type="button" className={view === "delegation" ? "active" : ""} onClick={() => setView("delegation")}>Delegation efficiency</button>
       </nav>
 
       {empty ? (
@@ -68,6 +78,8 @@ export function EconomicsSection({ rollup, value, error, liveStatus, lastLiveAt 
         <CostView rollup={rollup} />
       ) : view === "defects" ? (
         <DefectsView rollup={rollup} />
+      ) : view === "delegation" ? (
+        <DelegationEfficiencyView delegations={delegations} />
       ) : (
         <FunnelView rollup={rollup} />
       )}
@@ -262,6 +274,92 @@ function DefectsView({ rollup }: { rollup: ConsoleEconomicsRollup | null }) {
       <p className="economics-oracle-note">
         Caught false completions are claimed passes contradicted by a trusted backstop — the strongest ROI evidence, counted distinctly.
       </p>
+    </div>
+  );
+}
+
+// ── Delegation efficiency (flow-agents #415, part 4). ──────────────────────────
+//    THE HONESTY RULES ARE THE POINT:
+//    • Cost is a MODEL-GRANULARITY PROXY (no runtime isolates per-sub-agent tokens)
+//      — the cost column is explicitly labelled, never presented as exact spend.
+//    • `unavailable` outcomes are NOT accepted and NOT failed — the projection
+//      already excludes them from acceptance; we surface them as coverage.
+//    • Signals-gated: when the harness can't measure outcomes we render
+//      "outcome not measurable on this harness", never a misleading 0%.
+function DelegationEfficiencyView({ delegations }: { delegations: ConsoleEconomicsDelegationRollup | null }) {
+  if (isEmptyDelegations(delegations) || !delegations) {
+    return <Empty label="No delegations recorded yet — runs that delegate to sub-agents (flow-agents #415) populate this once the harness emits the delegations block." />;
+  }
+  const notMeasurable = outcomeNotMeasurable(delegations);
+  const proxy = costIsProxy(delegations);
+  const coverageRate = outcomeCoverageRate(delegations);
+  const shared = sharedModels(delegations);
+  const rows = roleModelRows(delegations);
+
+  return (
+    <div className="economics-delegation">
+      <div className="economics-metrics" aria-label="Delegation coverage">
+        <Metric label="delegation runs" value={delegations.runCount} />
+        <Metric label="measurable outcomes" value={delegations.coverage.measurable} />
+        <Metric label="unavailable (not measurable)" value={delegations.coverage.unavailable} />
+        <Metric label="outcome coverage" value={coverageRate === null ? "n/a" : formatPct(coverageRate)} />
+      </div>
+
+      {/* Signals-gated honesty banner (rule 3). */}
+      {notMeasurable ? (
+        <div className="notice economics-notice" role="status">
+          Outcome not measurable on this harness (per_delegation_outcome = {delegations.signals.perDelegationOutcome}).
+          Acceptance is shown as n/a rather than a misleading 0%.
+        </div>
+      ) : null}
+
+      <div className="economics-usage-breakdown" aria-label="Delegation efficiency by (role, model)">
+        <h4>
+          By role &amp; model
+          {proxy ? <Badge value="cost: model-granularity (proxy)" tone="caution" /> : null}
+        </h4>
+        <p className="economics-oracle-note">
+          Cost is a MODEL-GRANULARITY PROXY joined from <code>cost.by_model</code> by resolved model — no runtime
+          isolates per-sub-agent tokens (<code>per_delegation_tokens = {String(delegations.signals.perDelegationTokens)}</code>),
+          so it is never exact per-delegation spend. <strong>unavailable</strong> outcomes are excluded from acceptance
+          (neither accepted nor failed) and reported as coverage.
+        </p>
+        <div className="economics-table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>role · model</th>
+                <th>delegations</th>
+                <th>outcomes</th>
+                <th>acceptance</th>
+                <th>unavailable</th>
+                <th>cost (proxy)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={`${row.role}\t${row.model}`}>
+                  <td>
+                    {row.role} · {row.model}
+                    {shared.includes(row.model) ? <span className="economics-phase unattributed"> shared model</span> : null}
+                  </td>
+                  <td>{row.delegations}</td>
+                  <td>{outcomeSummary(row)}</td>
+                  <td>{row.acceptanceRate === null ? "n/a" : formatPct(row.acceptanceRate)}</td>
+                  <td>{row.unavailableCount}</td>
+                  <td>{formatUsd(row.costUsd)}<span className="economics-proxy-tag"> proxy</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {shared.length ? (
+          <p className="economics-oracle-note">
+            Groups sharing a model ({shared.join(", ")}) each carry that model&rsquo;s full cost — the proxy does not
+            split a shared model across roles (inherent model-granularity imprecision).
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

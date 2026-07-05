@@ -24,8 +24,12 @@
 import type {
   ConsoleEconomicsRecord,
   EconomicsCaughtDefects,
+  EconomicsDelegation,
+  EconomicsDelegationRollup,
+  EconomicsDelegationSignals,
   EconomicsFindingsBySeverity,
   EconomicsFunnel,
+  EconomicsRoleModelRollup,
   EconomicsRollup,
   EconomicsTaskDayRollup,
   ValueCell,
@@ -41,6 +45,8 @@ export interface EconomicsProjection {
   materialize(tenantId: string): EconomicsRollup;
   /** The `(model_tier, kit_condition)` value comparison for `GET /api/economics/value`. */
   materializeValue(tenantId: string): ValueComparison;
+  /** Per-(role, model) delegation rollups for `GET /api/economics/delegations` (#415). */
+  materializeDelegations(tenantId: string): EconomicsDelegationRollup;
   count(): number;
 }
 
@@ -86,7 +92,11 @@ export function createEconomicsProjection(): EconomicsProjection {
     return buildValueComparison(records, tenantId);
   }
 
-  return { apply, materialize, materializeValue, count: () => records.length };
+  function materializeDelegations(tenantId: string): EconomicsDelegationRollup {
+    return buildDelegationRollup(records, tenantId);
+  }
+
+  return { apply, materialize, materializeValue, materializeDelegations, count: () => records.length };
 }
 
 // ── Cost rollup: cost per task_slug per day, with the paired defect counts on ──
@@ -247,6 +257,165 @@ function buildValueComparison(records: ConsoleEconomicsRecord[], tenantId: strin
   }
 }
 
+// ── Delegation efficiency: per-(role, model) outcome rollups + PROXY cost ──────
+//    (flow-agents #415, part 4). THE HONESTY RULES ARE THE FEATURE:
+//    1. Cost is a MODEL-GRANULARITY PROXY. No runtime isolates per-sub-agent tokens
+//       (signals.per_delegation_tokens=false), so cost is joined from `cost.by_model`
+//       by each delegation's `resolved_model` (bare, `@provider` stripped), grouped
+//       by (role, model). A model shared by the orchestrator or several roles is not
+//       split — the whole model cost is attributed to each sharing group (proxy
+//       imprecision, surfaced in the UI). NEVER exact per-delegation spend.
+//    2. `unavailable` is NOT accepted and NOT failed. acceptanceRate excludes it from
+//       the denominator; it is reported separately as coverage.
+//    3. Signals are respected: `perDelegationOutcome` is aggregated (worst/`mixed`)
+//       and `perDelegationTokens` is the AND over records (false today) so the UI
+//       can render the proxy label / "not measurable on this harness".
+function buildDelegationRollup(records: ConsoleEconomicsRecord[], tenantId: string): EconomicsDelegationRollup {
+  interface Group {
+    role: string;
+    model: string;
+    delegations: number;
+    reworkCount: number;
+    divergedCount: number;
+    failedCount: number;
+    acceptedCount: number;
+    unavailableCount: number;
+    /** run_ids contributing a delegation to this (role, model) — the proxy-cost keys. */
+    runIds: Set<string>;
+  }
+  const groups = new Map<string, Group>();
+  let runCount = 0;
+  let measurable = 0;
+  let unavailable = 0;
+  const outcomeSignals = new Set<EconomicsDelegationRollup["signals"]["perDelegationOutcome"]>();
+  let perDelegationTokens = true; // AND over records; false today on every runtime.
+
+  for (const record of records) {
+    const delegations = Array.isArray(record.delegations) ? record.delegations : [];
+    // Fold the harness-capability signals over EVERY record (even zero-delegation
+    // ones): they describe the runtime, not the delegation list.
+    const sig = record.signals;
+    if (sig && typeof sig === "object") {
+      if (sig.per_delegation_tokens !== true) perDelegationTokens = false;
+      const oc = sig.per_delegation_outcome;
+      if (oc === "full" || oc === "partial" || oc === "none" || oc === "n/a") outcomeSignals.add(oc);
+    } else {
+      // A record with no signals block can't promise per-delegation tokens.
+      perDelegationTokens = false;
+    }
+
+    if (delegations.length === 0) continue;
+    runCount += 1;
+    const runId = record.run_id || `anon-${runCount}`;
+
+    for (const delegation of delegations) {
+      const role = nonEmpty(delegation.role) || UNATTRIBUTED;
+      const model = bareModel(delegation.resolved_model);
+      const key = `${role}\t${model}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { role, model, delegations: 0, reworkCount: 0, divergedCount: 0, failedCount: 0, acceptedCount: 0, unavailableCount: 0, runIds: new Set() };
+        groups.set(key, group);
+      }
+      group.delegations += 1;
+      group.runIds.add(runId);
+      tallyOutcome(group, delegation.outcome);
+      if (delegation.outcome === "unavailable") unavailable += 1;
+      else if (isMeasurableOutcome(delegation.outcome)) measurable += 1;
+      else unavailable += 1; // unknown/absent outcome ≡ not measurable → coverage
+    }
+  }
+
+  const perRoleModel: EconomicsRoleModelRollup[] = [...groups.values()]
+    .map((group) => toRoleModelRollup(group, records))
+    .sort((a, b) => a.role === b.role ? a.model.localeCompare(b.model) : a.role.localeCompare(b.role));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    tenantId,
+    runCount,
+    perRoleModel,
+    coverage: { measurable, unavailable },
+    signals: {
+      perDelegationTokens,
+      perDelegationOutcome: aggregateOutcomeSignal(outcomeSignals)
+    }
+  };
+
+  function toRoleModelRollup(group: Group, all: ConsoleEconomicsRecord[]): EconomicsRoleModelRollup {
+    // Acceptance denominator EXCLUDES unavailable (honesty rule 2).
+    const denom = group.acceptedCount + group.reworkCount + group.divergedCount + group.failedCount;
+    const acceptanceRate = denom === 0 ? null : round4(group.acceptedCount / denom);
+    return {
+      role: group.role,
+      model: group.model,
+      delegations: group.delegations,
+      reworkCount: group.reworkCount,
+      divergedCount: group.divergedCount,
+      failedCount: group.failedCount,
+      acceptedCount: group.acceptedCount,
+      unavailableCount: group.unavailableCount,
+      acceptanceRate,
+      costUsd: proxyCostForGroup(group, all),
+      costGranularity: "model-proxy"
+    };
+  }
+}
+
+/** Sum the model's `estimated_cost_usd` from `cost.by_model` across the runs that
+ *  contributed a delegation to this (role, model) group. This is a PROXY: the whole
+ *  model cost is attributed even if the orchestrator or other roles shared the model.
+ *  `null` when the model never appears in any contributing run's `by_model`. */
+function proxyCostForGroup(group: { model: string; runIds: Set<string> }, records: ConsoleEconomicsRecord[]): number | null {
+  let total = 0;
+  let matched = false;
+  for (const record of records) {
+    const runId = record.run_id;
+    if (!runId || !group.runIds.has(runId)) continue;
+    const byModel = Array.isArray(record.cost?.by_model) ? record.cost.by_model : [];
+    for (const entry of byModel) {
+      if (entry && entry.model === group.model) {
+        matched = true;
+        total = round4(total + numberOr(entry.estimated_cost_usd, 0));
+      }
+    }
+  }
+  return matched ? total : null;
+}
+
+/** Bare model name — strip a trailing `@provider` suffix (`claude-opus-4-8@anthropic`
+ *  → `claude-opus-4-8`) so a delegation joins `cost.by_model[].model` (bare). */
+function bareModel(resolved: string | undefined): string {
+  const value = nonEmpty(resolved);
+  if (!value) return UNATTRIBUTED;
+  const at = value.indexOf("@");
+  return at === -1 ? value : value.slice(0, at) || UNATTRIBUTED;
+}
+
+function tallyOutcome(group: { reworkCount: number; divergedCount: number; failedCount: number; acceptedCount: number; unavailableCount: number }, outcome: EconomicsDelegation["outcome"]): void {
+  switch (outcome) {
+    case "accepted": group.acceptedCount += 1; break;
+    case "rework": group.reworkCount += 1; break;
+    case "diverged": group.divergedCount += 1; break;
+    case "failed": group.failedCount += 1; break;
+    case "unavailable": group.unavailableCount += 1; break;
+    default: group.unavailableCount += 1; break; // unknown/absent ≡ not measurable
+  }
+}
+
+/** A measurable outcome contributes to the acceptanceRate denominator. */
+function isMeasurableOutcome(outcome: EconomicsDelegation["outcome"]): boolean {
+  return outcome === "accepted" || outcome === "rework" || outcome === "diverged" || outcome === "failed";
+}
+
+/** Aggregate per-record `per_delegation_outcome` signals: one distinct value passes
+ *  through; disagreeing records collapse to `mixed`; no signal → `n/a`. */
+function aggregateOutcomeSignal(seen: Set<EconomicsDelegationSignals["perDelegationOutcome"]>): EconomicsDelegationSignals["perDelegationOutcome"] {
+  if (seen.size === 0) return "n/a";
+  if (seen.size === 1) return [...seen][0];
+  return "mixed";
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 /** Total findings caught pre-merge for a record (sum of every severity). */
 function findingsTotal(record: ConsoleEconomicsRecord): number {
@@ -263,6 +432,10 @@ function utcDay(at: string | null | undefined): string {
 }
 function numberOr(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+/** A trimmed non-empty string, or "" when the input isn't a usable string. */
+function nonEmpty(value: unknown): string {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 function round4(value: number): number {
   return Math.round(value * 10000) / 10000;
