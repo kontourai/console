@@ -2538,6 +2538,135 @@ flow-run-panel {
   color: var(--muted);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Overview — the unified triage-first operator home (redesign slice 1, #295 IA).
+   Reading order: Needs you → At a glance → signposts to Now / Fleet / Cost.
+   All values are @kontourai/ui --k-* tokens; no ad-hoc colors/spacing.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.overview { display: flex; flex-direction: column; gap: var(--k-space-6); padding-top: var(--k-space-5); }
+.ov-section { display: flex; flex-direction: column; gap: var(--k-space-4); }
+.ov-head { display: flex; align-items: baseline; gap: var(--k-space-3); }
+.ov-title { font-family: var(--k-font-display); font-size: var(--k-text-xl); font-weight: 600; letter-spacing: -0.01em; color: var(--k-text); }
+.ov-sub { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); letter-spacing: 0.04em; }
+.ov-grow { flex: 1; }
+.ov-live { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-muted); }
+.ov-link { background: none; border: none; cursor: pointer; font-family: var(--k-font-mono); font-size: var(--k-text-sm); color: var(--k-brand); padding: 0; }
+.ov-link:hover { text-decoration: underline; }
+
+/* Needs-you triage cards */
+.triage { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--k-space-3); }
+@media (max-width: 900px) { .triage { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .triage { grid-template-columns: 1fr; } }
+.tcard { position: relative; background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-4); overflow: hidden; box-shadow: var(--k-shadow); }
+.tcard::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--tcard-accent, var(--k-neutral)); }
+.tcard.tone-negative { --tcard-accent: var(--k-negative); }
+.tcard.tone-caution { --tcard-accent: var(--k-caution); }
+.tcard.tone-active { --tcard-accent: var(--k-active); }
+.tcard-kind { font-family: var(--k-font-mono); font-size: var(--k-text-xs); letter-spacing: 0.09em; text-transform: uppercase; color: var(--tcard-accent); }
+.tcard-title { font-family: var(--k-font-ui); font-size: var(--k-text-md); font-weight: 600; letter-spacing: -0.005em; color: var(--k-text); margin: var(--k-space-2) 0 var(--k-space-1); overflow-wrap: anywhere; }
+.tcard-detail { font-size: var(--k-text-sm); color: var(--k-text-muted); margin: 0; overflow-wrap: anywhere; }
+.tcard-actions { margin-top: var(--k-space-3); display: flex; gap: var(--k-space-2); }
+.tcard-btn { font-family: var(--k-font-ui); font-size: var(--k-text-sm); font-weight: 600; padding: 5px 11px; border-radius: var(--k-radius-control); border: 1px solid var(--k-line-strong); background: transparent; color: var(--k-text-muted); cursor: pointer; transition: background var(--k-dur) var(--k-ease); }
+.tcard-btn.primary { background: var(--k-brand); color: var(--k-brand-contrast); border-color: transparent; }
+.tcard-btn:hover { border-color: var(--k-brand); }
+.tcard-btn.primary:hover { filter: brightness(1.06); }
+
+/* At-a-glance health strip */
+.glance { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--k-space-3); }
+@media (max-width: 900px) { .glance { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 480px) { .glance { grid-template-columns: repeat(2, 1fr); } }
+.glance-stat { display: flex; flex-direction: column; gap: 2px; background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-3) var(--k-space-4); text-align: left; }
+button.glance-stat { cursor: pointer; font: inherit; }
+button.glance-stat:hover { border-color: var(--k-line-strong); }
+.glance-value { font-family: var(--k-font-display); font-size: var(--k-text-2xl); font-weight: 600; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--k-text); }
+.glance-stat.tone-positive .glance-value { color: var(--k-positive); }
+.glance-stat.tone-negative .glance-value { color: var(--k-negative); }
+.glance-stat.tone-caution .glance-value { color: var(--k-caution); }
+.glance-label { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); letter-spacing: 0.03em; }
+
+/* Migration signposts (retired as each section folds into Overview) */
+.ov-signposts { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--k-space-3); }
+@media (max-width: 720px) { .ov-signposts { grid-template-columns: 1fr; } }
+.signpost { display: flex; flex-direction: column; gap: var(--k-space-2); background: var(--k-panel-raised); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-4); }
+.signpost.is-disabled { opacity: 0.6; }
+.signpost-title { font-family: var(--k-font-display); font-size: var(--k-text-lg); font-weight: 600; color: var(--k-text); }
+.signpost-body { font-size: var(--k-text-sm); color: var(--k-text-muted); margin: 0; flex: 1; }
+.signpost-cta { align-self: flex-start; margin-top: var(--k-space-2); font-family: var(--k-font-mono); font-size: var(--k-text-sm); color: var(--k-brand); background: none; border: none; padding: 0; cursor: pointer; }
+.signpost-cta:disabled { color: var(--k-text-faint); cursor: default; }
+.signpost-cta:not(:disabled):hover { text-decoration: underline; }
+
+/* All-clear state for Needs-you (custom; installed @kontourai/ui Empty is label-only) */
+.ov-allclear { display: flex; align-items: center; gap: var(--k-space-4); background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-5); }
+.ov-allclear-mark { width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; display: grid; place-items: center; background: var(--k-positive-soft, rgba(52,211,153,0.14)); color: var(--k-positive); font-size: 20px; font-weight: 700; }
+.ov-allclear-title { font-family: var(--k-font-display); font-size: var(--k-text-lg); font-weight: 600; color: var(--k-text); margin: 0 0 2px; }
+.ov-allclear-body { font-size: var(--k-text-sm); color: var(--k-text-muted); margin: 0; max-width: 60ch; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Overview slices 2-4 — Happening now · The fleet · What it's costing.
+   All values are @kontourai/ui --k-* tokens (default teal theme).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── ② Happening now ──────────────────────────────────────────────────────── */
+.now-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--k-space-3); }
+@media (max-width: 860px) { .now-grid { grid-template-columns: 1fr; } }
+.now-panel { background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-4); }
+.now-panel-head { display: flex; align-items: center; gap: var(--k-space-2); font-family: var(--k-font-mono); font-size: var(--k-text-xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--k-text-muted); margin-bottom: var(--k-space-3); }
+.now-count { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); background: var(--k-neutral-soft, rgba(111,128,149,0.14)); padding: 1px 7px; border-radius: 20px; }
+.now-stage { font-family: var(--k-font-display); font-size: var(--k-text-lg); font-weight: 600; color: var(--k-text); margin: 0 0 var(--k-space-3); letter-spacing: -0.01em; }
+.now-work { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--k-space-2); }
+.now-work-row { display: grid; grid-template-columns: 1fr 96px; gap: var(--k-space-3); align-items: center; }
+.now-work-main { display: flex; flex-direction: column; min-width: 0; }
+.now-work-label { font-size: var(--k-text-sm); color: var(--k-text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now-work-step { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); }
+.now-progress { height: 6px; background: var(--k-neutral-soft, rgba(111,128,149,0.14)); border-radius: 20px; overflow: hidden; }
+.now-progress-fill { display: block; height: 100%; background: var(--k-active); border-radius: 20px; }
+.now-work-status { font-family: var(--k-font-mono); font-size: var(--k-text-xs); text-align: right; color: var(--k-text-muted); }
+.now-work-status.tone-positive { color: var(--k-positive); } .now-work-status.tone-active { color: var(--k-active); } .now-work-status.tone-caution { color: var(--k-caution); } .now-work-status.tone-negative { color: var(--k-negative); }
+.now-idle { font-size: var(--k-text-sm); color: var(--k-text-faint); margin: 0; }
+.now-feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.feed-row { display: grid; grid-template-columns: 10px 1fr auto; gap: var(--k-space-3); align-items: baseline; padding: 7px 0; border-bottom: 1px solid rgba(150,180,210,0.06); }
+.feed-row:last-child { border-bottom: none; }
+.feed-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; background: var(--k-neutral); }
+.feed-dot.tone-positive { background: var(--k-positive); } .feed-dot.tone-active { background: var(--k-active); } .feed-dot.tone-caution { background: var(--k-caution); } .feed-dot.tone-negative { background: var(--k-negative); } .feed-dot.tone-neutral { background: var(--k-neutral); }
+.feed-body { display: flex; flex-direction: column; min-width: 0; }
+.feed-title { font-size: var(--k-text-sm); color: var(--k-text); overflow: hidden; text-overflow: ellipsis; }
+.feed-who { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); }
+.feed-time { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); white-space: nowrap; }
+
+/* ── ③ The fleet ──────────────────────────────────────────────────────────── */
+.fleet { background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-2) var(--k-space-4) var(--k-space-3); }
+.fleet-list { list-style: none; margin: 0; padding: 0; }
+.fleet-row { display: grid; grid-template-columns: 30px 1fr auto auto auto; gap: var(--k-space-3); align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(150,180,210,0.06); }
+.fleet-row:last-child { border-bottom: none; }
+.fleet-avatar { width: 30px; height: 30px; border-radius: 7px; display: grid; place-items: center; font-family: var(--k-font-mono); font-size: 11px; font-weight: 700; background: var(--k-active-soft, rgba(122,162,255,0.14)); color: var(--k-active); }
+.fleet-main { display: flex; flex-direction: column; min-width: 0; }
+.fleet-name { font-size: var(--k-text-sm); font-weight: 600; color: var(--k-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-runtime { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); }
+.fleet-metric { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fleet-active-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--k-positive); justify-self: center; }
+.fleet-note { font-size: var(--k-text-xs); color: var(--k-text-faint); margin: var(--k-space-3) 0 var(--k-space-1); line-height: var(--k-leading-normal); }
+.fleet-note .mono { font-family: var(--k-font-mono); color: var(--k-text-muted); }
+
+/* ── ④ What it's costing ──────────────────────────────────────────────────── */
+.cost-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--k-space-3); }
+@media (max-width: 700px) { .cost-kpis { grid-template-columns: 1fr 1fr; } }
+.cost-metric { display: flex; flex-direction: column; gap: 2px; background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-3) var(--k-space-4); }
+.cost-metric-label { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); letter-spacing: 0.03em; }
+.cost-metric-value { font-family: var(--k-font-display); font-size: var(--k-text-2xl); font-weight: 600; color: var(--k-text); line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.cost-metric-detail { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-muted); }
+.cost-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: var(--k-space-3); margin-top: var(--k-space-3); }
+@media (max-width: 860px) { .cost-grid { grid-template-columns: 1fr; } }
+.cost-panel { background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-4); }
+.cost-panel-head { font-family: var(--k-font-mono); font-size: var(--k-text-xs); letter-spacing: 0.06em; text-transform: uppercase; color: var(--k-text-muted); margin-bottom: var(--k-space-2); }
+.cost-panel-head .cost-sub { color: var(--k-text-faint); text-transform: none; letter-spacing: 0; margin-left: var(--k-space-2); }
+.cost-chart { margin-top: var(--k-space-2); }
+.cost-models { list-style: none; margin: var(--k-space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.cost-model-row { display: grid; grid-template-columns: 92px 1fr 62px; gap: var(--k-space-3); align-items: center; }
+.cost-model-name { font-family: var(--k-font-mono); font-size: var(--k-text-sm); color: var(--k-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cost-model-track { height: 7px; background: var(--k-neutral-soft, rgba(111,128,149,0.14)); border-radius: 20px; overflow: hidden; }
+.cost-model-fill { display: block; height: 100%; background: var(--k-brand); border-radius: 20px; }
+.cost-model-amt { text-align: right; font-family: var(--k-font-mono); font-size: var(--k-text-sm); color: var(--k-text); font-variant-numeric: tabular-nums; }
+
 /* ── Economics (the ROI surface; console #117) ──────────────────────────────── */
 .economics-section {
   min-width: 0;

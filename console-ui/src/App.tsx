@@ -6,14 +6,14 @@ import { useTheme } from "./hooks/useTheme";
 import type { ConsoleEconomicsRollup, ConsoleEconomicsDelegationRollup, ConsoleTelemetryResponse, ConsoleValueComparison, TelemetryQueryInput } from "./serverApiTypes";
 import { ConnectionBar } from "./sections/ConnectionBar";
 import { EconomicsSection } from "./sections/EconomicsSection";
-import { EnvironmentSection } from "./sections/EnvironmentSection";
 import { StageBand } from "./sections/StageBand";
 import { TelemetrySection } from "./sections/TelemetrySection";
 import { TimelineSection } from "./sections/TimelineSection";
 import { DEFAULT_TELEMETRY_QUERY, parseTelemetryRoute, serializeTelemetryRoute, withDrilldownFilter, type TelemetryRouteState } from "./utils/telemetryQuery";
 import { WorkGrid } from "./sections/WorkGrid";
+import { OverviewSection, type OverviewTarget } from "./sections/OverviewSection";
 
-type AppView = "operate" | "telemetry" | "economics" | "environment";
+type AppView = "overview" | "operate" | "telemetry" | "economics";
 
 const CONNECTION_STORAGE_KEY = "kontour.console.connection.v1";
 
@@ -188,10 +188,10 @@ export default function App() {
     setView(nextView);
     const nextPath = nextView === "telemetry"
       ? serializeTelemetryRoute(telemetryQuery, telemetryRoute.drilldown)
-      : nextView === "economics"
-        ? "/economics"
-        : nextView === "environment"
-          ? "/environment"
+      : nextView === "operate"
+        ? "/operate"
+        : nextView === "economics"
+          ? "/economics"
           : "/";
     if (`${window.location.pathname}${window.location.search}` !== nextPath) {
       window.history.pushState(null, "", nextPath);
@@ -237,12 +237,19 @@ export default function App() {
         onSignOut={handleSignOut}
       />
       <nav className="view-tabs" aria-label="Console views">
+        <button type="button" className={view === "overview" ? "active" : ""} onClick={() => selectView("overview")}>Overview</button>
         <button type="button" className={view === "operate" ? "active" : ""} onClick={() => selectView("operate")}>Operate</button>
         <button type="button" className={view === "telemetry" ? "active" : ""} onClick={() => selectView("telemetry")}>Telemetry</button>
         <button type="button" className={view === "economics" ? "active" : ""} onClick={() => selectView("economics")}>Economics</button>
-        <button type="button" className={view === "environment" ? "active" : ""} onClick={() => selectView("environment")}>Environment</button>
       </nav>
-      {view === "operate" ? (
+      {view === "overview" ? (
+        <OverviewSection
+          state={state}
+          telemetry={telemetry}
+          liveStatus={status === "connected" ? "live" : `stream ${status}`}
+          onOpen={(target: OverviewTarget) => selectView(target)}
+        />
+      ) : view === "operate" ? (
         <>
           <StageBand state={state} />
           {error ? <div className="notice">{error}</div> : null}
@@ -265,19 +272,12 @@ export default function App() {
           liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
           lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
         />
-      ) : view === "economics" ? (
+      ) : (
         <EconomicsSection
           rollup={economics}
           value={economicsValue}
           delegations={economicsDelegations}
           error={economicsError}
-          liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
-          lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
-        />
-      ) : (
-        <EnvironmentSection
-          state={state}
-          telemetry={telemetry}
           liveStatus={status === "connected" ? "live stream connected" : `stream ${status}`}
           lastLiveAt={lastTelemetryUpdated?.telemetry?.generatedAt || null}
         />
@@ -289,6 +289,6 @@ export default function App() {
 function viewFromPath(pathname: string): AppView {
   if (pathname === "/telemetry" || pathname.startsWith("/telemetry/")) return "telemetry";
   if (pathname === "/economics" || pathname.startsWith("/economics/")) return "economics";
-  if (pathname === "/environment") return "environment";
-  return "operate";
+  if (pathname === "/operate") return "operate";
+  return "overview";
 }

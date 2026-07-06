@@ -507,7 +507,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("renders the console operating plane from hub events", async ({ page }) => {
-  const consoleErrors = await loadConsole(page);
+  const consoleErrors = await loadOperate(page);
 
   await expect(page).toHaveTitle("Console");
   await expect(page.getByRole("main")).toContainText("Operating plane");
@@ -722,7 +722,7 @@ test("opens and refreshes telemetry dimension drilldown routes", async ({ page }
 
 test("keeps the primary console sections within the mobile viewport", async ({ page }) => {
   test.skip(test.info().project.name !== "chromium-mobile", "mobile-only layout check");
-  const consoleErrors = await loadConsole(page);
+  const consoleErrors = await loadOperate(page);
 
   const viewport = page.viewportSize();
   const shellBox = await page.locator(".shell").boundingBox();
@@ -770,6 +770,15 @@ async function loadConsole(page: Page): Promise<string[]> {
   await page.goto("/");
   await expect(page.locator("body")).toBeVisible();
   await expect(page.getByRole("main")).toContainText("Survey review ready");
+  return consoleErrors;
+}
+
+// The operating plane (stage band, work grid, timeline) lives under the
+// Operate tab since the unified Overview became the default view.
+async function loadOperate(page: Page): Promise<string[]> {
+  const consoleErrors = await loadConsole(page);
+  await page.getByRole("navigation", { name: "Console views" }).getByRole("button", { name: "Operate" }).click();
+  await expect(page.getByLabel("Current stage")).toContainText("Survey review ready");
   return consoleErrors;
 }
 
@@ -937,9 +946,9 @@ function localDateTimeToIso(value: string): string {
 }
 
 test("renders embedded surface-trust-panel in the gate drill-in for a trust.bundle expect with trustReport", async ({ page }) => {
-  const consoleErrors = await loadConsole(page);
+  const consoleErrors = await loadOperate(page);
 
-  // The default view is "operate" which shows the pipeline.
+  // The operate view shows the pipeline.
   // The implement stage card is in the visual pipeline DAG (aria-hidden for screen readers,
   // since the accessible <ol> list duplicates the info). Use CSS selectors to click it.
   await expect(page.getByRole("main")).toContainText("implement");
@@ -979,7 +988,7 @@ test("renders embedded surface-trust-panel in the gate drill-in for a trust.bund
 });
 
 test("embeds flow-run-panel rendering the run graph, gates, evidence, and drilling into a referenced child", async ({ page }) => {
-  const consoleErrors = await loadConsole(page);
+  const consoleErrors = await loadOperate(page);
 
   // The <flow-run-panel> custom element mounts in the operate view from the
   // pre-derived projection (no click needed — it sits below the stepper).
@@ -1042,7 +1051,7 @@ test("embeds flow-run-panel rendering the run graph, gates, evidence, and drilli
 });
 
 test("drilling into a non-pre-fetched child live-fetches its projection from the ingest read endpoint", async ({ page }) => {
-  const consoleErrors = await loadConsole(page);
+  const consoleErrors = await loadOperate(page);
 
   await expect(page.locator("flow-run-panel").first()).toBeVisible();
 
@@ -1082,7 +1091,7 @@ test("a referenced child with no recorded projection shows an honest empty state
   await page.addInitScript(() => {
     window.__kontourIngestForce404 = true;
   });
-  const consoleErrors = await loadConsole(page);
+  const consoleErrors = await loadOperate(page);
 
   await expect(page.locator("flow-run-panel").first()).toBeVisible();
   const childToggle = page.locator("[data-child-run-id='run-child-2']").first();
