@@ -86,6 +86,9 @@ test("renders the operating plane after authenticating via the Connection popove
   await page.getByRole("button", { name: "Reconnect" }).click();
 
   await expect(page.locator(".conn-dot")).toHaveAttribute("data-status", "connected", { timeout: 10_000 });
+  // Gate names and evidence detail render on the Operate view (the unified
+  // Overview is the default view since the redesign).
+  await page.getByRole("navigation", { name: "Console views" }).getByRole("button", { name: "Operate" }).click();
   await expect(page.getByRole("main")).toContainText("Suite audit remediation");
   await expect(page.getByRole("main")).toContainText("Backlog Gate");
   await expect(page.getByRole("main")).toContainText("9/9 correctness findings reproduced by running code");
