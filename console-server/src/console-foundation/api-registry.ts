@@ -8,7 +8,7 @@
 // refs point at definitions generated FROM the TS types
 // (openapi/schemas.generated.json), so data shapes are code-derived, not authored.
 
-export type ConsoleScope = "telemetry:read" | "telemetry:write" | "records:read" | "records:write" | "pricing:read";
+export type ConsoleScope = "telemetry:read" | "telemetry:write" | "records:read" | "records:write" | "pricing:read" | "economics:read";
 
 export interface ApiQueryParam {
   name: string;
@@ -102,6 +102,13 @@ export const API_ROUTES: ApiRoute[] = [
     responses: { "202": { description: "Delivery result.", schema: "DeliveryResult" }, "400": ERR("Invalid telemetry record."), "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant."), "500": ERR("Delivery failed.") } },
   { method: "GET", path: "/api/telemetry/pricing", auth: "gate", scope: "pricing:read", knownRoute: true, summary: "Versioned model pricing registry.", tags: ["telemetry"],
     responses: { "200": { description: "Pricing registry." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
+
+  { method: "GET", path: "/api/economics", auth: "gate", scope: "economics:read", knownRoute: true, summary: "Kit-economics rollups: cost per kit/day (with paired defect counts), caught-defects, and the iteration funnel (tenant-scoped).", tags: ["economics"],
+    responses: { "200": { description: "EconomicsRollup read-model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
+  { method: "GET", path: "/api/economics/value", auth: "gate", scope: "economics:read", knownRoute: true, summary: "The value comparison: acceptance rate, iterations-to-accept, defects, and $/acceptable grouped by (model_tier, kit_condition); headline small+kit vs large-bare (ADR 0003 call 4).", tags: ["economics"],
+    responses: { "200": { description: "ValueComparison read-model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
+  { method: "GET", path: "/api/economics/delegations", auth: "gate", scope: "economics:read", knownRoute: true, summary: "Delegation efficiency per (role, model): outcome mix + acceptance rate (excluding `unavailable`), outcome coverage, and MODEL-GRANULARITY PROXY cost (no runtime isolates per-sub-agent tokens) (flow-agents #415).", tags: ["economics"],
+    responses: { "200": { description: "EconomicsDelegationRollup read-model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
 
   { method: "POST", path: "/mcp", auth: "gate", scope: "telemetry:read", knownRoute: true, summary: "MCP server (JSON-RPC 2.0) over the telemetry/cost analytics.", tags: ["mcp"],
     request: { description: "JSON-RPC 2.0 request: initialize | ping | tools/list | tools/call." },

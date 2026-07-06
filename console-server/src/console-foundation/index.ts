@@ -31,6 +31,8 @@ export type {
   ConsoleHostedAuthToken,
   ConsoleHubServer,
   ConsoleHubServerOptions,
+  ConsolePrincipal,
+  ConsolePrincipalKind,
   ConsoleProjectionRecord,
   ConsoleReadySsePayload,
   ConsoleRecord,
@@ -109,6 +111,41 @@ export type {
   TelemetryRepositoryConfig,
   TelemetryStore
 } from "./telemetry";
+
+export { createEconomicsStore } from "./economics-store";
+export type { EconomicsStore } from "./economics-store";
+export { createEconomicsProjection } from "./economics-projection";
+export type { EconomicsProjection } from "./economics-projection";
+export { validateEconomicsRecordBody } from "./console-hub-server";
+export type {
+  ConsoleEconomicsRecord,
+  EconomicsAcceptanceLabel,
+  EconomicsCaughtDefects,
+  EconomicsCost,
+  EconomicsCostByModel,
+  EconomicsDefects,
+  EconomicsDelegation,
+  EconomicsDelegationCostGranularity,
+  EconomicsDelegationCoverage,
+  EconomicsDelegationOutcome,
+  EconomicsDelegationRollup,
+  EconomicsDelegationSignals,
+  EconomicsFindingsBySeverity,
+  EconomicsFunnel,
+  EconomicsIterations,
+  EconomicsKitCondition,
+  EconomicsModelTier,
+  EconomicsPerDelegationOutcome,
+  EconomicsPhase,
+  EconomicsRoleModelRollup,
+  EconomicsRollup,
+  EconomicsSignals,
+  EconomicsTaskDayRollup,
+  EconomicsTime,
+  EconomicsVerificationVerdict,
+  ValueCell,
+  ValueComparison
+} from "./types";
 
 const EVENT_DIR = path.join("docs", "examples", "event-streams");
 const PROJECTION_DIR = path.join("docs", "examples", "projections");
@@ -813,6 +850,8 @@ const consoleHubServer = require("./console-hub-server");
 const config = require("./config");
 const migrations = require("./migrations");
 const telemetry = require("./telemetry");
+const economicsStore = require("./economics-store");
+const economicsProjection = require("./economics-projection");
 
 module.exports = {
   inspectFixtures,
@@ -827,6 +866,11 @@ module.exports = {
   LocalConsoleHub: consoleHub.LocalConsoleHub,
   createLocalConsoleHub: consoleHub.createLocalConsoleHub,
   createConsoleHubServer: consoleHubServer.createConsoleHubServer,
+  requireScope: consoleHubServer.requireScope,
+  requiredScopeForRoute: consoleHubServer.requiredScopeForRoute,
+  validateEconomicsRecordBody: consoleHubServer.validateEconomicsRecordBody,
+  createEconomicsStore: economicsStore.createEconomicsStore,
+  createEconomicsProjection: economicsProjection.createEconomicsProjection,
   applyConsoleMigrations: migrations.applyConsoleMigrations,
   loadConsoleMigrations: migrations.loadConsoleMigrations,
   assertConsoleRuntimeConfig: config.assertConsoleRuntimeConfig,

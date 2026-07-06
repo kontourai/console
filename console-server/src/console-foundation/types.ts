@@ -1,4 +1,4 @@
-export type RecordKind = "event" | "projection";
+export type RecordKind = "event" | "projection" | "economics";
 export type DeliveryOutcome = "accepted" | "skipped" | "failed";
 export type ValidationSeverity = "error" | "warning";
 export type SourceKind = "fixture" | "local";
@@ -141,6 +141,13 @@ export interface ConsoleRecordBase {
   id?: string;
   producer?: Record<string, unknown>;
   scope?: Record<string, unknown>;
+  /**
+   * Tenant a record belongs to. Self-description only — the authoritative tenant
+   * is bound from the verified principal at ingest (ADR 0003 call 2). A body that
+   * disagrees with the principal's tenant is rejected; otherwise ingest stamps
+   * this field from the principal before the record is appended.
+   */
+  tenant_id?: string;
   [key: string]: unknown;
 }
 
@@ -165,6 +172,287 @@ export interface ConsoleProjectionRecord extends ConsoleRecordBase {
 }
 
 export type ConsoleRecord = ConsoleEventRecord | ConsoleProjectionRecord | ConsoleRecordBase;
+
+// ── Economics (ADR 0003 calls 1, 3, 4; console #117 / flow-agents #349) ───────
+//
+// A per-run economics FACT — an additive versioned KIND on the one `/records`
+// ingress (call 1), routed to the telemetry plane (operational), never
+// `hub.append`. The rollups and the value comparison are REBUILDABLE projections
+// over the record stream (call 3).
+//
+// The record shape is the AUTHORITATIVE flow-agents #349 `kontour.console.economics`
+// v0.1 contract (snake_case, nested): `cost`/`time`/`iterations`/`defects` objects,
+// with `cost` and `defects` co-required (the R7 Goodhart guard — a cost-only record
+// is schema-invalid). Per-phase attribution lives in the top-level `phases[]` array
+// (never a `cost.by_phase`); when no phase context exists, everything lands in a
+// single `{phase:"unattributed", ...}` entry (the phase-sum invariant).
+//
+// The value-experiment dimensions `model_tier` / `kit_condition` / `acceptance_label`
+// are NOT on the base record — they are #350 HARNESS tags that EXTEND it on harness
+// runs only (the schema is `additionalProperties: true`). They are therefore OPTIONAL
+// here. `acceptance_label`, when present, is the INDEPENDENT kontourai/evals oracle's
+// verdict (call 4) — Console renders it verbatim and NEVER re-derives acceptance from
+// kit gates.
+
+export type EconomicsModelTier = "small" | "large";
+export type EconomicsKitCondition = "bare" | "+kit";
+export type EconomicsAcceptanceLabel = "accepted" | "rejected";
+export type EconomicsVerificationVerdict = "PASS" | "FAIL" | "NOT_VERIFIED";
+
+export interface EconomicsCostByModel {
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  estimated_cost_usd?: number;
+}
+
+export interface EconomicsCost {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  estimated_cost_usd: number;
+  by_model: EconomicsCostByModel[];
+}
+
+export interface EconomicsTime {
+  wall_clock_s: number;
+  human_wait_s: number;
+}
+
+export interface EconomicsPhase {
+  phase: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+  estimated_cost_usd?: number;
+  wall_clock_s?: number;
+}
+
+export interface EconomicsIterations {
+  count: number;
+  route_backs: number;
+}
+
+export interface EconomicsFindingsBySeverity {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+}
+
+export interface EconomicsDefects {
+  gate_fires: number;
+  findings_by_severity: EconomicsFindingsBySeverity;
+  /** Claimed passes contradicted by a trusted backstop — the strongest ROI evidence. */
+  caught_false_completions: number;
+  verification_verdict: EconomicsVerificationVerdict;
+}
+
+/** A delegation outcome (flow-agents #415). `unavailable` = NOT measurable — it is
+ *  never folded into any accepted/failed bucket (honesty rule 2). */
+export type EconomicsDelegationOutcome = "accepted" | "rework" | "diverged" | "failed" | "unavailable";
+
+/** One delegated sub-agent entry on a run (flow-agents #415, part 4). Passed through
+ *  ingestion untouched via additionalProperties; typed here so the projection can read it. */
+export interface EconomicsDelegation {
+  agent_id?: string;
+  /** The routing role, e.g. `delegate-design`. The (role, model) grouping dimension. */
+  role?: string;
+  /** Resolved model WITH an `@provider` suffix (e.g. `claude-opus-4-8@anthropic`);
+   *  the projection strips the suffix to join against `cost.by_model[].model` (bare). */
+  resolved_model?: string;
+  summary?: string;
+  /** Present only when this delegation was escalated from another role. */
+  escalated_from?: string;
+  /** >1 means the orchestrator re-prompted this delegate. */
+  dispatch_count?: number;
+  outcome?: EconomicsDelegationOutcome;
+}
+
+/** Full outcome coverage on this harness; `partial` = some delegations carry outcomes. */
+export type EconomicsPerDelegationOutcome = "full" | "partial" | "none" | "n/a";
+
+/** Harness-capability declaration (flow-agents #415). The panel is gated on these:
+ *  `per_delegation_tokens` is false on every runtime today → per-delegation cost is a
+ *  MODEL-GRANULARITY PROXY, never real per-sub-agent spend (honesty rule 1 + 3). */
+export interface EconomicsSignals {
+  runtime?: string;
+  /** False on every runtime today → per-delegation cost is UNAVAILABLE (proxy only). */
+  per_delegation_tokens?: boolean;
+  /** How much outcome is measurable on this harness. */
+  per_delegation_outcome?: EconomicsPerDelegationOutcome;
+}
+
+export interface ConsoleEconomicsRecord extends ConsoleRecordBase {
+  schema: "kontour.console.economics";
+  version: "0.1";
+  run_id: string;
+  /** Epoch-millis string of the run end (session.end). Nullable per #349. */
+  at?: string | null;
+  /** The task the run served — the natural per-run join dimension. Nullable per #349. */
+  task_slug?: string | null;
+  model?: string | null;
+  pricing_version?: string | null;
+  cost: EconomicsCost;
+  time: EconomicsTime;
+  phases?: EconomicsPhase[];
+  iterations: EconomicsIterations;
+  defects: EconomicsDefects;
+  /**
+   * Self-description only; ingest STAMPS the authoritative tenant from the
+   * principal. #349 permits a body `null`, but ingest always overwrites this with
+   * the principal's tenant before append, so the stored value is a string.
+   */
+  tenant_id?: string;
+  // ── #350 harness experiment tags (OPTIONAL; present only on harness runs) ──
+  model_tier?: EconomicsModelTier;
+  kit_condition?: EconomicsKitCondition;
+  /** The INDEPENDENT oracle's verdict — never re-derived from kit gates (call 4). */
+  acceptance_label?: EconomicsAcceptanceLabel;
+  // ── #415 delegation efficiency (OPTIONAL; passed through ingest untouched) ──
+  /** One entry per delegated sub-agent; `[]` when none. */
+  delegations?: EconomicsDelegation[];
+  /** Harness-capability declaration gating the delegation panel's honesty labels. */
+  signals?: EconomicsSignals;
+}
+
+/** Cost + paired-defect trend for one task_slug over one day (R5: never cost-only). */
+export interface EconomicsTaskDayRollup {
+  /** The run's `task_slug`, or `unattributed` when the record carries none. */
+  taskSlug: string;
+  /** Calendar day (UTC), `YYYY-MM-DD`. */
+  day: string;
+  runs: number;
+  totalCostUsd: number;
+  /** Per-phase cost from the top-level `phases[]`; an `unattributed` bucket otherwise. */
+  costByPhase: Record<string, number>;
+  /** All findings caught pre-merge (sum over findings_by_severity). */
+  defectsCaught: number;
+  caughtFalseCompletions: number;
+}
+
+export interface EconomicsCaughtDefects {
+  /** Findings caught pre-merge across all runs (sum of every severity). */
+  defectsCaught: number;
+  /** Per-severity totals. */
+  bySeverity: EconomicsFindingsBySeverity;
+  /** The strongest ROI evidence — surfaced distinctly (R3). */
+  caughtFalseCompletions: number;
+  /** Total gate fires across runs. */
+  gateFires: number;
+}
+
+export interface EconomicsFunnel {
+  runs: number;
+  totalIterations: number;
+  totalRouteBacks: number;
+  /** Share of runs completed in a single iteration with no route-backs. */
+  firstPassRate: number;
+  /** Aggregate human-decision wait, seconds (from time.human_wait_s). */
+  humanWaitS: number;
+}
+
+export interface EconomicsRollup {
+  generatedAt: string;
+  tenantId: string;
+  runCount: number;
+  /** task_slug×day cost trend with the paired defect counts on the same row (R5). */
+  cost: EconomicsTaskDayRollup[];
+  caughtDefects: EconomicsCaughtDefects;
+  funnel: EconomicsFunnel;
+}
+
+/** One `(model_tier, kit_condition)` cell of the value comparison. */
+export interface ValueCell {
+  model_tier: string;
+  kit_condition: string;
+  runs: number;
+  acceptanceRate: number;
+  iterationsToAccept: number;
+  defectsCaught: number;
+  /** `totalCost / acceptedCount`; `null` when nothing was accepted (never a fake 0). */
+  dollarsPerAcceptable: number | null;
+}
+
+export interface ValueComparison {
+  generatedAt: string;
+  tenantId: string;
+  /** How many records carried the optional `(model_tier, kit_condition)` tags. */
+  taggedRunCount: number;
+  /** Grouped by `(model_tier, kit_condition)` — only over tagged (harness) records. */
+  cells: ValueCell[];
+  /** The headline claim: `small+kit` vs `large-bare`. Null cells → no verdict yet. */
+  headline: {
+    smallPlusKit: ValueCell | null;
+    largeBare: ValueCell | null;
+    /** `meets`/`exceeds`/`below` on $/acceptable; `unknown` until both cells exist. */
+    verdict: "meets" | "below" | "exceeds" | "unknown";
+    /** largeBare$/acceptable ÷ smallPlusKit$/acceptable (>1 ⇒ small+kit is cheaper). */
+    ratio: number | null;
+  };
+}
+
+// ── Delegation efficiency read-model (flow-agents #415, part 4) ────────────────
+//    HONESTY: cost here is a MODEL-GRANULARITY PROXY joined from `cost.by_model`,
+//    never real per-sub-agent spend (no runtime isolates per-delegation tokens).
+//    `unavailable` outcomes are excluded from acceptanceRate — never a success/fail.
+
+/** How the (role, model) cost was derived. Always `model-proxy` today — there is no
+ *  per-delegation token isolation, so cost is attributed at model granularity. */
+export type EconomicsDelegationCostGranularity = "model-proxy";
+
+/** One `(role, model)` rollup of delegation outcomes + proxy cost. */
+export interface EconomicsRoleModelRollup {
+  role: string;
+  /** Bare model name (the `@provider` suffix is stripped to join `cost.by_model`). */
+  model: string;
+  /** Count of delegation entries in this (role, model) group. */
+  delegations: number;
+  reworkCount: number;
+  divergedCount: number;
+  failedCount: number;
+  acceptedCount: number;
+  /** NOT a success or failure — excluded from the acceptanceRate denominator. */
+  unavailableCount: number;
+  /** accepted / (accepted+rework+diverged+failed); `null` when that denominator is 0. */
+  acceptanceRate: number | null;
+  /** PROXY cost: the model's `estimated_cost_usd` from `cost.by_model` summed over the
+   *  runs in this group; `null` when the model isn't present in `by_model`. */
+  costUsd: number | null;
+  /** Always `model-proxy` — never real per-delegation spend. */
+  costGranularity: EconomicsDelegationCostGranularity;
+}
+
+/** Outcome coverage across ALL delegations: how many were measurable vs `unavailable`. */
+export interface EconomicsDelegationCoverage {
+  measurable: number;
+  unavailable: number;
+}
+
+/** Signals aggregated (worst-case) across the tenant's records. */
+export interface EconomicsDelegationSignals {
+  /** False on every runtime today → the cost column is a proxy, not exact spend. */
+  perDelegationTokens: boolean;
+  /** Worst/aggregated coverage; `mixed` when records disagree. */
+  perDelegationOutcome: "full" | "partial" | "none" | "n/a" | "mixed";
+}
+
+export interface EconomicsDelegationRollup {
+  generatedAt: string;
+  tenantId: string;
+  /** Runs that carried any delegations. */
+  runCount: number;
+  /** Per-(role, model) rollups; model is the bare name. */
+  perRoleModel: EconomicsRoleModelRollup[];
+  /** Outcome coverage across all delegations. */
+  coverage: EconomicsDelegationCoverage;
+  /** Harness-capability signals gating the panel's honesty rendering. */
+  signals: EconomicsDelegationSignals;
+}
 
 export interface ConsoleObjectRecord extends JsonObject {
   id?: string;
@@ -459,7 +747,39 @@ export interface ConsoleHostedAuthToken {
   label?: string;
 }
 
+export type ConsolePrincipalKind = "user" | "machine";
+
+/**
+ * The verified identity a request authenticated as (console #98, ADR 0003 call 2).
+ *
+ * This is the load-bearing security object: `tenantId` here is the ONLY
+ * authoritative tenant. It is the verified tenant claim from an OIDC/M2M access
+ * token — never a value read from the request payload. Ingest stamps the tenant
+ * from `principal.tenantId` and rejects a record whose body disagrees, so cross-
+ * tenant writes are impossible by construction.
+ *
+ * Present only for OIDC/M2M-authenticated (JWT) requests. Loopback-local and the
+ * legacy static-token / cookie-session paths leave it undefined (ADR 0003 call 6,
+ * local-first): scope enforcement never applies to a request with no principal.
+ */
+export interface ConsolePrincipal {
+  /** "user" = OIDC human (identified by `sub`); "machine" = M2M client credential. */
+  kind: ConsolePrincipalKind;
+  /** OIDC `sub` (human) or the client identity (machine). Stable subject id. */
+  subject: string;
+  /** AUTHORITATIVE tenant — the verified tenant claim; the only source of truth. */
+  tenantId: string;
+  /** OAuth scopes granted to the token, e.g. ["records:read","telemetry:write"]. */
+  scopes: string[];
+  /** OAuth client id for kind:"machine" (from the `client_id`/`cid` claim). */
+  clientId?: string;
+  /** Verified token issuer (`iss`), for provenance. */
+  issuer?: string;
+}
+
 export interface ConsoleRequestContext {
+  /** Authoritative tenant. Equals `principal.tenantId` when authenticated via
+   *  OIDC/M2M; otherwise the tenant bound to the legacy credential / local default. */
   tenantId: string;
   runtimeMode: ConsoleRuntimeMode;
   /** How the request was authenticated (ADR 0003). Required — it is the predicate
@@ -467,8 +787,12 @@ export interface ConsoleRequestContext {
    *  so an unset/new method fails safe (gets scope-enforced). */
   authMethod: "local" | "session" | "token" | "jwt";
   /** OAuth scopes granted to a JWT-authenticated request (ADR 0003, Phase 2).
-   *  Only populated for authMethod "jwt"; undefined for legacy credentials. */
+   *  Only populated for authMethod "jwt"; undefined for legacy credentials.
+   *  Mirrors `principal.scopes` when a principal is present. */
   scopes?: string[];
+  /** The verified identity (console #98). Present for JWT (OIDC/M2M) requests;
+   *  undefined for loopback-local and legacy static-token/session credentials. */
+  principal?: ConsolePrincipal;
 }
 
 export interface ConsoleSqlQueryResult<Row = OpenRecord> {

@@ -9,6 +9,9 @@ import type {
   ConsoleStateResponse,
   ConsoleTelemetryUpdatedSsePayload,
   ConsoleTelemetryResponse,
+  ConsoleEconomicsRollup,
+  ConsoleValueComparison,
+  ConsoleEconomicsDelegationRollup,
   TelemetryQueryInput
 } from "./serverApiTypes";
 import { normalizeTelemetryQuery } from "./utils/telemetryQuery";
@@ -62,6 +65,22 @@ export async function getEvents(hubUrl: string, auth: HubAuthOptions = {}): Prom
 
 export async function getTelemetry(hubUrl: string, auth: HubAuthOptions = {}, query?: TelemetryQueryInput): Promise<ConsoleTelemetryResponse> {
   return getJson<ConsoleTelemetryResponse>(hubUrl, telemetryPath(query), auth);
+}
+
+// Economics read-models (console #117). Mirror getTelemetry: tenant-scoped on the
+// server via the request context; the UI just reads the projection.
+export async function getEconomics(hubUrl: string, auth: HubAuthOptions = {}): Promise<ConsoleEconomicsRollup> {
+  return getJson<ConsoleEconomicsRollup>(hubUrl, "/api/economics", auth);
+}
+
+export async function getEconomicsValue(hubUrl: string, auth: HubAuthOptions = {}): Promise<ConsoleValueComparison> {
+  return getJson<ConsoleValueComparison>(hubUrl, "/api/economics/value", auth);
+}
+
+// Delegation efficiency read-model (flow-agents #415). Per-(role, model) rollups
+// with proxy cost + honest outcome coverage; tenant-scoped server-side.
+export async function getEconomicsDelegations(hubUrl: string, auth: HubAuthOptions = {}): Promise<ConsoleEconomicsDelegationRollup> {
+  return getJson<ConsoleEconomicsDelegationRollup>(hubUrl, "/api/economics/delegations", auth);
 }
 
 /**

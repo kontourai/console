@@ -1,0 +1,18 @@
+{
+  "schema": "kontour.console.economics",
+  "version": "0.1",
+  "run_id": "kontourai-flow-agents-349-cost-only",
+  "at": "1751734800000",
+  "task_slug": "kontourai-flow-agents-349-b",
+  "model": "claude-opus-4-8",
+  "cost": {
+    "input_tokens": 5000,
+    "output_tokens": 8000,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+    "estimated_cost_usd": 1.9,
+    "by_model": []
+  },
+  "time": { "wall_clock_s": 600, "human_wait_s": 0 },
+  "iterations": { "count": 2, "route_backs": 0 }
+}
