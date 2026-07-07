@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.12.0](https://github.com/kontourai/console/compare/v1.11.1...v1.12.0) (2026-07-06)
+
+
+### Features
+
+* **console-server:** stamp tenant from principal on record ingest, reject mismatch ([#123](https://github.com/kontourai/console/issues/123)) ([#127](https://github.com/kontourai/console/issues/127)) ([9888106](https://github.com/kontourai/console/commit/9888106ee084a9ea3d24ef65ea15d172fc7d91a3))
+* **console-server:** verified ConsolePrincipal + M2M client-credentials + per-route scopes ([#98](https://github.com/kontourai/console/issues/98)) ([#129](https://github.com/kontourai/console/issues/129)) ([688e843](https://github.com/kontourai/console/commit/688e8433ee0616ffa70761f75c663d9201b788a8))
+* **console-ui:** unified Overview home leading with "Needs you" triage (redesign slice 1) ([#124](https://github.com/kontourai/console/issues/124)) ([c4ce986](https://github.com/kontourai/console/commit/c4ce98662ad6846fa25a09768d48f4b02ed9c43a))
+* **console:** delegation efficiency panel — per role×model, honest coverage ([#415](https://github.com/kontourai/console/issues/415)) ([#133](https://github.com/kontourai/console/issues/133)) ([b3ee13c](https://github.com/kontourai/console/commit/b3ee13c4cec20a442ae9b1fa8384ce712fedb5e2))
+* **console:** economics + value views (the ROI surface) ([#117](https://github.com/kontourai/console/issues/117)) ([#132](https://github.com/kontourai/console/issues/132)) ([73aac49](https://github.com/kontourai/console/commit/73aac495831b4b1237c48e8924819460479c219d))
+
 ## [1.11.1](https://github.com/kontourai/console/compare/v1.11.0...v1.11.1) (2026-07-03)
 
 
