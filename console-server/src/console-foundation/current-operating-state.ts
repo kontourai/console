@@ -2,6 +2,7 @@ import type {
   ConsoleActionRecord,
   ConsoleEventRecord,
   ConsoleLink,
+  ConsoleLivenessRecord,
   CrossProductRef,
   CurrentOperatingStateOptions,
   JsonObject,
@@ -12,6 +13,7 @@ import type {
   ReplayEventStream,
   ReplayInput
 } from "./types";
+import { isLivenessRecord } from "./liveness";
 
 type ReplayObject = JsonObject & { id: string; label?: string; [key: string]: unknown };
 type ReplayPatch = OpenRecord;
@@ -32,6 +34,8 @@ type MutableReplayState = {
   links: Map<string, ConsoleLink>;
   timeline: JsonObject[];
   pipeline?: Record<string, unknown>;
+  /** Currently-active (actor, subjectId) liveness holders — flow-agents #295. */
+  actors: Map<string, ReplayObject>;
 };
 
 function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | ConsoleEventRecord[] | null | undefined, options: CurrentOperatingStateOptions = {}): OperatingState {
@@ -60,7 +64,8 @@ function createMutableReplayState(): MutableReplayState {
     actions: new Map<string, ConsoleActionRecord>(),
     links: new Map<string, ConsoleLink>(),
     timeline: [],
-    pipeline: undefined
+    pipeline: undefined,
+    actors: new Map<string, ReplayObject>()
   };
 }
 
@@ -91,7 +96,8 @@ function materializeOperatingState(working: MutableReplayState, meta: OperatingS
     inquiries: [],
     actions: [],
     links: [],
-    timeline: []
+    timeline: [],
+    actors: []
   };
 
   const processes = sortById([...working.processes.values()]);
@@ -103,6 +109,7 @@ function materializeOperatingState(working: MutableReplayState, meta: OperatingS
   state.evidence = sortById([...working.evidence.values()]);
   state.learnings = sortById([...working.learnings.values()]);
   state.inquiries = sortById([...working.inquiries.values()]);
+  state.actors = sortById([...working.actors.values()]);
   state.actions = sortById([...working.actions.values()]).map((action: ConsoleActionRecord) => ({
     ...action,
     readOnly: true
@@ -123,7 +130,7 @@ function materializeOperatingState(working: MutableReplayState, meta: OperatingS
 }
 
 interface OperatingStateProjection {
-  apply(event: ConsoleEventRecord, streamId?: string): void;
+  apply(event: ConsoleEventRecord | ConsoleLivenessRecord, streamId?: string): void;
   materialize(options?: CurrentOperatingStateOptions): OperatingState;
 }
 
@@ -148,7 +155,7 @@ function createOperatingStateProjection(defaultStreamId: string = "inline-events
   let generatedAt: string | null = null;
 
   return {
-    apply(event: ConsoleEventRecord, streamId: string = defaultStreamId): void {
+    apply(event: ConsoleEventRecord | ConsoleLivenessRecord, streamId: string = defaultStreamId): void {
       if (!event || typeof event !== "object") return;
       streamIds.add(streamId);
       if (event.id && seen.has(event.id)) {
@@ -159,7 +166,7 @@ function createOperatingStateProjection(defaultStreamId: string = "inline-events
       applyEvent(working, event, streamId);
       acceptedEventCount += 1;
       lastAcceptedEventId = event.id ?? null;
-      generatedAt = event.observedAt || event.occurredAt || null;
+      generatedAt = recordTimestamp(event) || null;
     },
     materialize(options: CurrentOperatingStateOptions = {}): OperatingState {
       return materializeOperatingState(working, {
@@ -221,10 +228,36 @@ function compareEventEntries(left: ReplayEventEntry, right: ReplayEventEntry): n
 function replayGeneratedAt(acceptedEvents: ReplayEventEntry[]): string | null {
   if (!acceptedEvents.length) return null;
   const last = acceptedEvents[acceptedEvents.length - 1].event;
-  return last.observedAt || last.occurredAt || null;
+  return recordTimestamp(last) || null;
 }
 
-function applyEvent(state: MutableReplayState, event: ConsoleEventRecord, streamId: string): void {
+/**
+ * Best-available timestamp for either record shape: a `kontour.console.event`
+ * carries `observedAt`/`occurredAt`; a `kontour.console.liveness` record
+ * carries only `at`. Reading through the union's catch-all index signature
+ * directly (`event.observedAt`) widens to `unknown` and breaks inference at
+ * call sites, so this centralizes the cast.
+ */
+function recordTimestamp(record: ConsoleEventRecord | ConsoleLivenessRecord): string | undefined {
+  const open = record as unknown as OpenRecord;
+  const value = open.observedAt || open.occurredAt || open.at;
+  return typeof value === "string" ? value : undefined;
+}
+
+function applyEvent(state: MutableReplayState, event: ConsoleEventRecord | ConsoleLivenessRecord, streamId: string): void {
+  // Liveness (flow-agents #295) is a flat claim/heartbeat/release fact about one
+  // (actor, subjectId) pair — it has no subject/payload/producer envelope, so it
+  // is folded by a wholly separate function rather than falling through the
+  // ConsoleEventRecord-shaped switch below. This is deliberately NOT folded into
+  // the existing `claim.*` cases: those model Surface's verification claims
+  // (freshness/outcome/evidence) — an unrelated domain that happens to share the
+  // word "claim". Conflating the two would corrupt state.claims with a
+  // heterogeneous shape and break the UI's claim rendering assumptions.
+  if (isLivenessRecord(event)) {
+    applyLivenessEvent(state, event, streamId);
+    return;
+  }
+
   const subject = clone(event.subject);
   const payload: OpenRecord = event.payload || {};
   const refs = arrayOf<CrossProductRef>(payload.refs);
@@ -518,6 +551,59 @@ function upsertLearning(state: MutableReplayState, event: ConsoleEventRecord, su
 
 function isLearningEvent(event: { type?: unknown }): boolean {
   return typeof event.type === "string" && event.type.startsWith("learning.");
+}
+
+/**
+ * Fold one `kontour.console.liveness` claim/heartbeat/release record into
+ * `state.actors` — the currently-active (actor, subjectId) holders (flow-agents
+ * #295). Tenant isolation needs no bespoke logic here: each tenant gets its own
+ * MutableReplayState (one per hub instance, keyed by tenant — see
+ * hostedHubForTenant in console-hub-server.ts), so actors from one tenant can
+ * never appear in another tenant's projection.
+ *
+ * - claim / heartbeat: upsert the (actor, subjectId) entry, refreshing
+ *   `lastSeenAt` and carrying forward ttlSeconds/host/branch/artifactDir when
+ *   the newer event omits them (a heartbeat need not repeat the claim's TTL).
+ * - release: remove the entry — this array is "who is active right now", not
+ *   a history log (the liveness event itself still lands in state.timeline).
+ */
+function applyLivenessEvent(state: MutableReplayState, event: ConsoleLivenessRecord, streamId: string): void {
+  const actor = typeof event.actor === "string" ? event.actor : "";
+  const subjectId = typeof event.subjectId === "string" ? event.subjectId : "";
+  if (!actor || !subjectId) return;
+
+  const key = `${actor}::${subjectId}`;
+  const lastSeenAt = event.at || event.occurredAt || event.observedAt;
+
+  if (event.type === "release") {
+    state.actors.delete(key);
+  } else {
+    const existing = state.actors.get(key);
+    const next: ReplayObject = {
+      id: key,
+      actor,
+      subjectId,
+      status: "active",
+      lastSeenAt: lastSeenAt || (existing && (existing.lastSeenAt as string | undefined)),
+      updatedAt: lastSeenAt || (existing && (existing.updatedAt as string | undefined)),
+      ttlSeconds: event.ttlSeconds ?? (existing && existing.ttlSeconds),
+      host: event.host ?? (existing && existing.host),
+      branch: event.branch ?? (existing && existing.branch),
+      artifactDir: event.artifact_dir ?? (existing && existing.artifactDir)
+    };
+    state.actors.set(key, compactObject(next));
+  }
+
+  state.timeline.push({
+    id: event.id,
+    type: `liveness.${event.type}`,
+    occurredAt: lastSeenAt,
+    observedAt: lastSeenAt,
+    producer: { product: "flow-agents", name: actor },
+    subjectRef: { product: "flow", kind: "session", id: subjectId },
+    summary: `${actor} ${event.type === "release" ? "released" : event.type === "heartbeat" ? "heartbeat on" : "claimed"} ${subjectId}`,
+    streamId
+  });
 }
 
 function updateProcessFromGate(state: MutableReplayState, event: ConsoleEventRecord, refs: CrossProductRef[], after: ReplayPatch, gate: ReplayObject): void {

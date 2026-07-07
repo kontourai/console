@@ -309,6 +309,52 @@ test("local hub server summarizes telemetry logs without product-specific descri
   }
 });
 
+test("telemetry project facet prefers context.project over basename(context.cwd) when both are present", async () => {
+  const rootDir = tempRoot();
+  const telemetryRoot = path.join(rootDir, ".telemetry");
+  fs.mkdirSync(telemetryRoot, { recursive: true });
+  // context.project deliberately disagrees with basename(cwd) so the assertion
+  // proves preference, not coincidence.
+  const record: any = telemetryRecord("evt-project-pref", "tool.invoke", "session-project-pref", "2026-07-07T12:00:00.000Z");
+  record.context = { cwd: "/workspace/some-checkout-dir", project: "kontour-console" };
+  fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), `${JSON.stringify(record)}\n`, "utf8");
+
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot });
+  await listen(app);
+  try {
+    const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
+    const summary = telemetry.body.records.find((item: any) => item.eventId === "evt-project-pref");
+
+    assert.equal(telemetry.statusCode, 200);
+    assert.ok(summary, "the record should be summarized");
+    assert.equal(summary.project, "kontour-console");
+    assert.equal(summary.cwd, "/workspace/some-checkout-dir");
+    assert.equal(telemetry.body.analytics.facets.some((facet: any) => facet.id === "projects" && facet.counts.some((item: any) => item.name === "kontour-console")), true);
+  } finally {
+    await close(app);
+  }
+});
+
+test("telemetry project facet falls back to basename(context.cwd) when context.project is absent (redacted cwd emitter)", async () => {
+  const rootDir = tempRoot();
+  const telemetryRoot = path.join(rootDir, ".telemetry");
+  fs.mkdirSync(telemetryRoot, { recursive: true });
+  const record: any = telemetryRecord("evt-project-fallback", "tool.invoke", "session-project-fallback", "2026-07-07T12:00:00.000Z");
+  record.context = { cwd: "/workspace/legacy-emitter-project" };
+  fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), `${JSON.stringify(record)}\n`, "utf8");
+
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot });
+  await listen(app);
+  try {
+    const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
+    const summary = telemetry.body.records.find((item: any) => item.eventId === "evt-project-fallback");
+
+    assert.equal(summary.project, "legacy-emitter-project");
+  } finally {
+    await close(app);
+  }
+});
+
 test("local hub server filters telemetry query by time, search, repeated facets, and pagination", async () => {
   const rootDir = tempRoot();
   const telemetryRoot = path.join(rootDir, ".telemetry");
@@ -803,6 +849,110 @@ test("hosted hub server partitions core hub records by tenant", async () => {
     assert.equal(stateA.body.timeline.some((item: any) => item.id === "evt-tenant-b-core"), false);
     assert.equal(stateB.body.timeline.some((item: any) => item.id === "evt-tenant-b-core"), true);
     assert.equal(inspectA.body.eventStreams.some((stream: any) => String(stream.relativePath).includes("tenant-b")), false);
+  } finally {
+    await close(app);
+  }
+});
+
+function livenessRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    schema: "kontour.console.liveness",
+    version: "0.1",
+    type: "claim",
+    subjectId: "task-alpha",
+    actor: "actor-1",
+    at: "2026-07-07T10:00:00.000Z",
+    ttlSeconds: 900,
+    ...overrides
+  };
+}
+
+test("local hub server accepts a liveness claim and it appears active in /state", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const accepted = await requestJson("POST", `${baseUrl}/records`, livenessRecord());
+    const state = await requestJson("GET", `${baseUrl}/state`);
+
+    assert.equal(accepted.statusCode, 202);
+    assert.equal(state.body.actors.length, 1);
+    assert.equal(state.body.actors[0].actor, "actor-1");
+    assert.equal(state.body.actors[0].subjectId, "task-alpha");
+    assert.equal(state.body.actors[0].status, "active");
+  } finally {
+    await close(app);
+  }
+});
+
+test("local hub server: a liveness release removes the actor from /state", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    await requestJson("POST", `${baseUrl}/records`, livenessRecord());
+    const releaseResult = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "release", at: "2026-07-07T10:10:00.000Z" }));
+    const state = await requestJson("GET", `${baseUrl}/state`);
+
+    assert.equal(releaseResult.statusCode, 202);
+    assert.equal(state.body.actors.length, 0);
+  } finally {
+    await close(app);
+  }
+});
+
+test("local hub server rejects a liveness record missing subjectId/actor with 400 INVALID_RECORD", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const missingSubject = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ subjectId: undefined }));
+    const missingActor = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ actor: "" }));
+    const state = await requestJson("GET", `${baseUrl}/state`);
+
+    assert.equal(missingSubject.statusCode, 400);
+    assert.equal(missingSubject.body.error, "INVALID_RECORD");
+    assert.equal(missingActor.statusCode, 400);
+    assert.equal(state.body.actors.length, 0);
+  } finally {
+    await close(app);
+  }
+});
+
+test("hosted hub server partitions liveness actors by tenant (never leaks across tenants)", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: [
+      { token: "token-a", tenantId: "tenant-a" },
+      { token: "token-b", tenantId: "tenant-b" }
+    ]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const acceptedA = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ actor: "actor-a", subjectId: "task-a" }), { authorization: "Bearer token-a" });
+    const acceptedB = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ actor: "actor-b", subjectId: "task-b" }), { authorization: "Bearer token-b" });
+    const stateA = await requestJson("GET", `${baseUrl}/state`, undefined, { authorization: "Bearer token-a" });
+    const stateB = await requestJson("GET", `${baseUrl}/state`, undefined, { authorization: "Bearer token-b" });
+
+    assert.equal(acceptedA.statusCode, 202);
+    assert.equal(acceptedB.statusCode, 202);
+    assert.equal(stateA.body.actors.length, 1);
+    assert.equal(stateA.body.actors[0].actor, "actor-a");
+    assert.equal(stateB.body.actors.length, 1);
+    assert.equal(stateB.body.actors[0].actor, "actor-b");
+    // Neither tenant's /state ever shows the other tenant's actor.
+    assert.equal(stateA.body.actors.some((a: any) => a.actor === "actor-b"), false);
+    assert.equal(stateB.body.actors.some((a: any) => a.actor === "actor-a"), false);
   } finally {
     await close(app);
   }

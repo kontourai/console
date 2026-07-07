@@ -14,6 +14,7 @@ import type {
   LocalFileSinkOptions,
   Sink
 } from "./types";
+import { isLivenessRecord } from "./liveness";
 
 const DEFAULT_ROOT = ".kontour";
 type SinkIdentity = Pick<Sink, "sinkId" | "sinkRole" | "id" | "name">;
@@ -119,6 +120,13 @@ class LocalFileSink {
   }
 
   eventPath(event: ConsoleRecord): string {
+    // Liveness records (flow-agents #295) carry no producer/scope envelope — they
+    // are a flat actor/subjectId fact, not a `kontour.console.event`. Bucket them
+    // into one fixed append-only stream rather than sanitizing an absent
+    // producer.id/scope.kind/scope.id (which would throw).
+    if (isLivenessRecord(event)) {
+      return path.resolve(this.root, "events", "liveness", "liveness.jsonl");
+    }
     const producer = sanitizePathToken(event.producer && event.producer.id, "producer.id");
     const scopeKind = sanitizePathToken(event.scope && event.scope.kind, "scope.kind");
     const scopeId = sanitizePathToken(event.scope && event.scope.id, "scope.id");
@@ -368,10 +376,17 @@ class ApiSink {
 
 function classifyRecord(record: ConsoleRecord): ClassifiedRecord {
   const { validateEvent, validateProjection } = require("./index");
+  const { validateLivenessRecord } = require("./liveness");
   const recordKind = record && record.schema === "kontour.console.projection" ? "projection" : "event";
-  const validation = recordKind === "projection"
-    ? validateProjection(record, "record")
-    : validateEvent(record, "record");
+  // Liveness (flow-agents #295) is a flat claim/heartbeat/release fact, not a
+  // `kontour.console.event` envelope — validate it against its own schema so a
+  // well-formed liveness record is never rejected (and appended, like any other
+  // event, rather than overwritten like a projection snapshot).
+  const validation = isLivenessRecord(record)
+    ? validateLivenessRecord(record, "record")
+    : recordKind === "projection"
+      ? validateProjection(record, "record")
+      : validateEvent(record, "record");
   return {
     recordKind,
     recordId: recordKind === "projection" ? projectionRecordId(record) : eventRecordId(record),

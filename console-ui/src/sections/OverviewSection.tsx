@@ -99,7 +99,7 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen }: Overvi
       <HappeningNowSection state={state} onOpen={() => onOpen("operate")} />
 
       {/* ── ③ The fleet — who's active (coordination state arrives with #295) ─────── */}
-      <FleetSection telemetry={telemetry} onOpen={() => onOpen("telemetry")} />
+      <FleetSection telemetry={telemetry} liveSessions={state.actors} onOpen={() => onOpen("telemetry")} />
 
       {/* ── ④ What it's costing — usage & economics ──────────────────────────────── */}
       <CostSection telemetry={telemetry} onOpen={() => onOpen("telemetry")} />

@@ -133,6 +133,27 @@ export interface TimelineItem {
   subjectRef?: ConsoleRef;
 }
 
+/**
+ * One currently-active (actor, subjectId) liveness holder (flow-agents #295) —
+ * folded from `kontour.console.liveness` claim/heartbeat/release records.
+ * `actor` is an opaque per-session identity token (see flow-agents
+ * scripts/hooks/lib/actor-identity.js), NOT a friendly agent/runtime name — it
+ * is a different identifier space from the telemetry `agentName`/`runtime`
+ * facets and should not be assumed joinable with them without a real mapping.
+ */
+export interface ConsoleActor {
+  id: string;
+  actor: string;
+  subjectId: string;
+  status?: string;
+  lastSeenAt?: string;
+  updatedAt?: string;
+  ttlSeconds?: number;
+  host?: string;
+  branch?: string;
+  artifactDir?: string;
+}
+
 export interface OperatingState {
   generatedAt?: string | null;
   currentStage?: string;
@@ -146,6 +167,7 @@ export interface OperatingState {
   actions?: ConsoleAction[];
   links?: ConsoleLink[];
   timeline?: TimelineItem[];
+  actors?: ConsoleActor[];
   pipeline?: import("./pipeline").Pipeline;
   /**
    * Flow's already-derived console projection for the active run, passed through
