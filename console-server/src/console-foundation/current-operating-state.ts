@@ -13,7 +13,7 @@ import type {
   ReplayEventStream,
   ReplayInput
 } from "./types";
-import { isLivenessRecord } from "./liveness";
+import { isLivenessRecord, livenessSessionKey, DEFAULT_LIVENESS_TTL_SECONDS } from "./liveness";
 
 type ReplayObject = JsonObject & { id: string; label?: string; [key: string]: unknown };
 type ReplayPatch = OpenRecord;
@@ -109,7 +109,13 @@ function materializeOperatingState(working: MutableReplayState, meta: OperatingS
   state.evidence = sortById([...working.evidence.values()]);
   state.learnings = sortById([...working.learnings.values()]);
   state.inquiries = sortById([...working.inquiries.values()]);
-  state.actors = sortById([...working.actors.values()]);
+  // Liveness actors expire at READ time (not via a stored sweep): an actor whose
+  // last-seen event is older than its TTL is dropped here so a crashed/dropped
+  // session that never sent `release` stops being reported active (flow-agents
+  // #295). Deriving activeness at read time keeps stored state a pure fold and
+  // makes expiry deterministic under an injected clock.
+  const nowMs = resolveNowMs(options.now);
+  state.actors = sortById([...working.actors.values()].filter((actor: ReplayObject) => isActorActive(actor, nowMs)));
   state.actions = sortById([...working.actions.values()]).map((action: ConsoleActionRecord) => ({
     ...action,
     readOnly: true
@@ -158,11 +164,18 @@ function createOperatingStateProjection(defaultStreamId: string = "inline-events
     apply(event: ConsoleEventRecord | ConsoleLivenessRecord, streamId: string = defaultStreamId): void {
       if (!event || typeof event !== "object") return;
       streamIds.add(streamId);
-      if (event.id && seen.has(event.id)) {
-        duplicateEventCount += 1;
-        return;
+      // Liveness records share ONE id per (actor, subjectId) session by design
+      // (current-state, not an event log). They must therefore bypass id-based
+      // dedup — a heartbeat/release carrying the same id as its claim is a state
+      // UPDATE to fold, not a duplicate to drop. applyLivenessEvent is an
+      // idempotent upsert, so re-folding the same record is harmless.
+      if (!isLivenessRecord(event)) {
+        if (event.id && seen.has(event.id)) {
+          duplicateEventCount += 1;
+          return;
+        }
+        if (event.id) seen.add(event.id);
       }
-      if (event.id) seen.add(event.id);
       applyEvent(working, event, streamId);
       acceptedEventCount += 1;
       lastAcceptedEventId = event.id ?? null;
@@ -202,13 +215,17 @@ function prepareEvents(eventStreams: ReplayEventStream[]): { acceptedEvents: Rep
 
   eventStreams.forEach((stream: ReplayEventStream, streamIndex: number) => {
     const streamId = stream.relativePath || stream.filePath || `stream-${streamIndex + 1}`;
-    arrayOf<ConsoleEventRecord>(stream.events).forEach((event: ConsoleEventRecord, eventIndex: number) => {
+    arrayOf<ConsoleEventRecord | ConsoleLivenessRecord>(stream.events).forEach((event: ConsoleEventRecord | ConsoleLivenessRecord, eventIndex: number) => {
       if (!event || typeof event !== "object") return;
-      if (event.id && seen.has(event.id)) {
-        duplicateEventCount += 1;
-        return;
+      // Liveness records share one id per session — they are folded as state
+      // updates, not deduplicated (mirrors the incremental projection's apply()).
+      if (!isLivenessRecord(event)) {
+        if (event.id && seen.has(event.id)) {
+          duplicateEventCount += 1;
+          return;
+        }
+        if (event.id) seen.add(event.id);
       }
-      if (event.id) seen.add(event.id);
       acceptedEvents.push({ event, streamId, streamIndex, eventIndex });
     });
   });
@@ -561,18 +578,24 @@ function isLearningEvent(event: { type?: unknown }): boolean {
  * hostedHubForTenant in console-hub-server.ts), so actors from one tenant can
  * never appear in another tenant's projection.
  *
- * - claim / heartbeat: upsert the (actor, subjectId) entry, refreshing
- *   `lastSeenAt` and carrying forward ttlSeconds/host/branch/artifactDir when
- *   the newer event omits them (a heartbeat need not repeat the claim's TTL).
+ * - claim / heartbeat: upsert-create-or-refresh the (actor, subjectId) entry
+ *   (a lone heartbeat with no preceding claim — which is exactly what a cold
+ *   Postgres replay sees, since the heartbeat row overwrote the claim row —
+ *   still reconstructs an ACTIVE actor), refreshing `lastSeenAt` and carrying
+ *   forward ttlSeconds/host/branch/artifactDir when the newer event omits them.
  * - release: remove the entry — this array is "who is active right now", not
  *   a history log (the liveness event itself still lands in state.timeline).
+ *
+ * The map key is the shared, colon-safe `livenessSessionKey` — the SAME derivation
+ * the persisted record id uses — so an in-memory slot and its Postgres row can
+ * never disagree, and a `subjectId` containing a `:` can never collide two pairs.
  */
 function applyLivenessEvent(state: MutableReplayState, event: ConsoleLivenessRecord, streamId: string): void {
   const actor = typeof event.actor === "string" ? event.actor : "";
   const subjectId = typeof event.subjectId === "string" ? event.subjectId : "";
   if (!actor || !subjectId) return;
 
-  const key = `${actor}::${subjectId}`;
+  const key = livenessSessionKey(actor, subjectId);
   const lastSeenAt = event.at || event.occurredAt || event.observedAt;
 
   if (event.type === "release") {
@@ -587,6 +610,7 @@ function applyLivenessEvent(state: MutableReplayState, event: ConsoleLivenessRec
       lastSeenAt: lastSeenAt || (existing && (existing.lastSeenAt as string | undefined)),
       updatedAt: lastSeenAt || (existing && (existing.updatedAt as string | undefined)),
       ttlSeconds: event.ttlSeconds ?? (existing && existing.ttlSeconds),
+      actorKey: event.actor_key ?? (existing && existing.actorKey),
       host: event.host ?? (existing && existing.host),
       branch: event.branch ?? (existing && existing.branch),
       artifactDir: event.artifact_dir ?? (existing && existing.artifactDir)
@@ -604,6 +628,34 @@ function applyLivenessEvent(state: MutableReplayState, event: ConsoleLivenessRec
     summary: `${actor} ${event.type === "release" ? "released" : event.type === "heartbeat" ? "heartbeat on" : "claimed"} ${subjectId}`,
     streamId
   });
+}
+
+/** Resolve the read-time clock (epoch millis or ISO string) to epoch millis; defaults to now. */
+function resolveNowMs(now: number | string | undefined): number {
+  if (typeof now === "number" && Number.isFinite(now)) return now;
+  if (typeof now === "string") {
+    const parsed = Date.parse(now);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
+/**
+ * Whether a folded liveness actor is still active at `nowMs`: its last-seen event
+ * must be within `ttlSeconds` (defaulting to DEFAULT_LIVENESS_TTL_SECONDS when the
+ * record carried none). An actor whose `lastSeenAt` is missing or unparseable is
+ * kept active — we never hide a real actor because of a bad timestamp; only a
+ * clearly-stale one is expired.
+ */
+function isActorActive(actor: ReplayObject, nowMs: number): boolean {
+  const lastSeenAt = actor.lastSeenAt;
+  if (typeof lastSeenAt !== "string") return true;
+  const lastSeenMs = Date.parse(lastSeenAt);
+  if (!Number.isFinite(lastSeenMs)) return true;
+  const ttlSeconds = typeof actor.ttlSeconds === "number" && actor.ttlSeconds > 0
+    ? actor.ttlSeconds
+    : DEFAULT_LIVENESS_TTL_SECONDS;
+  return nowMs - lastSeenMs <= ttlSeconds * 1000;
 }
 
 function updateProcessFromGate(state: MutableReplayState, event: ConsoleEventRecord, refs: CrossProductRef[], after: ReplayPatch, gate: ReplayObject): void {

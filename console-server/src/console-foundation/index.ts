@@ -17,7 +17,7 @@ import type {
   ValidationIssue,
   ValidationSeverity
 } from "./types";
-import { isLivenessRecord, validateLivenessRecord, LIVENESS_SCHEMA } from "./liveness";
+import { isLivenessRecord, validateLivenessRecord, livenessRecordId, livenessSessionKey, LIVENESS_SCHEMA, DEFAULT_LIVENESS_TTL_SECONDS } from "./liveness";
 
 export type {
   ActionDescriptor,
@@ -85,7 +85,7 @@ export type {
   ValidationSummary
 } from "./types";
 
-export { isLivenessRecord, validateLivenessRecord, LIVENESS_SCHEMA } from "./liveness";
+export { isLivenessRecord, validateLivenessRecord, livenessRecordId, livenessSessionKey, LIVENESS_SCHEMA, DEFAULT_LIVENESS_TTL_SECONDS } from "./liveness";
 
 export {
   assertConsoleRuntimeConfig,
@@ -472,7 +472,10 @@ function validateProjection(snapshot: ConsoleProjectionSnapshot, basePath: strin
 function summarizeEvents(events: Array<ConsoleEventRecord | ConsoleLivenessRecord>) {
   const eventTypeCounts: Record<string, number> = {};
   for (const event of events) {
-    eventTypeCounts[event.type] = (eventTypeCounts[event.type] || 0) + 1;
+    // Namespace liveness types (claim/heartbeat/release) as `liveness.*` so a
+    // combined stream never conflates them with same-named real event types.
+    const typeKey = isLivenessRecord(event) ? `liveness.${event.type}` : event.type;
+    eventTypeCounts[typeKey] = (eventTypeCounts[typeKey] || 0) + 1;
   }
   // Liveness records (flow-agents #295) carry `at`, not `occurredAt` — fall back
   // so the summary's first/last-seen timestamps stay meaningful for streams that
@@ -889,7 +892,10 @@ module.exports = {
   validateLivenessRecordBody: consoleHubServer.validateLivenessRecordBody,
   isLivenessRecord,
   validateLivenessRecord,
+  livenessRecordId,
+  livenessSessionKey,
   LIVENESS_SCHEMA,
+  DEFAULT_LIVENESS_TTL_SECONDS,
   createEconomicsStore: economicsStore.createEconomicsStore,
   createEconomicsProjection: economicsProjection.createEconomicsProjection,
   applyConsoleMigrations: migrations.applyConsoleMigrations,

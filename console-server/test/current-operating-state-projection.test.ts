@@ -82,10 +82,15 @@ function livenessRecord(overrides: Record<string, unknown> = {}) {
   };
 }
 
+// Read-time TTL expiry means materialize() consults a clock. Every liveness test
+// injects a FIXED `now` so results never depend on wall-clock time. WITHIN_TTL is
+// 5 min after the fixture's `at` (10:00) with a 900s (15 min) TTL — still active.
+const WITHIN_TTL = { now: "2026-07-07T10:05:00.000Z" };
+
 test("a liveness claim makes an actor appear active in the projection", () => {
   const projection = createOperatingStateProjection();
-  projection.apply(livenessRecord({ id: "liveness-claim-1" }));
-  const state = projection.materialize();
+  projection.apply(livenessRecord());
+  const state = projection.materialize(WITHIN_TTL);
 
   assert.equal(state.actors!.length, 1);
   const actor = state.actors![0] as Record<string, unknown>;
@@ -98,13 +103,9 @@ test("a liveness claim makes an actor appear active in the projection", () => {
 
 test("a liveness heartbeat refreshes lastSeenAt and keeps the actor active", () => {
   const projection = createOperatingStateProjection();
-  projection.apply(livenessRecord({ id: "liveness-claim-2" }));
-  projection.apply(livenessRecord({
-    id: "liveness-heartbeat-2",
-    type: "heartbeat",
-    at: "2026-07-07T10:05:00.000Z"
-  }));
-  const state = projection.materialize();
+  projection.apply(livenessRecord());
+  projection.apply(livenessRecord({ type: "heartbeat", at: "2026-07-07T10:05:00.000Z" }));
+  const state = projection.materialize(WITHIN_TTL);
 
   assert.equal(state.actors!.length, 1);
   const actor = state.actors![0] as Record<string, unknown>;
@@ -115,28 +116,43 @@ test("a liveness heartbeat refreshes lastSeenAt and keeps the actor active", () 
 
 test("a liveness release removes the actor from the projection", () => {
   const projection = createOperatingStateProjection();
-  projection.apply(livenessRecord({ id: "liveness-claim-3" }));
-  assert.equal(projection.materialize().actors!.length, 1);
+  projection.apply(livenessRecord());
+  assert.equal(projection.materialize(WITHIN_TTL).actors!.length, 1);
 
-  projection.apply(livenessRecord({
-    id: "liveness-release-3",
-    type: "release",
-    at: "2026-07-07T10:10:00.000Z"
-  }));
-  const state = projection.materialize();
+  projection.apply(livenessRecord({ type: "release", at: "2026-07-07T10:10:00.000Z" }));
+  const state = projection.materialize(WITHIN_TTL);
 
   assert.equal(state.actors!.length, 0);
+});
+
+test("a liveness actor expires at read time once now passes lastSeenAt + ttlSeconds (zombie guard)", () => {
+  const projection = createOperatingStateProjection();
+  projection.apply(livenessRecord()); // claim at 10:00, ttl 900s → active until 10:15
+
+  // Same folded state, two clocks: active within TTL, expired past it — no
+  // release was ever sent (the crashed/dropped-session case).
+  assert.equal(projection.materialize({ now: "2026-07-07T10:14:00.000Z" }).actors!.length, 1);
+  assert.equal(projection.materialize({ now: "2026-07-07T10:16:00.000Z" }).actors!.length, 0);
+});
+
+test("a liveness actor with no ttlSeconds expires against the default TTL (30 min)", () => {
+  const projection = createOperatingStateProjection();
+  const { ttlSeconds, ...noTtl } = livenessRecord();
+  projection.apply(noTtl); // claim at 10:00, no ttl → default 1800s → active until 10:30
+
+  assert.equal(projection.materialize({ now: "2026-07-07T10:29:00.000Z" }).actors!.length, 1);
+  assert.equal(projection.materialize({ now: "2026-07-07T10:31:00.000Z" }).actors!.length, 0);
 });
 
 test("liveness actors are isolated per (actor, subjectId) pair and per projection instance (tenant scoping)", () => {
   const tenantAProjection = createOperatingStateProjection();
   const tenantBProjection = createOperatingStateProjection();
 
-  tenantAProjection.apply(livenessRecord({ id: "tenant-a-claim", actor: "actor-a", subjectId: "task-a" }));
-  tenantBProjection.apply(livenessRecord({ id: "tenant-b-claim", actor: "actor-b", subjectId: "task-b" }));
+  tenantAProjection.apply(livenessRecord({ actor: "actor-a", subjectId: "task-a" }));
+  tenantBProjection.apply(livenessRecord({ actor: "actor-b", subjectId: "task-b" }));
 
-  const stateA = tenantAProjection.materialize();
-  const stateB = tenantBProjection.materialize();
+  const stateA = tenantAProjection.materialize(WITHIN_TTL);
+  const stateB = tenantBProjection.materialize(WITHIN_TTL);
 
   assert.equal(stateA.actors!.length, 1);
   assert.equal((stateA.actors![0] as Record<string, unknown>).actor, "actor-a");
@@ -149,19 +165,34 @@ test("liveness actors are isolated per (actor, subjectId) pair and per projectio
 
 test("two actors holding two different subjects both appear active", () => {
   const projection = createOperatingStateProjection();
-  projection.apply(livenessRecord({ id: "multi-1", actor: "actor-1", subjectId: "task-1" }));
-  projection.apply(livenessRecord({ id: "multi-2", actor: "actor-2", subjectId: "task-2" }));
-  const state = projection.materialize();
+  projection.apply(livenessRecord({ actor: "actor-1", subjectId: "task-1" }));
+  projection.apply(livenessRecord({ actor: "actor-2", subjectId: "task-2" }));
+  const state = projection.materialize(WITHIN_TTL);
 
   assert.equal(state.actors!.length, 2);
   const names = state.actors!.map((a: any) => a.actor).sort();
   assert.deepEqual(names, ["actor-1", "actor-2"]);
 });
 
-test("incremental liveness projection equals buildCurrentOperatingState over the same liveness records", () => {
+test("incremental liveness projection equals buildCurrentOperatingState over the same liveness records (claim+heartbeat)", () => {
+  // No explicit ids: production liveness shares ONE id per session (collapsed),
+  // so both paths must fold heartbeat as a state UPDATE, never dedup it away.
   const events = [
-    livenessRecord({ id: "parity-claim", actor: "actor-parity", subjectId: "task-parity" }),
-    livenessRecord({ id: "parity-heartbeat", type: "heartbeat", actor: "actor-parity", subjectId: "task-parity", at: "2026-07-07T10:05:00.000Z" })
+    livenessRecord({ actor: "actor-parity", subjectId: "task-parity" }),
+    livenessRecord({ type: "heartbeat", actor: "actor-parity", subjectId: "task-parity", at: "2026-07-07T10:05:00.000Z" })
   ];
-  assert.deepEqual(foldIncrementally(events), buildCurrentOperatingState(events));
+  assert.deepEqual(foldIncrementally(events, WITHIN_TTL), buildCurrentOperatingState(events, WITHIN_TTL));
+});
+
+test("incremental liveness projection equals buildCurrentOperatingState for a release (actor removed in both paths)", () => {
+  // Regression: claim + release share one id; neither path may drop the release
+  // as a duplicate — both must project the actor as removed.
+  const events = [
+    livenessRecord({ actor: "actor-rel", subjectId: "task-rel" }),
+    livenessRecord({ type: "release", actor: "actor-rel", subjectId: "task-rel", at: "2026-07-07T10:10:00.000Z" })
+  ];
+  const incremental = foldIncrementally(events, WITHIN_TTL);
+  const batch = buildCurrentOperatingState(events, WITHIN_TTL);
+  assert.deepEqual(incremental, batch);
+  assert.equal(incremental.actors!.length, 0);
 });

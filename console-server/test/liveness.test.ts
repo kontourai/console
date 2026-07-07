@@ -13,6 +13,8 @@ const {
   isLivenessRecord,
   validateLivenessRecord,
   validateLivenessRecordBody,
+  livenessRecordId,
+  livenessSessionKey,
   LIVENESS_SCHEMA
 } = require("../src/console-foundation");
 
@@ -73,19 +75,31 @@ test("validateLivenessRecordBody throws INVALID_RECORD with the diagnostic valid
   });
 });
 
-test("validateLivenessRecordBody synthesizes a deterministic id when the emitter omits one", () => {
-  const normalized = validateLivenessRecordBody(validRecord());
-  assert.equal(normalized.id, "liveness:actor-1:task-alpha:claim:2026-07-07T10:00:00.000Z");
+test("validateLivenessRecordBody collapses claim/heartbeat/release for one session onto ONE id", () => {
+  // Liveness is current-state, not an event log: the id omits type AND at, so all
+  // three lifecycle events for one (actor, subjectId) share the SAME id and
+  // upsert-in-place under the core-records (tenant_id, record_id) primary key —
+  // exactly one Postgres row per session, no unbounded per-heartbeat growth.
+  const claim = validateLivenessRecordBody(validRecord({ type: "claim" }));
+  assert.equal(claim.id, "liveness:actor-1:task-alpha");
+  assert.equal(claim.id, livenessRecordId("actor-1", "task-alpha"));
 
-  // An exact-duplicate retry (same actor/subjectId/type/at) synthesizes the SAME
-  // id — idempotent under the core-records (tenant_id, record_id) primary key.
-  const retry = validateLivenessRecordBody(validRecord());
-  assert.equal(retry.id, normalized.id);
-
-  // A distinct event (different `at`) gets a distinct id — history is never
-  // collapsed onto one row.
   const heartbeat = validateLivenessRecordBody(validRecord({ type: "heartbeat", at: "2026-07-07T10:05:00.000Z" }));
-  assert.notEqual(heartbeat.id, normalized.id);
+  const release = validateLivenessRecordBody(validRecord({ type: "release", at: "2026-07-07T10:10:00.000Z" }));
+  assert.equal(heartbeat.id, claim.id);
+  assert.equal(release.id, claim.id);
+});
+
+test("livenessRecordId / livenessSessionKey encode components so a colon in subjectId cannot collide two pairs", () => {
+  // Without encoding, ("a", "b:c") and ("a:b", "c") would both naively join to
+  // "a:b:c" and collide onto one row/one map slot. encodeURIComponent prevents that.
+  const a = livenessRecordId("a", "b:c");
+  const b = livenessRecordId("a:b", "c");
+  assert.notEqual(a, b);
+  assert.equal(a, "liveness:a:b%3Ac");
+  assert.equal(b, "liveness:a%3Ab:c");
+  // The session key (in-memory map key) uses the same encoding, so it agrees.
+  assert.notEqual(livenessSessionKey("a", "b:c"), livenessSessionKey("a:b", "c"));
 });
 
 test("validateLivenessRecordBody preserves an explicit id when the caller provides one", () => {

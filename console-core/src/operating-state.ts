@@ -149,6 +149,8 @@ export interface ConsoleActor {
   lastSeenAt?: string;
   updatedAt?: string;
   ttlSeconds?: number;
+  /** Optional stable correlation key the emitter may send (relay.sh `actor_key`). */
+  actorKey?: string;
   host?: string;
   branch?: string;
   artifactDir?: string;

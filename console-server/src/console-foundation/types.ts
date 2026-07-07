@@ -709,6 +709,13 @@ export interface SurveyReviewStateOptions {
 
 export interface CurrentOperatingStateOptions {
   generatedAt?: string | null;
+  /**
+   * Clock for read-time liveness-actor expiry (flow-agents #295): an actor whose
+   * last-seen liveness event is older than its TTL is not reported active. Accepts
+   * epoch millis or an ISO string; defaults to `Date.now()` when absent. Injected
+   * so tests are deterministic and never depend on wall-clock time.
+   */
+  now?: number | string;
 }
 
 export interface LocalConsoleHubOptions extends LocalFileSinkOptions {

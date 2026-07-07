@@ -861,7 +861,9 @@ function livenessRecord(overrides: Record<string, unknown> = {}) {
     type: "claim",
     subjectId: "task-alpha",
     actor: "actor-1",
-    at: "2026-07-07T10:00:00.000Z",
+    // Fresh timestamp: GET /state reads through the real Date.now() clock (no
+    // injected `now` over HTTP), so a live-posted record must be within its TTL.
+    at: new Date().toISOString(),
     ttlSeconds: 900,
     ...overrides
   };
@@ -953,6 +955,88 @@ test("hosted hub server partitions liveness actors by tenant (never leaks across
     // Neither tenant's /state ever shows the other tenant's actor.
     assert.equal(stateA.body.actors.some((a: any) => a.actor === "actor-b"), false);
     assert.equal(stateB.body.actors.some((a: any) => a.actor === "actor-a"), false);
+  } finally {
+    await close(app);
+  }
+});
+
+test("hosted hub: a claim then N heartbeats for one session persist exactly ONE Postgres row (no per-heartbeat growth)", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    // Claim + 3 heartbeats for the SAME (actor, subjectId), each with a distinct
+    // `at` — the collapsed id (which omits type + at) upserts them all in place.
+    await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "claim" }), { authorization: "Bearer token-a" });
+    await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "heartbeat" }), { authorization: "Bearer token-a" });
+    await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "heartbeat" }), { authorization: "Bearer token-a" });
+    await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "heartbeat" }), { authorization: "Bearer token-a" });
+
+    const livenessRows = sqlClient.coreRows.filter((row: any) => row.tenant_id === "tenant-a" && row.schema === "kontour.console.liveness");
+    assert.equal(livenessRows.length, 1, "one persisted liveness row per session, not one per heartbeat");
+
+    const state = await requestJson("GET", `${baseUrl}/state`, undefined, { authorization: "Bearer token-a" });
+    assert.equal(state.body.actors.length, 1);
+    assert.equal(state.body.actors[0].actor, "actor-1");
+  } finally {
+    await close(app);
+  }
+});
+
+test("hosted hub: cold-start replay of a lone heartbeat row reconstructs an ACTIVE actor", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  // Simulate a hub that has been up a while: the heartbeat row has already
+  // overwritten the original claim row (collapsed id), so the ONLY row Postgres
+  // holds for this session is a `heartbeat`. A fresh process cold-loads it.
+  const heartbeat = {
+    schema: "kontour.console.liveness",
+    version: "0.1",
+    id: "liveness:actor-cold:task-cold",
+    type: "heartbeat",
+    subjectId: "task-cold",
+    actor: "actor-cold",
+    at: new Date().toISOString(),
+    ttlSeconds: 900,
+    tenant_id: "tenant-a"
+  };
+  sqlClient.coreRows.push({
+    tenant_id: "tenant-a",
+    record_id: heartbeat.id,
+    schema: heartbeat.schema,
+    type: heartbeat.type,
+    occurred_at: null,
+    observed_at: heartbeat.at,
+    sequence: 1,
+    payload: heartbeat
+  });
+
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const state = await requestJson("GET", `${baseUrl}/state`, undefined, { authorization: "Bearer token-a" });
+    assert.equal(state.body.actors.length, 1, "a lone heartbeat row must reconstruct an active actor on cold replay");
+    assert.equal(state.body.actors[0].actor, "actor-cold");
+    assert.equal(state.body.actors[0].status, "active");
   } finally {
     await close(app);
   }
