@@ -616,7 +616,11 @@ function readTelemetryJsonl(filePath: string, displayPath: string, sourceId: str
 
 function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, filePath: string): TelemetryRecordSummary {
   const cwd = nestedString(record, ["context", "cwd"]);
-  const project = projectNameFromCwd(cwd);
+  // Prefer the emitter's path-free `context.project` (basename of cwd, computed
+  // client-side) when present. This keeps the project facet populated even when
+  // `context.cwd` itself is redacted to null for privacy — falling back to
+  // deriving the basename from cwd only for emitters that don't send `project` yet.
+  const project = nestedString(record, ["context", "project"]) || projectNameFromCwd(cwd);
   const delegation = delegationTarget(record);
   const hookEventName = nestedString(record, ["hook", "event_name"]);
   const runtimeSessionId = nestedString(record, ["hook", "runtime_session_id"]);

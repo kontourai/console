@@ -4,6 +4,7 @@ import type {
   ActionDescriptor,
   ConsoleEventRecord,
   ConsoleLink,
+  ConsoleLivenessRecord,
   ConsoleObjectRecord,
   ConsoleProjectionSnapshot,
   CrossProductRef,
@@ -16,6 +17,7 @@ import type {
   ValidationIssue,
   ValidationSeverity
 } from "./types";
+import { isLivenessRecord, validateLivenessRecord, livenessRecordId, livenessSessionKey, LIVENESS_SCHEMA, DEFAULT_LIVENESS_TTL_SECONDS } from "./liveness";
 
 export type {
   ActionDescriptor,
@@ -31,6 +33,7 @@ export type {
   ConsoleHostedAuthToken,
   ConsoleHubServer,
   ConsoleHubServerOptions,
+  ConsoleLivenessRecord,
   ConsolePrincipal,
   ConsolePrincipalKind,
   ConsoleProjectionRecord,
@@ -55,6 +58,7 @@ export type {
   InspectionReport,
   KontourEmitterOptions,
   ListenOptions,
+  LivenessEventType,
   LoaderOptions,
   LocalConsoleHubOptions,
   LocalFileSinkOptions,
@@ -80,6 +84,8 @@ export type {
   ValidationIssue,
   ValidationSummary
 } from "./types";
+
+export { isLivenessRecord, validateLivenessRecord, livenessRecordId, livenessSessionKey, LIVENESS_SCHEMA, DEFAULT_LIVENESS_TTL_SECONDS } from "./liveness";
 
 export {
   assertConsoleRuntimeConfig,
@@ -226,7 +232,7 @@ function loadEventStreams(streamDir: string, rootDir = process.cwd(), options: L
     : listFiles(streamDir, ".jsonl");
   return files.map((filePath: string) => {
     const relativePath = path.relative(rootDir, filePath);
-    const events: ConsoleEventRecord[] = [];
+    const events: Array<ConsoleEventRecord | ConsoleLivenessRecord> = [];
     const validation: ValidationIssue[] = [];
     let lines: string[] = [];
 
@@ -241,7 +247,13 @@ function loadEventStreams(streamDir: string, rootDir = process.cwd(), options: L
       try {
         const event = JSON.parse(line);
         events.push(event);
-        validation.push(...validateEvent(event, `${relativePath}:${index + 1}`));
+        // Liveness records (flow-agents #295) are a flat claim/heartbeat/release
+        // fact, not a `kontour.console.event` envelope — validate them against
+        // their own schema so a healthy liveness stream never surfaces false
+        // "missing subject/payload/producer" errors here.
+        validation.push(...(isLivenessRecord(event)
+          ? validateLivenessRecord(event, `${relativePath}:${index + 1}`)
+          : validateEvent(event, `${relativePath}:${index + 1}`)));
       } catch (error) {
         validation.push(issue("error", `${relativePath}:${index + 1}`, `invalid JSON: ${safeErrorMessage(error)}`));
       }
@@ -457,16 +469,24 @@ function validateProjection(snapshot: ConsoleProjectionSnapshot, basePath: strin
   return issues;
 }
 
-function summarizeEvents(events: ConsoleEventRecord[]) {
+function summarizeEvents(events: Array<ConsoleEventRecord | ConsoleLivenessRecord>) {
   const eventTypeCounts: Record<string, number> = {};
   for (const event of events) {
-    eventTypeCounts[event.type] = (eventTypeCounts[event.type] || 0) + 1;
+    // Namespace liveness types (claim/heartbeat/release) as `liveness.*` so a
+    // combined stream never conflates them with same-named real event types.
+    const typeKey = isLivenessRecord(event) ? `liveness.${event.type}` : event.type;
+    eventTypeCounts[typeKey] = (eventTypeCounts[typeKey] || 0) + 1;
   }
+  // Liveness records (flow-agents #295) carry `at`, not `occurredAt` — fall back
+  // so the summary's first/last-seen timestamps stay meaningful for streams that
+  // mix liveness records in with regular events.
+  const occurredAt = (event: (ConsoleEventRecord | ConsoleLivenessRecord) | undefined) =>
+    event && ((event as ConsoleEventRecord).occurredAt || (event as ConsoleLivenessRecord).at);
   return {
     acceptedEventCount: events.length,
     eventTypeCounts,
-    firstOccurredAt: events[0] && events[0].occurredAt,
-    lastOccurredAt: events[events.length - 1] && events[events.length - 1].occurredAt
+    firstOccurredAt: occurredAt(events[0]),
+    lastOccurredAt: occurredAt(events[events.length - 1])
   };
 }
 
@@ -869,6 +889,13 @@ module.exports = {
   requireScope: consoleHubServer.requireScope,
   requiredScopeForRoute: consoleHubServer.requiredScopeForRoute,
   validateEconomicsRecordBody: consoleHubServer.validateEconomicsRecordBody,
+  validateLivenessRecordBody: consoleHubServer.validateLivenessRecordBody,
+  isLivenessRecord,
+  validateLivenessRecord,
+  livenessRecordId,
+  livenessSessionKey,
+  LIVENESS_SCHEMA,
+  DEFAULT_LIVENESS_TTL_SECONDS,
   createEconomicsStore: economicsStore.createEconomicsStore,
   createEconomicsProjection: economicsProjection.createEconomicsProjection,
   applyConsoleMigrations: migrations.applyConsoleMigrations,

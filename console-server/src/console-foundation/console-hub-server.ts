@@ -7,10 +7,12 @@ import { assertConsoleRuntimeConfig, resolveConsoleRuntimeConfig, type ConsoleRu
 import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./sse-stream";
 import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
 import { validateFlowIngestRequest, wrapFlowIngestRecord } from "./flow-ingest";
+import { isLivenessRecord, normalizeLivenessRecord, validateLivenessRecord, LIVENESS_SCHEMA } from "./liveness";
 import { getRegistry } from "@kontourai/console-telemetry";
 import type {
   ConsoleEconomicsRecord,
   ConsoleEventRecord,
+  ConsoleLivenessRecord,
   ConsoleRecord,
   ConsoleHubServer,
   ConsoleHubServerOptions,
@@ -1262,8 +1264,15 @@ function validateRecordBody(body: unknown): ConsoleRecord {
   if (body.schema === "kontour.console.economics") {
     return validateEconomicsRecordBody(body);
   }
+  // Liveness (flow-agents #295) is likewise an additive KIND on `/records`, but
+  // UNLIKE economics it DOES flow through `hub.append` — it folds into the
+  // OperatingState projection's `actors[]` (console #125) alongside events, just
+  // via a different applyEvent branch (see current-operating-state.ts).
+  if (body.schema === LIVENESS_SCHEMA) {
+    return validateLivenessRecordBody(body);
+  }
   if (body.schema !== "kontour.console.event" && body.schema !== "kontour.console.projection") {
-    throw requestError("INVALID_RECORD", 400, "record.schema must be kontour.console.event, kontour.console.projection, or kontour.console.economics");
+    throw requestError("INVALID_RECORD", 400, "record.schema must be kontour.console.event, kontour.console.projection, kontour.console.liveness, or kontour.console.economics");
   }
 
   const record = body as ConsoleRecord;
@@ -1277,6 +1286,27 @@ function validateRecordBody(body: unknown): ConsoleRecord {
     throw error;
   }
   return record;
+}
+
+/**
+ * Validate a `kontour.console.liveness` v0.1 record (flow-agents #295,
+ * scripts/liveness/relay.sh) — a flat claim/heartbeat/release fact about one
+ * actor holding (or releasing) one subjectId, with no event-style
+ * subject/payload/producer envelope. Synthesizes `id` when absent so the
+ * record stays idempotent under the core-records (tenant_id, record_id)
+ * primary key (see normalizeLivenessRecord).
+ */
+export function validateLivenessRecordBody(body: unknown): ConsoleLivenessRecord {
+  if (!isOpenRecord(body)) {
+    throw requestError("INVALID_BODY", 400, "request body must be a JSON object");
+  }
+  const issues = validateLivenessRecord(body, "record");
+  if (issues.length) {
+    const error = requestError("INVALID_RECORD", 400, "record validation failed");
+    error.validation = issues;
+    throw error;
+  }
+  return normalizeLivenessRecord(body as Record<string, unknown>);
 }
 
 /**
@@ -1673,7 +1703,7 @@ class PostgresConsoleHub implements Hub {
   // history on each /state read (ops#34). Memory and per-request cost scale with
   // current state, not total history.
   private readonly projection: {
-    apply(event: ConsoleEventRecord, streamId?: string): void;
+    apply(event: ConsoleEventRecord | ConsoleLivenessRecord, streamId?: string): void;
     materialize(options?: CurrentOperatingStateOptions): OperatingState;
   };
   /** Resolves when the initial Postgres load is done (or errored gracefully). */
@@ -1692,7 +1722,7 @@ class PostgresConsoleHub implements Hub {
     // requires.
     this.loadPromise = this.repo.loadRecords(tenantId).then((records) => {
       for (const record of records) {
-        if (isConsoleEventRecord(record)) {
+        if (isConsoleEventRecord(record) || isLivenessRecord(record)) {
           this.projection.apply(record);
         }
       }
@@ -1722,8 +1752,11 @@ class PostgresConsoleHub implements Hub {
     // Also write to the local file sink for the current session
     // (enables inspect() to show streams; harmless if disk is ephemeral).
     await this.localHub.append(record);
-    // Fold the event into the projection for currentOperatingState().
-    if (isConsoleEventRecord(record)) {
+    // Fold the event into the projection for currentOperatingState(). Liveness
+    // records (flow-agents #295) fold too — into `actors[]`, via a distinct
+    // applyEvent branch — so active sessions show up without needing their own
+    // store/projection pair the way economics does.
+    if (isConsoleEventRecord(record) || isLivenessRecord(record)) {
       this.projection.apply(record);
     }
     return persisted;

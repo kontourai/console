@@ -71,6 +71,13 @@ export interface OperatingState {
   links?: ConsoleLink[];
   pipeline?: Record<string, unknown>;
   timeline?: Record<string, unknown>[];
+  /**
+   * Currently-active actors folded from `kontour.console.liveness` claim/heartbeat/
+   * release records (flow-agents #295) — one entry per (actor, subjectId) pair
+   * still held. `release` removes the entry rather than marking it inactive, so
+   * this array always reflects who is active right now, not full history.
+   */
+  actors?: Record<string, unknown>[];
 }
 
 export type ConsoleApiErrorCode =
@@ -171,7 +178,37 @@ export interface ConsoleProjectionRecord extends ConsoleRecordBase {
   derivedFrom: Record<string, unknown>;
 }
 
-export type ConsoleRecord = ConsoleEventRecord | ConsoleProjectionRecord | ConsoleRecordBase;
+// ── Liveness (flow-agents #295, console #125) ──────────────────────────────
+//
+// A best-effort mirror of a single local claim/heartbeat/release liveness event
+// (scripts/liveness/relay.sh), STRICTLY OPTIONAL and off by default. Unlike
+// `kontour.console.event`, a liveness record carries no `subject`/`payload`/
+// `producer` envelope — it is a flat fact about one actor holding (or releasing)
+// one subjectId. Console folds it into the OperatingState projection's `actors[]`
+// so hosted Operate/Overview panels can show who is currently active, without
+// conflating it with Surface's unrelated `claim.*` verification-claim events.
+export type LivenessEventType = "claim" | "heartbeat" | "release";
+
+export interface ConsoleLivenessRecord extends ConsoleRecordBase {
+  schema: "kontour.console.liveness";
+  /** Synthesized server-side (`liveness:<actor>:<subjectId>:<type>:<at>`) when the
+   *  emitter omits it, so repeat POSTs of the same event stay idempotent while
+   *  distinct events keep separate history (core_records primary key is
+   *  (tenant_id, record_id)). */
+  id?: string;
+  type: LivenessEventType;
+  subjectId: string;
+  actor: string;
+  actor_key?: string | null;
+  /** ISO timestamp of the liveness event; required — doubles as `lastSeenAt`. */
+  at: string;
+  ttlSeconds?: number | null;
+  host?: string | null;
+  branch?: string | null;
+  artifact_dir?: string | null;
+}
+
+export type ConsoleRecord = ConsoleEventRecord | ConsoleProjectionRecord | ConsoleLivenessRecord | ConsoleRecordBase;
 
 // ── Economics (ADR 0003 calls 1, 3, 4; console #117 / flow-agents #349) ───────
 //
@@ -618,7 +655,7 @@ export interface EventStreamInspection {
   relativePath: string;
   sourceKind?: SourceKind;
   sourceRoot?: string;
-  events: ConsoleEventRecord[];
+  events: Array<ConsoleEventRecord | ConsoleLivenessRecord>;
   summary: EventSummary;
   validation: ValidationIssue[];
 }
@@ -672,6 +709,13 @@ export interface SurveyReviewStateOptions {
 
 export interface CurrentOperatingStateOptions {
   generatedAt?: string | null;
+  /**
+   * Clock for read-time liveness-actor expiry (flow-agents #295): an actor whose
+   * last-seen liveness event is older than its TTL is not reported active. Accepts
+   * epoch millis or an ISO string; defaults to `Date.now()` when absent. Injected
+   * so tests are deterministic and never depend on wall-clock time.
+   */
+  now?: number | string;
 }
 
 export interface LocalConsoleHubOptions extends LocalFileSinkOptions {
@@ -978,18 +1022,18 @@ export type TelemetryStorageAdapterName = "local-jsonl" | "sqlite" | "postgres" 
 export interface ReplayEventStream {
   filePath?: string;
   relativePath?: string;
-  events: ConsoleEventRecord[];
+  events: Array<ConsoleEventRecord | ConsoleLivenessRecord>;
 }
 
 export interface ReplayInput {
   filePath?: string;
   relativePath?: string;
-  events?: ConsoleEventRecord[];
+  events?: Array<ConsoleEventRecord | ConsoleLivenessRecord>;
   eventStreams?: ReplayEventStream[];
 }
 
 export interface ReplayEventEntry {
-  event: ConsoleEventRecord;
+  event: ConsoleEventRecord | ConsoleLivenessRecord;
   streamId: string;
   streamIndex: number;
   eventIndex: number;

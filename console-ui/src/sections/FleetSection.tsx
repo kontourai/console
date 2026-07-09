@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { StatusBadge } from "@kontourai/ui/react";
+import type { ConsoleActor } from "@kontourai/console-core";
 import type { ConsoleTelemetryResponse } from "../serverApiTypes";
 import { formatCompact, formatUsd } from "../utils/format";
 
@@ -8,6 +9,14 @@ import { formatCompact, formatUsd } from "../utils/format";
 // coordination state — held · fresh / reclaimable / human-held / CI actor — comes from the
 // flow-agents → console liveness relay (#295), which is not wired yet. Each row already accepts an
 // optional `coordinationState`, so when the relay lands the pills light up with no redesign.
+//
+// `liveSessions` (OperatingState.actors, folded from kontour.console.liveness records) HAS now
+// landed, rendered below as its own "live sessions" line rather than merged into the per-agent
+// rows above: `actor` there is an opaque per-session identity token (flow-agents
+// actor-identity.js), not the same identifier space as the telemetry agentName/runtime facets, so
+// joining them into one row per name would either never match or silently mislabel a session.
+// Product/design should decide the fuller per-row coordinationState treatment once there is a real
+// join key (e.g. the emitter correlating its liveness actor with its telemetry agentName).
 
 // Populated by #295 (the liveness relay). Absent today — we never fabricate held/reclaimable data.
 export type CoordinationState = "held-fresh" | "held" | "reclaimable" | "human-held" | "ci";
@@ -22,6 +31,8 @@ interface FleetActor {
 
 interface FleetSectionProps {
   telemetry: ConsoleTelemetryResponse | null;
+  /** Currently-active liveness sessions (OperatingState.actors) — flow-agents #295. */
+  liveSessions?: ConsoleActor[];
   onOpen: () => void;
 }
 
@@ -66,9 +77,10 @@ function deriveActors(telemetry: ConsoleTelemetryResponse | null): FleetActor[] 
   return [...byName.values()].sort((a, b) => b.events - a.events || b.costUsd - a.costUsd);
 }
 
-export function FleetSection({ telemetry, onOpen }: FleetSectionProps) {
+export function FleetSection({ telemetry, liveSessions, onOpen }: FleetSectionProps) {
   const actors = useMemo(() => deriveActors(telemetry), [telemetry]);
   const sessions = telemetry?.totals.sessionCount ?? 0;
+  const live = liveSessions ?? [];
 
   return (
     <section className="ov-section">
@@ -91,9 +103,21 @@ export function FleetSection({ telemetry, onOpen }: FleetSectionProps) {
         ) : (
           <p className="now-idle">No active actors yet. Sessions posting telemetry to this hub appear here as they run.</p>
         )}
-        <p className="fleet-note">
-          Coordination state — <span className="mono">held · reclaimable · human-held</span> — arrives with the liveness relay; today this shows who is active from telemetry.
-        </p>
+        {live.length > 0 ? (
+          <p className="fleet-note">
+            <span className="mono">{live.length}</span> live session{live.length === 1 ? "" : "s"} via the liveness relay:{" "}
+            {live.slice(0, 6).map((s, i) => (
+              <span key={s.id} className="mono">
+                {i > 0 ? ", " : ""}{s.actor} on {s.subjectId}
+              </span>
+            ))}
+            {live.length > 6 ? ", …" : ""}
+          </p>
+        ) : (
+          <p className="fleet-note">
+            Coordination state — <span className="mono">held · reclaimable · human-held</span> — arrives with the liveness relay; today this shows who is active from telemetry.
+          </p>
+        )}
       </div>
     </section>
   );
