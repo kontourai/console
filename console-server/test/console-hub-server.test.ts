@@ -11,6 +11,7 @@ const {
   loadConsoleMigrations
 } = require("../src/console-foundation");
 const { signSessionCookie, verifySessionCookieValue } = require("../src/console-foundation/console-hub-server");
+const { CoreRecordsRepository } = require("../src/console-foundation/core-records");
 
 type RawResponse = { statusCode?: number; headers: Record<string, any>; body: string };
 type JsonResponse = { statusCode?: number; body: any };
@@ -917,11 +918,34 @@ test("local hub server: a liveness release removes the actor from /state", async
   await listen(app);
   try {
     const baseUrl = serverUrl(app);
-    await requestJson("POST", `${baseUrl}/records`, livenessRecord());
-    const releaseResult = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "release", at: "2026-07-07T10:10:00.000Z" }));
+    const claimAt = new Date(Date.now() - 1000).toISOString();
+    const releaseAt = new Date().toISOString();
+    await requestJson("POST", `${baseUrl}/records`, livenessRecord({ at: claimAt }));
+    const releaseResult = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "release", at: releaseAt }));
     const state = await requestJson("GET", `${baseUrl}/state`);
 
     assert.equal(releaseResult.statusCode, 202);
+    assert.equal(state.body.actors.length, 0);
+  } finally {
+    await close(app);
+  }
+});
+
+test("local hub server ignores a stale heartbeat posted after release without resurrecting the actor", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const now = Date.now();
+    const claim = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ at: new Date(now - 120_000).toISOString() }));
+    const release = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "release", at: new Date(now - 60_000).toISOString() }));
+    const stale = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "heartbeat", at: new Date(now - 90_000).toISOString() }));
+    const state = await requestJson("GET", `${baseUrl}/state`);
+
+    assert.equal(claim.statusCode, 202);
+    assert.equal(release.statusCode, 202);
+    assert.equal(stale.statusCode, 202);
     assert.equal(state.body.actors.length, 0);
   } finally {
     await close(app);
@@ -1011,6 +1035,159 @@ test("hosted hub: a claim then N heartbeats for one session persist exactly ONE 
     const state = await requestJson("GET", `${baseUrl}/state`, undefined, { authorization: "Bearer token-a" });
     assert.equal(state.body.actors.length, 1);
     assert.equal(state.body.actors[0].actor, "actor-1");
+  } finally {
+    await close(app);
+  }
+});
+
+test("hosted hub ignores a stale heartbeat after release and preserves the timestamp-newest persisted row", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const now = Date.now();
+    const headers = { authorization: "Bearer token-a" };
+    await requestJson("POST", `${baseUrl}/records`, livenessRecord({ at: new Date(now - 120_000).toISOString() }), headers);
+    const releaseAt = new Date(now - 60_000).toISOString();
+    await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "release", at: releaseAt }), headers);
+    const stale = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "heartbeat", at: new Date(now - 90_000).toISOString() }), headers);
+    const equal = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "claim", at: releaseAt }), headers);
+    const state = await requestJson("GET", `${baseUrl}/state`, undefined, headers);
+
+    assert.equal(stale.statusCode, 202);
+    assert.equal(stale.body.status, "stale_liveness_ignored");
+    assert.equal(equal.statusCode, 202);
+    assert.equal(equal.body.status, "stale_liveness_ignored");
+    assert.equal(state.body.actors.length, 0);
+    const rows = sqlClient.coreRows.filter((row: any) => row.tenant_id === "tenant-a" && row.schema === "kontour.console.liveness");
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].payload.type, "release");
+    assert.equal(rows[0].payload.at, releaseAt);
+  } finally {
+    await close(app);
+  }
+});
+
+test("hosted equal-time release precedence is identical in both arrival orders and after cold rebuild", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  const serverOptions = {
+    rootDir, port: 0, runtimeMode: "hosted" as const,
+    telemetryStorageAdapter: "postgres" as const,
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }]
+  };
+  const app = createConsoleHubServer(serverOptions);
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const headers = { authorization: "Bearer token-a" };
+    const at = new Date(Date.now() - 60_000).toISOString();
+    const activeA = livenessRecord({ actor: "actor-a", subjectId: "task-a", type: "heartbeat", at });
+    const releaseA = livenessRecord({ actor: "actor-a", subjectId: "task-a", type: "release", at });
+    const activeB = livenessRecord({ actor: "actor-b", subjectId: "task-b", type: "heartbeat", at });
+    const releaseB = livenessRecord({ actor: "actor-b", subjectId: "task-b", type: "release", at });
+    await requestJson("POST", `${baseUrl}/records`, activeA, headers);
+    await requestJson("POST", `${baseUrl}/records`, releaseA, headers);
+    await requestJson("POST", `${baseUrl}/records`, releaseB, headers);
+    const ignoredActive = await requestJson("POST", `${baseUrl}/records`, activeB, headers);
+    const live = await requestJson("GET", `${baseUrl}/state`, undefined, headers);
+
+    assert.equal(ignoredActive.body.status, "stale_liveness_ignored");
+    assert.equal(live.body.actors.length, 0);
+    const rows = sqlClient.coreRows.filter((row: any) => row.schema === "kontour.console.liveness");
+    assert.equal(rows.length, 2);
+    assert.equal(rows.every((row: any) => row.payload.type === "release"), true);
+  } finally {
+    await close(app);
+  }
+  const restarted = createConsoleHubServer(serverOptions);
+  await listen(restarted);
+  try {
+    const cold = await requestJson("GET", `${serverUrl(restarted)}/state`, undefined, { authorization: "Bearer token-a" });
+    assert.equal(cold.body.actors.length, 0);
+  } finally {
+    await close(restarted);
+  }
+});
+
+test("hosted atomic liveness upsert keeps a newer release when a concurrent stale heartbeat completes last", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  const serverOptions = {
+    rootDir, port: 0, runtimeMode: "hosted" as const,
+    telemetryStorageAdapter: "postgres" as const,
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }]
+  };
+  const app = createConsoleHubServer(serverOptions);
+  await listen(app);
+  let unblockStale!: () => void;
+  let staleStarted!: () => void;
+  const staleGate = new Promise<void>((resolve) => { unblockStale = resolve; });
+  const staleEntered = new Promise<void>((resolve) => { staleStarted = resolve; });
+  try {
+    const baseUrl = serverUrl(app);
+    const headers = { authorization: "Bearer token-a" };
+    const now = Date.now();
+    await requestJson("POST", `${baseUrl}/records`, livenessRecord({ at: new Date(now - 120_000).toISOString() }), headers);
+    sqlClient.beforeCoreInsert = async (payload: any) => {
+      if (payload.type === "heartbeat") { staleStarted(); await staleGate; }
+    };
+    const stalePromise = requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "heartbeat", at: new Date(now - 90_000).toISOString() }), headers);
+    await staleEntered;
+    const release = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "release", at: new Date(now - 60_000).toISOString() }), headers);
+    unblockStale();
+    const stale = await stalePromise;
+    sqlClient.beforeCoreInsert = undefined;
+    const live = await requestJson("GET", `${baseUrl}/state`, undefined, headers);
+    assert.equal(release.statusCode, 202);
+    assert.equal(stale.body.status, "stale_liveness_ignored");
+    assert.equal(live.body.actors.length, 0);
+    assert.equal(sqlClient.coreRows.find((row: any) => row.schema === "kontour.console.liveness").payload.type, "release");
+  } finally {
+    unblockStale();
+    await close(app);
+  }
+  const restarted = createConsoleHubServer(serverOptions);
+  await listen(restarted);
+  try {
+    const cold = await requestJson("GET", `${serverUrl(restarted)}/state`, undefined, { authorization: "Bearer token-a" });
+    assert.equal(cold.body.actors.length, 0);
+  } finally {
+    await close(restarted);
+  }
+});
+
+test("hosted liveness persistence fails closed after initial core-record load failure", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  const now = Date.now();
+  const release = { ...livenessRecord({ type: "release", at: new Date(now - 60_000).toISOString() }), id: "liveness:actor-1:task-alpha" };
+  sqlClient.coreRows.push({ tenant_id: "tenant-a", record_id: release.id, schema: release.schema, type: release.type, observed_at: release.at, sequence: 1, payload: release, liveness_order_ms: Date.parse(release.at) });
+  sqlClient.failNextCoreLoad = true;
+  const app = createConsoleHubServer({ rootDir, port: 0, runtimeMode: "hosted", telemetryStorageAdapter: "postgres", telemetryDatabaseUrl: "postgres://example.invalid/console", telemetrySqlClient: sqlClient, hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }] });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const stale = await requestJson("POST", `${baseUrl}/records`, livenessRecord({ type: "heartbeat", at: new Date(now - 90_000).toISOString() }), { authorization: "Bearer token-a" });
+    const state = await requestJson("GET", `${baseUrl}/state`, undefined, { authorization: "Bearer token-a" });
+    assert.equal(stale.statusCode, 202);
+    assert.equal(stale.body.status, "stale_liveness_ignored");
+    assert.equal(sqlClient.coreRows[0].payload.type, "release");
+    assert.equal(state.body.actors.length, 0);
   } finally {
     await close(app);
   }
@@ -2330,6 +2507,98 @@ test("local hub server does not write core records to postgres in local mode", a
 test("console migrations include the core-records migration", async () => {
   const migrations = loadConsoleMigrations();
   assert.equal(migrations.some((m: any) => m.name === "0002_core_records.sql"), true);
+  assert.equal(migrations.some((m: any) => m.name === "0003_liveness_ordering.sql"), true);
+});
+
+test("liveness ordering migration backfills relaxed UTC-Z timestamps at integer-millisecond precision", () => {
+  const migration = loadConsoleMigrations().find((item: any) => item.name === "0003_liveness_ordering.sql");
+  assert.ok(migration);
+  assert.match(migration.sql, /\(\[\.\]\[0-9\]\{1,9\}\)\?Z\$/);
+  assert.match(migration.sql, /left\(rpad\(coalesce\(substring\(payload ->> 'at' from '\[\.\]\(\[0-9\]\{1,9\}\)Z\$'\), ''\), 3, '0'\), 3\)/);
+  assert.match(migration.sql, /floor\(extract\(epoch from candidate\.at_ms::timestamptz\) \* 1000\)::bigint/);
+  assert.match(migration.sql, /substring\(payload ->> 'at' from 1 for 4\) <> '0000'/);
+  assert.match(migration.sql, /isfinite\(candidate\.at_ms::timestamptz\)/);
+  assert.match(migration.sql, /to_char\(candidate\.at_ms::timestamptz at time zone 'UTC'.*HH24:MI:SS'\)\s+= substring\(candidate\.at from 1 for 19\)/s);
+  assert.match(migration.sql, /exception when others then\s+null;/);
+  assert.match(migration.sql, /liveness_order_rank = case when payload ->> 'type' = 'release' then 1 else 0 end/);
+
+  const migrationMillisecondInput = (at: string) => {
+    const fraction = (at.match(/[.]([0-9]{1,9})Z$/)?.[1] ?? "").padEnd(3, "0").slice(0, 3);
+    return `${at.slice(0, 19)}.${fraction}Z`;
+  };
+  const roundingEdge = migrationMillisecondInput("2026-07-10T05:33:49.123999999Z");
+  assert.equal(roundingEdge, "2026-07-10T05:33:49.123Z");
+  assert.equal(Date.parse(roundingEdge), Date.parse("2026-07-10T05:33:49.123Z"));
+  const secondEdge = migrationMillisecondInput("2026-07-10T05:33:49.999999999Z");
+  assert.equal(secondEdge, "2026-07-10T05:33:49.999Z");
+  assert.equal(new Date(Date.parse(secondEdge)).toISOString(), "2026-07-10T05:33:49.999Z");
+  for (const rejected of ["infinity", "now", "+00:00"]) {
+    assert.equal(migration.sql.includes(rejected), false, `migration must not special-case ${rejected} into the canonical domain`);
+  }
+});
+
+test("core-record upsert rejects cross-schema ID collisions in both directions", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const repo = new CoreRecordsRepository(sqlClient);
+  const observedAt = "2026-07-10T05:34:00.000Z";
+  const at = "2026-07-10T05:33:49.123Z";
+  const firstId = "liveness:actor-1:task-alpha";
+  const release = { ...livenessRecord({ type: "release", at }), id: firstId };
+  const ordinaryCollision = { schema: "kontour.console.event", version: "0.1", id: firstId, type: "collision" };
+
+  assert.equal((await repo.persist(release, "tenant-a", observedAt)).status, "persisted");
+  assert.equal((await repo.persist(ordinaryCollision as any, "tenant-a", observedAt)).status, "record_id_collision_ignored");
+  const protectedLiveness = sqlClient.coreRows.find((row: any) => row.record_id === firstId);
+  assert.equal(protectedLiveness.schema, "kontour.console.liveness");
+  assert.equal(protectedLiveness.payload.type, "release");
+  assert.equal(protectedLiveness.liveness_order_ms, Date.parse(at));
+
+  const secondId = "liveness:actor-2:task-beta";
+  const ordinaryFirst = { ...ordinaryCollision, id: secondId, type: "ordinary-first" };
+  const collidingLiveness = {
+    ...livenessRecord({ actor: "actor-2", subjectId: "task-beta", type: "release", at }),
+    id: secondId
+  };
+  assert.equal((await repo.persist(ordinaryFirst as any, "tenant-a", observedAt)).status, "persisted");
+  assert.equal((await repo.persist(collidingLiveness, "tenant-a", observedAt)).status, "stale_liveness_ignored");
+  const protectedOrdinary = sqlClient.coreRows.find((row: any) => row.record_id === secondId);
+  assert.equal(protectedOrdinary.schema, "kontour.console.event");
+  assert.equal(protectedOrdinary.payload.type, "ordinary-first");
+  assert.equal(protectedOrdinary.liveness_order_ms, null);
+
+  const ordinaryUpdate = { ...ordinaryFirst, type: "ordinary-updated" };
+  assert.equal((await repo.persist(ordinaryUpdate as any, "tenant-a", observedAt)).status, "persisted");
+  assert.equal(sqlClient.coreRows.find((row: any) => row.record_id === secondId).payload.type, "ordinary-updated");
+});
+
+test("core-record CAS treats noncanonical timestamps as oldest and release as canonical equality winner", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const repo = new CoreRecordsRepository(sqlClient);
+  const at = "2026-07-07T10:00:00.123Z";
+  const release = { ...livenessRecord({ type: "release", at }), id: "liveness:actor-1:task-alpha" };
+  assert.equal((await repo.persist(release, "tenant-a", at)).status, "persisted");
+
+  for (const rejectedAt of [
+    "infinity", "-infinity", "now",
+    "2026-07-07T04:00:00.123-06:00",
+    "2026-07-07T10:00:00+02:00",
+    "0000-01-01T00:00:00Z",
+    "2026-07-07T24:00:00.000Z"
+  ]) {
+    const active = { ...livenessRecord({ type: "heartbeat", at: rejectedAt }), id: release.id };
+    assert.equal((await repo.persist(active, "tenant-a", at)).status, "stale_liveness_ignored");
+  }
+  const equalActive = { ...livenessRecord({ type: "claim", at }), id: release.id };
+  assert.equal((await repo.persist(equalActive, "tenant-a", at)).status, "stale_liveness_ignored");
+  assert.equal(sqlClient.coreRows[0].payload.type, "release");
+  assert.equal(sqlClient.coreRows[0].liveness_order_ms, Date.parse(at));
+
+  const secondId = "liveness:actor-2:task-beta";
+  const activeFirst = { ...livenessRecord({ actor: "actor-2", subjectId: "task-beta", type: "heartbeat", at }), id: secondId };
+  const releaseSecond = { ...activeFirst, type: "release" };
+  assert.equal((await repo.persist(activeFirst, "tenant-a", at)).status, "persisted");
+  assert.equal((await repo.persist(releaseSecond, "tenant-a", at)).status, "persisted");
+  assert.equal(sqlClient.coreRows.find((row: any) => row.record_id === secondId).payload.type, "release");
 });
 
 test("console migrations apply core-records migration idempotently", async () => {
@@ -2340,6 +2609,7 @@ test("console migrations apply core-records migration idempotently", async () =>
   const second = await applyConsoleMigrations(sqlClient, migrations);
 
   assert.equal(first.some((r: any) => r.name === "0002_core_records.sql" && r.applied), true);
+  assert.equal(first.some((r: any) => r.name === "0003_liveness_ordering.sql" && r.applied), true);
   assert.equal(second.every((r: any) => r.applied === false), true);
 });
 
@@ -2529,6 +2799,8 @@ class FakeTelemetrySqlClient {
   migrations = new Set<string>();
   selects: Array<{ text: string; values: any[] }> = [];
   private coreSequence = 1;
+  failNextCoreLoad = false;
+  beforeCoreInsert?: (payload: any) => Promise<void>;
 
   async query(text: string, values: any[] = []) {
     const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
@@ -2548,9 +2820,21 @@ class FakeTelemetrySqlClient {
     }
     // Core records insert (on conflict update = upsert)
     if (normalized.startsWith("insert into console_core_records")) {
-      const [tenantId, recordId, schema, type, occurredAt, observedAt, payload] = values;
+      const [tenantId, recordId, schema, type, occurredAt, observedAt, payload, livenessOrderMs, livenessOrderRank] = values;
+      if (this.beforeCoreInsert) await this.beforeCoreInsert(payload);
       const existingIndex = this.coreRows.findIndex((row: any) => row.tenant_id === tenantId && row.record_id === recordId);
       if (existingIndex >= 0) {
+        const existingSchema = this.coreRows[existingIndex].schema;
+        const existingOrderMs = this.coreRows[existingIndex].liveness_order_ms;
+        const existingOrderRank = this.coreRows[existingIndex].liveness_order_rank ?? 0;
+        if (schema !== existingSchema
+          || (schema === "kontour.console.liveness"
+            && (typeof livenessOrderMs !== "number"
+              || (typeof existingOrderMs === "number"
+                && (livenessOrderMs < existingOrderMs
+                  || (livenessOrderMs === existingOrderMs && livenessOrderRank <= existingOrderRank)))))) {
+          return { rows: [], rowCount: 0 };
+        }
         // on conflict do update — preserve sequence
         this.coreRows[existingIndex] = {
           ...this.coreRows[existingIndex],
@@ -2558,7 +2842,9 @@ class FakeTelemetrySqlClient {
           type,
           occurred_at: occurredAt,
           observed_at: observedAt,
-          payload
+          payload,
+          liveness_order_ms: livenessOrderMs,
+          liveness_order_rank: livenessOrderRank
         };
       } else {
         this.coreRows.push({
@@ -2569,13 +2855,19 @@ class FakeTelemetrySqlClient {
           occurred_at: occurredAt,
           observed_at: observedAt,
           sequence: this.coreSequence++,
-          payload
+          payload,
+          liveness_order_ms: livenessOrderMs,
+          liveness_order_rank: livenessOrderRank
         });
       }
-      return { rows: [], rowCount: 1 };
+      return { rows: [{ record_id: recordId }], rowCount: 1 };
     }
     // Core records select ordered by sequence
     if (normalized.startsWith("select payload from console_core_records")) {
+      if (this.failNextCoreLoad) {
+        this.failNextCoreLoad = false;
+        throw new Error("forced core load failure");
+      }
       const tenantId = values[0];
       const rows = this.coreRows
         .filter((row: any) => row.tenant_id === tenantId)

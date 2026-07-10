@@ -1706,9 +1706,11 @@ class PostgresConsoleHub implements Hub {
   private readonly projection: {
     apply(event: ConsoleEventRecord | ConsoleLivenessRecord, streamId?: string): void;
     materialize(options?: CurrentOperatingStateOptions): OperatingState;
+    wouldAdvanceLiveness(event: ConsoleLivenessRecord, options?: CurrentOperatingStateOptions): boolean;
   };
   /** Resolves when the initial Postgres load is done (or errored gracefully). */
   private readonly loadPromise: Promise<void>;
+  private loadSucceeded = false;
 
   constructor(
     private readonly localHub: InstanceType<typeof LocalConsoleHub>,
@@ -1721,13 +1723,15 @@ class PostgresConsoleHub implements Hub {
     // without needing an explicit trigger. Records arrive in sequence order
     // (loadRecords orders by sequence asc), which the projection's parity contract
     // requires.
-    this.loadPromise = this.repo.loadRecords(tenantId).then((records) => {
-      for (const record of records) {
+    this.loadPromise = this.repo.loadRecords(tenantId).then((result) => {
+      this.loadSucceeded = result.ok;
+      for (const record of result.records) {
         if (isConsoleEventRecord(record) || isLivenessRecord(record)) {
           this.projection.apply(record);
         }
       }
     }).catch(() => {
+      this.loadSucceeded = false;
       // Errors are swallowed; the projection stays empty and the hub degrades to
       // an empty-state view rather than crashing.
     });
@@ -1746,10 +1750,28 @@ class PostgresConsoleHub implements Hub {
     // Ensure load is complete before appending so in-memory order is stable.
     await this.loadPromise;
     const observedAt = new Date().toISOString();
+    // Timestamp ordering, not network arrival, owns the one persisted session
+    // row. A stale/equal liveness retry is acknowledged without touching either
+    // Postgres, the local inspection file, or the live projection.
+    if (isLivenessRecord(record) && this.loadSucceeded && !this.projection.wouldAdvanceLiveness(record)) {
+      return {
+        sinkId: "postgres-core-records",
+        sinkRole: "CoreRecordsStore",
+        outcome: "accepted",
+        status: "stale_liveness_ignored",
+        recordId: record.id || "",
+        recordKind: "event",
+        observedAt
+      };
+    }
     // Persist to Postgres first.  A failure returns a failed DeliveryResult
     // to the caller — we do not silently fall through to JSONL in hosted mode.
     const persisted = await this.repo.persist(record, this.tenantId, observedAt);
     if (persisted.outcome !== "accepted") return persisted;
+    // The atomic Postgres predicate is the cross-process ordering authority.
+    // A stale/equal liveness row or cross-schema ID collision reports accepted
+    // without advancing and must not leak to inspection or the live projection.
+    if (persisted.status !== "persisted") return persisted;
     // Also write to the local file sink for the current session
     // (enables inspect() to show streams; harmless if disk is ephemeral).
     await this.localHub.append(record);
