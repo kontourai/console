@@ -916,6 +916,54 @@ function hostedEconomicsApp(sqlClient: any, tokens: any[] = [{ token: "token-a",
 }
 
 const AUTH_A = { authorization: "Bearer token-a" };
+const AUTH_B = { authorization: "Bearer token-b" };
+const TWO_TENANTS = [
+  { token: "token-a", tenantId: "tenant-a" },
+  { token: "token-b", tenantId: "tenant-b" }
+];
+
+test("#159 two-token isolation: tenant B economics + liveness are invisible to tenant A, and the cross-tenant boundary holds", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const app = hostedEconomicsApp(sqlClient, TWO_TENANTS);
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    const econB = await requestJson("POST", `${base}/records`,
+      economicsRecord({ run_id: "iso-econ-b", model_tier: "small", kit_condition: "+kit", acceptance_label: "accepted" }), AUTH_B);
+    assert.equal(econB.statusCode, 202);
+    const liveB = await requestJson("POST", `${base}/records`,
+      livenessRecord({ subjectId: "iso-subject-b", actor: "runtime:iso-session-b:host" }), AUTH_B);
+    assert.equal(liveB.statusCode, 202);
+    const valueA = await requestJson("GET", `${base}/api/economics/value`, undefined, AUTH_A);
+    assert.equal(valueA.statusCode, 200);
+    assert.equal(valueA.body.taggedRunCount, 0, "tenant A must not see tenant B tagged run");
+    const rollupA = await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A);
+    assert.equal(rollupA.body.runCount, 0, "tenant A economics rollup must be empty");
+    const stateA = await requestJson("GET", `${base}/state`, undefined, AUTH_A);
+    assert.equal((stateA.body.actors || []).some((a: any) => a.subjectId === "iso-subject-b"), false);
+    const valueB = await requestJson("GET", `${base}/api/economics/value`, undefined, AUTH_B);
+    assert.equal(valueB.body.taggedRunCount, 1, "tenant B sees its own tagged run");
+    const stateB = await requestJson("GET", `${base}/state`, undefined, AUTH_B);
+    assert.equal((stateB.body.actors || []).some((a: any) => a.subjectId === "iso-subject-b"), true);
+    const crossHeader = await requestJson("POST", `${base}/records`,
+      economicsRecord({ run_id: "iso-cross" }), { ...AUTH_A, "x-console-tenant-id": "tenant-b" });
+    assert.equal(crossHeader.statusCode, 403, "cross-tenant header must be rejected");
+    assert.equal(crossHeader.body.error, "TENANT_FORBIDDEN");
+    // A body-embedded tenant_id that disagrees with the authenticated principal is REJECTED
+    // (not silently ignored): stampTenantFromPrincipal returns 403 TENANT_MISMATCH. The body
+    // can never smuggle a record into another tenant.
+    const bodySmuggle = await requestJson("POST", `${base}/records`,
+      economicsRecord({ run_id: "iso-body-smuggle", tenant_id: "tenant-b", model_tier: "large", kit_condition: "bare", acceptance_label: "accepted" }), AUTH_A);
+    assert.equal(bodySmuggle.statusCode, 403, "a mismatching body tenant_id must be rejected");
+    assert.equal(bodySmuggle.body.error, "TENANT_MISMATCH");
+    const valueBAfter = await requestJson("GET", `${base}/api/economics/value`, undefined, AUTH_B);
+    assert.equal(valueBAfter.body.taggedRunCount, 1, "tenant B is untouched by the rejected smuggle");
+    const valueAAfter = await requestJson("GET", `${base}/api/economics/value`, undefined, AUTH_A);
+    assert.equal(valueAAfter.body.taggedRunCount, 0, "the rejected write never landed in tenant A either");
+  } finally {
+    await close(app);
+  }
+});
 
 test("#155 hosted economics survive a restart: a fresh hub on the same DB rebuilds the identical rollup and value matrix", async () => {
   const sqlClient = new FakeTelemetrySqlClient();
