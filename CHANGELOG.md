@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.0.0](https://github.com/kontourai/console/compare/v1.12.0...v2.0.0) (2026-07-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* move Console runtime state under .kontourai
+
+### Features
+
+* **console:** fold kontour.console.liveness into the OperatingState projection ([417fa4b](https://github.com/kontourai/console/commit/417fa4b51b33b770c49b6a8b6f346768b095e988))
+* **console:** live-session (liveness) actors in the operating-state projection ([ec28708](https://github.com/kontourai/console/commit/ec28708666a8bcdbe5d64339274b322709d7fec1))
+* move Console runtime state under .kontourai ([0b4aa8f](https://github.com/kontourai/console/commit/0b4aa8fd3487462e725c55b6af727bf7b0c116a5))
+
+
+### Bug Fixes
+
+* **console:** expire liveness actors at read time + collapse to one row per session ([b43c03d](https://github.com/kontourai/console/commit/b43c03dcd0acafa9ed1734d485adf9380b401b55))
+* follow Flow runtime root hard cut ([#143](https://github.com/kontourai/console/issues/143)) ([48e0008](https://github.com/kontourai/console/commit/48e0008e97b6a175c0ebf9f0b551fbec302e592c))
+
 ## [1.12.0](https://github.com/kontourai/console/compare/v1.11.1...v1.12.0) (2026-07-06)
 
 
