@@ -156,6 +156,59 @@ test("a liveness actor with an unparseable lastSeenAt expires fail-closed withou
   assert.equal(projection.materialize(WITHIN_TTL).actors!.length, 0);
 });
 
+test("materializing one folded liveness actor transitions fresh to reclaimable to absent at the prune horizon", () => {
+  const projection = createOperatingStateProjection();
+  projection.apply(livenessRecord());
+
+  const fresh = projection.materialize({ now: "2026-07-07T10:15:00.000Z" });
+  assert.equal(fresh.actors!.length, 1);
+  assert.deepEqual(fresh.reclaimableActors, []);
+
+  const reclaimable = projection.materialize({ now: "2026-07-07T10:15:00.001Z" });
+  assert.deepEqual(reclaimable.actors, []);
+  assert.equal(reclaimable.reclaimableActors!.length, 1);
+  assert.equal((reclaimable.reclaimableActors![0] as any).actor, "actor-1");
+
+  const atHorizon = projection.materialize({ now: "2026-07-08T10:00:00.000Z" });
+  assert.deepEqual(atHorizon.actors, []);
+  assert.equal(atHorizon.reclaimableActors!.length, 1);
+  assert.equal((atHorizon.reclaimableActors![0] as any).actor, "actor-1");
+
+  const absent = projection.materialize({ now: "2026-07-08T10:00:00.001Z" });
+  assert.deepEqual(absent.actors, []);
+  assert.deepEqual(absent.reclaimableActors, []);
+
+  // A later read did not sweep or otherwise mutate the folded winner.
+  assert.deepEqual(projection.materialize({ now: "2026-07-07T10:05:00.000Z" }).actors, fresh.actors);
+});
+
+test("released and unparseable liveness actors never appear in fresh or reclaimable actor lists", () => {
+  const projection = createOperatingStateProjection();
+  projection.apply(livenessRecord({ actor: "released" }));
+  projection.apply(livenessRecord({ type: "release", actor: "released", at: "2026-07-07T10:10:00.000Z" }));
+  projection.apply(livenessRecord({ actor: "malformed", at: "not-a-timestamp" }));
+
+  for (const now of ["2026-07-07T10:05:00.000Z", "2026-07-07T11:00:00.000Z"]) {
+    const state = projection.materialize({ now });
+    assert.deepEqual(state.actors, []);
+    assert.deepEqual(state.reclaimableActors, []);
+  }
+});
+
+test("incremental reclaimable liveness actors equal the batch projection", () => {
+  const events = [
+    livenessRecord({ actor: "actor-parity", subjectId: "task-parity" }),
+    livenessRecord({ type: "heartbeat", actor: "actor-parity", subjectId: "task-parity", at: "2026-07-07T10:05:00.000Z" })
+  ];
+  const options = { now: "2026-07-07T11:00:00.000Z" };
+  const incremental = foldIncrementally(events, options);
+  const batch = buildCurrentOperatingState(events, options);
+
+  assert.equal(incremental.reclaimableActors!.length, 1);
+  assert.deepEqual(incremental.reclaimableActors, batch.reclaimableActors);
+  assert.deepEqual(incremental, batch);
+});
+
 test("liveness actors are isolated per (actor, subjectId) pair and per projection instance (tenant scoping)", () => {
   const tenantAProjection = createOperatingStateProjection();
   const tenantBProjection = createOperatingStateProjection();

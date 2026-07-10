@@ -170,6 +170,8 @@ export interface OperatingState {
   links?: ConsoleLink[];
   timeline?: TimelineItem[];
   actors?: ConsoleActor[];
+  /** TTL-expired actors still within the bounded liveness prune horizon. */
+  reclaimableActors?: ConsoleActor[];
   pipeline?: import("./pipeline").Pipeline;
   /**
    * Flow's already-derived console projection for the active run, passed through
