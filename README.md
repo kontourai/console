@@ -52,7 +52,7 @@ The React UI (`console-ui`) is built into the package at `console-ui/dist` and s
 ```sh
 npx --package @kontourai/console kontour serve          # hub on 127.0.0.1:3737
 npx --package @kontourai/console kontour-flow-bridge \
-  --flow-root .flow --watch                                  # follow live runs
+  --flow-root .kontourai/flow --watch                         # follow live runs
 ```
 
 Point the Console UI at the hub and the operating plane follows your actual gated work — current step, advances, route-backs — with no demo scripting.

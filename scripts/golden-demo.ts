@@ -39,7 +39,7 @@ function flow(args: string[], cwd: string): string {
 }
 
 function runState(cwd: string): { status: string; current_step: string; next_action: string } {
-  return JSON.parse(readFileSync(join(cwd, ".flow", "runs", runId, "state.json"), "utf8"));
+  return JSON.parse(readFileSync(join(cwd, ".kontourai", "flow", "runs", runId, "state.json"), "utf8"));
 }
 
 async function emit(type: string, summary: string, after: Record<string, unknown>) {
@@ -395,7 +395,7 @@ async function main() {
 
   // Emit linear pipeline snapshot (from real Flow run files)
   await stage("Pipeline snapshot: emit CI-style pipeline to Console");
-  const runDir = join(dir, ".flow", "runs", runId);
+  const runDir = join(dir, ".kontourai", "flow", "runs", runId);
   const definitionPath = join(runDir, "definition.json");
   let pipelineEmitted = false;
   if (existsSync(definitionPath)) {
@@ -499,7 +499,7 @@ async function main() {
 
   say("");
   say(`[32mGolden demo complete: ${sequence} events streamed to the Console hub.[0m`);
-  say(`run directory: ${join(dir, ".flow", "runs", runId)}`);
+  say(`run directory: ${join(dir, ".kontourai", "flow", "runs", runId)}`);
 }
 
 main().catch((error) => {

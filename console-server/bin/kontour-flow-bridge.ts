@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Bridges local Flow runs (.flow/runs/*) into a Console hub as
+// Bridges local Flow runs (.kontourai/flow/runs/*) into a Console hub as
 // kontour.console.event records. Read-only over Flow files; idempotent via
 // hub-side event-id deduplication. --watch polls for run-state changes so the
 // operating plane follows live work.
@@ -7,7 +7,8 @@ const path = require("node:path");
 const {
   bridgeFlowRun,
   buildFlowBridgeSink,
-  listFlowRunDirs,
+  DEFAULT_FLOW_ROOT,
+  discoverFlowRuns,
 } = require("../src/console-foundation/flow-bridge");
 import type { Sink } from "../src/console-foundation/types";
 
@@ -25,7 +26,7 @@ interface BridgeOptions {
 
 function printUsage(): void {
   process.stdout.write(
-    "Usage: kontour-flow-bridge [--flow-root .flow] [--hub http://127.0.0.1:3737]\n" +
+    `Usage: kontour-flow-bridge [--flow-root ${DEFAULT_FLOW_ROOT}] [--hub http://127.0.0.1:3737]\n` +
     "                           [--local-root .kontour] [--no-local] [--tenant <id>]\n" +
     "                           [--watch] [--interval-ms 2000] [--scope <id>] [--scope-label <label>]\n" +
     "\n" +
@@ -35,7 +36,7 @@ function printUsage(): void {
 
 function parseOptions(argv: string[], env: NodeJS.ProcessEnv = process.env): BridgeOptions {
   const options: BridgeOptions = {
-    flowRoot: ".flow",
+    flowRoot: DEFAULT_FLOW_ROOT,
     hubUrl: "http://127.0.0.1:3737",
     localRoot: ".kontour",
     authToken: env.CONSOLE_AUTH_TOKEN || env.CONSOLE_TELEMETRY_TOKEN,
@@ -82,7 +83,8 @@ function bridgeSink(options: BridgeOptions): Sink {
 
 async function bridgeOnce(options: BridgeOptions, sink: Sink): Promise<void> {
   const flowRoot = path.resolve(process.cwd(), options.flowRoot);
-  const runDirs = listFlowRunDirs(flowRoot);
+  const discovery = discoverFlowRuns(flowRoot);
+  const runDirs = discovery.runDirs;
   if (runDirs.length === 0) {
     process.stdout.write(`no Flow runs under ${flowRoot}\n`);
     return;
@@ -91,6 +93,7 @@ async function bridgeOnce(options: BridgeOptions, sink: Sink): Promise<void> {
     const delivery = await bridgeFlowRun(runDir, sink, {
       scopeId: options.scopeId,
       scopeLabel: options.scopeLabel,
+      allowedRunsRoot: discovery.allowedRunsRoot,
     }, sentIds);
     process.stdout.write(
       `${path.basename(runDir)}: ${delivery.events} events ` +

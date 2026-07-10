@@ -1,5 +1,5 @@
 // Flow run bridge: derives kontour.console.event records from local Flow run
-// files (.flow/runs/<run-id>/state.json) and delivers them to a Console hub.
+// files (.kontourai/flow/runs/<run-id>/state.json) and delivers them to a Console hub.
 // Read-only over Flow-owned files; Flow stays the authority for run state.
 // Event ids are deterministic and hub projections deduplicate by id, so
 // re-bridging is state-safe; the bin also tracks sent ids across watch passes.
@@ -19,6 +19,8 @@ import type {
   FlowConsoleRunIdentity,
 } from "@kontourai/flow/console-contract" with { "resolution-mode": "import" };
 
+export const DEFAULT_FLOW_ROOT = path.join(".kontourai", "flow");
+
 export interface FlowBridgeEvent {
   schema: "kontour.console.event";
   version: "0.1";
@@ -37,6 +39,19 @@ export interface FlowBridgeEvent {
 export interface FlowBridgeScopeOptions {
   scopeId?: string;
   scopeLabel?: string;
+  /** Canonical runs boundary returned by discoverFlowRuns. */
+  allowedRunsRoot?: string;
+}
+
+function readFlowJson<T>(runDir: string, allowedRunsRoot: string | undefined, ...segments: string[]): T {
+  const candidate = path.join(runDir, ...segments);
+  const canonicalRunsRoot = allowedRunsRoot ?? fs.realpathSync(path.dirname(runDir));
+  const canonicalRunDir = fs.realpathSync(runDir);
+  const canonicalCandidate = fs.realpathSync(candidate);
+  if (!isWithin(canonicalRunsRoot, canonicalRunDir) || !isWithin(canonicalRunDir, canonicalCandidate)) {
+    throw new Error(`Flow artifact escapes its run directory: ${candidate}`);
+  }
+  return JSON.parse(fs.readFileSync(canonicalCandidate, "utf8")) as T;
 }
 
 // Run state read from Flow's own state.json. The transition shape is taken from
@@ -76,8 +91,7 @@ function consoleStatus(state: FlowRunState): string {
  * re-bridging safe.
  */
 export async function deriveFlowRunEvents(runDir: string, options: FlowBridgeScopeOptions = {}): Promise<FlowBridgeEvent[]> {
-  const statePath = path.join(runDir, "state.json");
-  const state: FlowRunState = JSON.parse(fs.readFileSync(statePath, "utf8"));
+  const state = readFlowJson<FlowRunState>(runDir, options.allowedRunsRoot, "state.json");
   const runId = state.run_id;
   const subject = state.subject ?? runId;
   const scopeId = options.scopeId ?? "flow-local";
@@ -139,10 +153,10 @@ export async function deriveFlowRunEvents(runDir: string, options: FlowBridgeSco
   const definitionPath = path.join(runDir, "definition.json");
   if (fs.existsSync(definitionPath)) {
     try {
-      const definition = JSON.parse(fs.readFileSync(definitionPath, "utf8"));
+      const definition = readFlowJson<Record<string, unknown>>(runDir, options.allowedRunsRoot, "definition.json");
       const pipeline = buildPipeline(definition, state);
       // Attach Surface TrustReports to gate-expects whose evidence files carry TrustBundles.
-      await attachTrustReports(runDir, pipeline);
+      await attachTrustReports(runDir, pipeline, options.allowedRunsRoot);
       const pipelineEvent: FlowBridgeEvent = {
         schema: "kontour.console.event",
         version: "0.1",
@@ -189,7 +203,7 @@ export async function deriveFlowRunEvents(runDir: string, options: FlowBridgeSco
  * Graceful: any missing file, parse error, or derivation error is silently
  * skipped — the pipeline still renders without trust report data.
  */
-async function attachTrustReports(runDir: string, pipeline: Pipeline): Promise<void> {
+async function attachTrustReports(runDir: string, pipeline: Pipeline, allowedRunsRoot?: string): Promise<void> {
   // Read the evidence manifest (evidence/manifest.json is the canonical location
   // in Flow 1.3+; the bridge only reads — Flow owns these files).
   const manifestPath = path.join(runDir, "evidence", "manifest.json");
@@ -197,7 +211,7 @@ async function attachTrustReports(runDir: string, pipeline: Pipeline): Promise<v
 
   let manifest: Record<string, unknown>;
   try {
-    manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+    manifest = readFlowJson<Record<string, unknown>>(runDir, allowedRunsRoot, "evidence", "manifest.json");
   } catch { return; /* malformed manifest — skip gracefully */ }
 
   const evidenceEntries = Array.isArray(manifest["evidence"])
@@ -229,7 +243,7 @@ async function attachTrustReports(runDir: string, pipeline: Pipeline): Promise<v
   try {
     const defPath = path.join(runDir, "definition.json");
     if (fs.existsSync(defPath)) {
-      rawDef = JSON.parse(fs.readFileSync(defPath, "utf8")) as Record<string, unknown>;
+      rawDef = readFlowJson<Record<string, unknown>>(runDir, allowedRunsRoot, "definition.json");
     }
   } catch { /* if definition is unreadable, selector matching falls back to id */ }
 
@@ -308,14 +322,51 @@ async function attachTrustReports(runDir: string, pipeline: Pipeline): Promise<v
   }
 }
 
-/** Lists run directories under a Flow root (.flow) that carry state.json. */
-export function listFlowRunDirs(flowRoot: string): string[] {
+function isWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+export interface FlowRunDiscovery {
+  allowedRunsRoot?: string;
+  runDirs: string[];
+}
+
+/** Discovers run directories and pins the canonical boundary used for later reads. */
+export function discoverFlowRuns(flowRoot: string): FlowRunDiscovery {
   const runsDir = path.join(flowRoot, "runs");
-  if (!fs.existsSync(runsDir)) return [];
-  return fs.readdirSync(runsDir, { withFileTypes: true })
+  if (!fs.existsSync(runsDir)) return { runDirs: [] };
+
+  let canonicalFlowRoot: string;
+  let canonicalRunsDir: string;
+  try {
+    canonicalFlowRoot = fs.realpathSync(flowRoot);
+    canonicalRunsDir = fs.realpathSync(runsDir);
+  } catch {
+    return { runDirs: [] };
+  }
+  if (!isWithin(canonicalFlowRoot, canonicalRunsDir)) return { runDirs: [] };
+
+  const runDirs = fs.readdirSync(canonicalRunsDir, { withFileTypes: true })
     .filter((entry: { isDirectory(): boolean; name: string }) => entry.isDirectory())
     .map((entry: { name: string }) => path.join(runsDir, entry.name))
-    .filter((dir: string) => fs.existsSync(path.join(dir, "state.json")));
+    .filter((dir: string) => {
+      const statePath = path.join(dir, "state.json");
+      if (!fs.existsSync(statePath)) return false;
+      try {
+        const canonicalRunDir = fs.realpathSync(dir);
+        return isWithin(canonicalRunsDir, canonicalRunDir) &&
+          isWithin(canonicalRunDir, fs.realpathSync(statePath));
+      } catch {
+        return false;
+      }
+    });
+  return { allowedRunsRoot: canonicalRunsDir, runDirs };
+}
+
+/** Lists run directories under a Flow product root that carry state.json. */
+export function listFlowRunDirs(flowRoot: string): string[] {
+  return discoverFlowRuns(flowRoot).runDirs;
 }
 
 export interface FlowBridgeDelivery {

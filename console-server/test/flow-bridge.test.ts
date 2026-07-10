@@ -1,12 +1,18 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { mkdtempSync, mkdirSync, writeFileSync } = require("node:fs");
+const { execFile } = require("node:child_process");
+const { mkdtempSync, mkdirSync, renameSync, symlinkSync, writeFileSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
-const { deriveFlowRunEvents, listFlowRunDirs, bridgeFlowRun, buildFlowBridgeSink } = require("../src/console-foundation/flow-bridge");
+const { promisify } = require("node:util");
+const { DEFAULT_FLOW_ROOT, deriveFlowRunEvents, discoverFlowRuns, listFlowRunDirs, bridgeFlowRun, buildFlowBridgeSink } = require("../src/console-foundation/flow-bridge");
 const { createConsoleHubServer } = require("../src/console-foundation/console-hub-server");
-const { InMemorySink } = require("../src/console-foundation");
+const consoleFoundation = require("../src/console-foundation");
+const { InMemorySink } = consoleFoundation;
 const { existsSync } = require("node:fs");
+
+const execFileAsync = promisify(execFile);
+const tsxLoader = require.resolve("tsx");
 
 function writeRun(flowRoot: string, runId: string, state: Record<string, unknown>): string {
   const runDir = join(flowRoot, "runs", runId);
@@ -28,6 +34,10 @@ const sampleState = {
     { type: "route_back", from_step: "verify", to_step: "implement", gate_id: "verify-gate", route_reason: "implementation_defect", at: "2026-06-11T00:30:00Z" },
   ],
 };
+
+test("package root exports pinned Flow discovery", () => {
+  assert.equal(consoleFoundation.discoverFlowRuns, discoverFlowRuns);
+});
 
 test("derives deterministic console events from a Flow run state", async () => {
   const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-"));
@@ -54,6 +64,123 @@ test("lists only run directories that carry state.json", () => {
   const dirs = listFlowRunDirs(flowRoot);
   assert.equal(dirs.length, 1);
   assert.match(dirs[0], /runs\/a$/);
+});
+
+test("default discovery selects .kontourai/flow and ignores legacy-only runs", () => {
+  const projectRoot = mkdtempSync(join(tmpdir(), "flow-bridge-default-"));
+  const canonicalRoot = join(projectRoot, DEFAULT_FLOW_ROOT);
+  const legacyRoot = join(projectRoot, ".flow");
+  const canonicalRun = writeRun(canonicalRoot, "canonical", { ...sampleState, run_id: "canonical" });
+  writeRun(legacyRoot, "legacy", { ...sampleState, run_id: "legacy" });
+
+  assert.equal(DEFAULT_FLOW_ROOT, join(".kontourai", "flow"));
+  assert.deepEqual(listFlowRunDirs(canonicalRoot), [canonicalRun]);
+});
+
+test("explicit Flow roots remain confined when runs is a symlink", () => {
+  const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-confined-"));
+  const outsideRoot = mkdtempSync(join(tmpdir(), "flow-bridge-outside-"));
+  writeRun(outsideRoot, "outside", { ...sampleState, run_id: "outside" });
+  symlinkSync(join(outsideRoot, "runs"), join(flowRoot, "runs"), "dir");
+
+  assert.deepEqual(listFlowRunDirs(flowRoot), []);
+});
+
+test("explicit Flow root overrides discover their own runs", () => {
+  const customRoot = mkdtempSync(join(tmpdir(), "flow-bridge-custom-"));
+  const customRun = writeRun(customRoot, "custom", { ...sampleState, run_id: "custom" });
+
+  assert.deepEqual(listFlowRunDirs(customRoot), [customRun]);
+});
+
+test("pinned discovery boundary rejects a run replaced by an external symlink", async () => {
+  const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-run-swap-"));
+  const runDir = writeRun(flowRoot, "selected", { ...sampleState, run_id: "selected" });
+  const discovery = discoverFlowRuns(flowRoot);
+  const outsideRoot = mkdtempSync(join(tmpdir(), "flow-bridge-run-swap-outside-"));
+  const outsideRun = writeRun(outsideRoot, "outside", { ...sampleState, run_id: "outside" });
+  renameSync(runDir, join(flowRoot, "runs", "selected-original"));
+  symlinkSync(outsideRun, runDir, "dir");
+
+  await assert.rejects(
+    deriveFlowRunEvents(runDir, { allowedRunsRoot: discovery.allowedRunsRoot }),
+    /escapes its run directory/,
+  );
+});
+
+test("CLI default bridges canonical runs and ignores legacy runs", async () => {
+  const projectRoot = mkdtempSync(join(tmpdir(), "flow-bridge-cli-"));
+  writeRun(join(projectRoot, DEFAULT_FLOW_ROOT), "canonical", { ...sampleState, run_id: "canonical" });
+  writeRun(join(projectRoot, ".flow"), "legacy", { ...sampleState, run_id: "legacy" });
+  const hubRoot = mkdtempSync(join(tmpdir(), "flow-bridge-cli-hub-"));
+  const app = createConsoleHubServer({ rootDir: hubRoot, kontourRoot: hubRoot, port: 0 });
+  await new Promise((resolve: any) => app.listen({ port: 0 }, resolve));
+  const address = app.server.address() as { port: number };
+
+  try {
+    const cliPath = join(__dirname, "..", "bin", "kontour-flow-bridge.ts");
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--import", tsxLoader, cliPath, "--no-local", "--hub", `http://127.0.0.1:${address.port}`,
+    ], { cwd: projectRoot });
+    assert.match(stdout, /^canonical:/m);
+    assert.doesNotMatch(stdout, /^legacy:/m);
+  } finally {
+    await new Promise((resolve: any) => app.close(resolve));
+  }
+});
+
+test("CLI default does not discover a legacy-only run", async () => {
+  const projectRoot = mkdtempSync(join(tmpdir(), "flow-bridge-cli-legacy-"));
+  writeRun(join(projectRoot, ".flow"), "legacy", { ...sampleState, run_id: "legacy" });
+  const cliPath = join(__dirname, "..", "bin", "kontour-flow-bridge.ts");
+  const { stdout } = await execFileAsync(process.execPath, ["--import", tsxLoader, cliPath], { cwd: projectRoot });
+
+  assert.match(stdout, /no Flow runs under .*\.kontourai\/flow/);
+  assert.doesNotMatch(stdout, /^legacy:/m);
+});
+
+test("deriveFlowRunEvents ignores a definition symlink that escapes the run", async () => {
+  const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-definition-link-"));
+  const runDir = writeRun(flowRoot, "linked-definition", { ...sampleState, run_id: "linked-definition" });
+  const outsideDefinition = join(mkdtempSync(join(tmpdir(), "flow-bridge-definition-outside-")), "definition.json");
+  writeFileSync(outsideDefinition, JSON.stringify({ steps: [{ id: "outside-secret-stage", next: null }] }));
+  symlinkSync(outsideDefinition, join(runDir, "definition.json"));
+
+  const events = await deriveFlowRunEvents(runDir);
+  assert.equal(events.some((event: { type: string }) => event.type === "flow.pipeline.snapshot"), false);
+  assert.equal(JSON.stringify(events).includes("outside-secret-stage"), false);
+});
+
+test("deriveFlowRunEvents ignores an evidence manifest symlink that escapes the run", async () => {
+  const flowRoot = mkdtempSync(join(tmpdir(), "flow-bridge-manifest-link-"));
+  const runDir = writeRun(flowRoot, "linked-manifest", { ...sampleState, run_id: "linked-manifest" });
+  writeFileSync(join(runDir, "definition.json"), JSON.stringify({
+    steps: [{ id: "verify", next: null }],
+    gates: {
+      "verify-gate": {
+        step: "verify",
+        expects: [{
+          id: "tests-passed",
+          kind: "trust.bundle",
+          required: true,
+          bundle_claim: { claimType: "quality.tests" },
+        }],
+      },
+    },
+  }));
+  const evidenceDir = join(runDir, "evidence");
+  mkdirSync(evidenceDir);
+  const outsideManifest = join(mkdtempSync(join(tmpdir(), "flow-bridge-manifest-outside-")), "manifest.json");
+  writeFileSync(outsideManifest, JSON.stringify({
+    evidence: [{
+      kind: "trust.bundle",
+      bundle_report: { claims: [{ claimType: "quality.tests", status: "verified", secret: "outside-secret" }] },
+    }],
+  }));
+  symlinkSync(outsideManifest, join(evidenceDir, "manifest.json"));
+
+  const events = await deriveFlowRunEvents(runDir);
+  assert.equal(JSON.stringify(events).includes("outside-secret"), false);
 });
 
 test("bridges a run into a live hub and skips sent ids on the second pass", async () => {
