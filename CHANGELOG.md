@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.1.0](https://github.com/kontourai/console/compare/v2.0.1...v2.1.0) (2026-07-10)
+
+
+### Features
+
+* **console:** fleet coordination pills — session-id join + fresh/reclaimable tri-state ([#125](https://github.com/kontourai/console/issues/125)) ([3905376](https://github.com/kontourai/console/commit/390537650cc1a9018c39cf7a60fc091b5f1febc0))
+* **console:** fleet coordination pills — session-id join + fresh/reclaimable tri-state ([#125](https://github.com/kontourai/console/issues/125)) ([1906e15](https://github.com/kontourai/console/commit/1906e150f874f48157289fc7a1a9737c0f94bf94))
+
+
+### Bug Fixes
+
+* **console:** fail closed on missing migrations dir; resolve published dist layout ([#151](https://github.com/kontourai/console/issues/151)) ([d321c08](https://github.com/kontourai/console/commit/d321c08f911530083e3bb54b5efd614ad0482139))
+* **console:** fail closed on missing migrations dir; resolve published dist layout ([#151](https://github.com/kontourai/console/issues/151)) ([5a08c93](https://github.com/kontourai/console/commit/5a08c93b83bc7e23768c052fc4cf75464a2a55a8))
+
 ## [2.0.1](https://github.com/kontourai/console/compare/v2.0.0...v2.0.1) (2026-07-10)
 
 
