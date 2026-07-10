@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1](https://github.com/kontourai/console/compare/v2.0.0...v2.0.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **console:** liveness robustness — forced session ids, fail-closed timestamps, no resurrection ([#139](https://github.com/kontourai/console/issues/139)) ([f2ded59](https://github.com/kontourai/console/commit/f2ded59bb020486d755ec16129b117416b83efb7))
+* **console:** liveness robustness — forced session ids, fail-closed timestamps, no resurrection after release ([#139](https://github.com/kontourai/console/issues/139)) ([e988583](https://github.com/kontourai/console/commit/e9885834430fd621cdb87239107900386263695c))
+
 ## [2.0.0](https://github.com/kontourai/console/compare/v1.12.0...v2.0.0) (2026-07-10)
 
 
