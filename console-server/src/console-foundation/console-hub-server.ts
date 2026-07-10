@@ -33,6 +33,7 @@ import type {
 import { createEconomicsStore, type EconomicsStore } from "./economics-store";
 import { createEconomicsProjection, type EconomicsProjection } from "./economics-projection";
 import { CoreRecordsRepository } from "./core-records";
+import { EconomicsRecordsRepository } from "./economics-records";
 import { looksLikeJwt, verifyAccessToken, verifyOidcIdToken, protectedResourceMetadata } from "./oauth-resource";
 import { buildAuthorizeRedirect, exchangeCodeForToken, signLoginState, verifyLoginState } from "./oidc-login";
 import { handleMcpRequest } from "./mcp-server";
@@ -122,9 +123,10 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
   // Per-tenant economics store + rebuildable projection (console #117, ADR 0003
   // calls 1/3). Keyed by the authoritative tenantId, exactly like `hostedHubs`;
   // isolation (AC6) is therefore by construction — one tenant never sees
-  // another's economics. In-memory v1 (mirrors telemetry's local adapter);
-  // per-tenant persistence is a documented follow-up.
-  const economics = new Map<string, { store: EconomicsStore; projection: EconomicsProjection }>();
+  // another's economics. Local mode stays the in-memory v1 (mirrors telemetry's
+  // local adapter); hosted mode is Postgres-backed (console #155) so the
+  // Economics read-models survive redeploys and re-relays dedup on run_id.
+  const economics = new Map<string, TenantEconomics>();
   // Flow ingest in-memory dedup + read store, scoped to this server instance.
   // `ingestSeen` maps idempotencyKey -> the recordId returned the first time, so
   // a re-POST is a no-op that returns the same recordId (no second append).
@@ -205,7 +207,7 @@ async function routeRequest(input: {
   localEvents: SseBroker;
   hostedHubs: Map<string, Hub>;
   hostedEvents: Map<string, SseBroker>;
-  economics: Map<string, { store: EconomicsStore; projection: EconomicsProjection }>;
+  economics: Map<string, TenantEconomics>;
   telemetry: TelemetryStore;
   ingestState: FlowIngestServerState;
   options: ConsoleHubServerOptions;
@@ -362,6 +364,9 @@ async function routeRequest(input: {
     }
     const hub = runtimeConfig.mode === "hosted" ? hostedHubForTenant(input.hostedHubs, options, context.tenantId, coreSqlClient) : input.localHub;
     const events = runtimeConfig.mode === "hosted" ? hostedEventsForTenant(input.hostedEvents, context.tenantId) : input.localEvents;
+    // Economics durability (console #155) is hosted-only: local mode keeps the
+    // exact in-memory v1 behaviour even when a SQL client is injected for tests.
+    const economicsSqlClient = runtimeConfig.mode === "hosted" ? coreSqlClient : undefined;
 
     // MCP server (ADR 0003, Phase 3): JSON-RPC over POST, behind the auth gate +
     // telemetry:read scope. Tools are tenant-scoped via the request context.
@@ -403,30 +408,45 @@ async function routeRequest(input: {
     }
 
     if (request.method === "POST" && url.pathname === "/records") {
-      await handleRecords(hub, events, request, response, context, () => economicsForTenant(economics, context.tenantId));
+      await handleRecords(hub, events, request, response, context, () => economicsForTenant(economics, context.tenantId, economicsSqlClient));
       return;
     }
 
     // Economics read-models (console #117, ADR 0003 calls 3 + 4). Rebuildable
     // projections, tenant-scoped by construction via the per-tenant map. Gated by
     // the economics:read scope (reuses the #98 per-route scope pattern).
+    // Hosted (#155): fail closed — if the Postgres cold load failed, return 503
+    // rather than presenting an empty projection as truth. The next request
+    // retries the load.
     if (request.method === "GET" && url.pathname === "/api/economics") {
-      const { projection } = economicsForTenant(economics, context.tenantId);
-      writeJson(response, 200, projection.materialize(context.tenantId));
+      const entry = economicsForTenant(economics, context.tenantId, economicsSqlClient);
+      if (!(await entry.ensureLoaded())) {
+        writeEconomicsUnavailable(response);
+        return;
+      }
+      writeJson(response, 200, entry.projection.materialize(context.tenantId));
       return;
     }
 
     if (request.method === "GET" && url.pathname === "/api/economics/value") {
-      const { projection } = economicsForTenant(economics, context.tenantId);
-      writeJson(response, 200, projection.materializeValue(context.tenantId));
+      const entry = economicsForTenant(economics, context.tenantId, economicsSqlClient);
+      if (!(await entry.ensureLoaded())) {
+        writeEconomicsUnavailable(response);
+        return;
+      }
+      writeJson(response, 200, entry.projection.materializeValue(context.tenantId));
       return;
     }
 
     // Delegation efficiency (flow-agents #415): per-(role, model) outcome rollups +
     // MODEL-GRANULARITY PROXY cost. Same rebuildable projection, tenant-scoped.
     if (request.method === "GET" && url.pathname === "/api/economics/delegations") {
-      const { projection } = economicsForTenant(economics, context.tenantId);
-      writeJson(response, 200, projection.materializeDelegations(context.tenantId));
+      const entry = economicsForTenant(economics, context.tenantId, economicsSqlClient);
+      if (!(await entry.ensureLoaded())) {
+        writeEconomicsUnavailable(response);
+        return;
+      }
+      writeJson(response, 200, entry.projection.materializeDelegations(context.tenantId));
       return;
     }
 
@@ -1016,7 +1036,7 @@ async function handleRecords(
   request: IncomingMessage,
   response: ServerResponse,
   context: ConsoleRequestContext,
-  economicsForContext: () => { store: EconomicsStore; projection: EconomicsProjection }
+  economicsForContext: () => TenantEconomics
 ): Promise<void> {
   const body = await readJsonBody(request);
   const record = validateRecordBody(body);
@@ -1034,10 +1054,33 @@ async function handleRecords(
   // per-tenant economics store + rebuildable projection, NOT `hub.append` (the
   // control plane). ADR 0003 calls 1 + 3.
   if (stamped.record.schema === "kontour.console.economics") {
-    const { store, projection } = economicsForContext();
+    const entry = economicsForContext();
     const economicsRecord = stamped.record as ConsoleEconomicsRecord;
-    store.append(economicsRecord);
-    projection.apply(economicsRecord);
+
+    // Hosted durable path (console #155): Postgres is the source of truth AND
+    // the dedup boundary. Persist FIRST; fold into the in-memory projection
+    // only when the row is NEWLY persisted (a duplicate re-relay must not
+    // double-count) and the cold load succeeded (never fold onto a projection
+    // that is missing history — reads are 503 until a load succeeds).
+    if (entry.repo) {
+      const loaded = await entry.ensureLoaded();
+      const persisted = await entry.repo.persist(context.tenantId, economicsRecord, new Date().toISOString());
+      if (persisted.outcome !== "accepted") {
+        writeApiError(response, 500, persisted.errorCode || "SINK_DELIVERY_FAILED", persisted.safeMessage || "record delivery failed");
+        return;
+      }
+      if (persisted.status === "persisted" && loaded) {
+        entry.store.append(economicsRecord);
+        entry.projection.apply(economicsRecord);
+      }
+      events.broadcast("record.accepted", { delivery: persisted });
+      writeJson(response, 202, persisted);
+      return;
+    }
+
+    // Local in-memory v1 path — unchanged (#117 behaviour).
+    entry.store.append(economicsRecord);
+    entry.projection.apply(economicsRecord);
     events.broadcast("record.accepted", { delivery: { recordKind: "economics", recordId: economicsRecord.run_id, outcome: "accepted" } });
     writeJson(response, 202, { recordKind: "economics", recordId: economicsRecord.run_id, outcome: "accepted" });
     return;
@@ -1405,18 +1448,102 @@ export function validateEconomicsRecordBody(body: unknown): ConsoleEconomicsReco
   return body as ConsoleEconomicsRecord;
 }
 
+/**
+ * Per-tenant economics state.
+ *
+ * Local mode: `repo` is undefined, `ensureLoaded()` resolves true immediately,
+ * and store/projection behave exactly as the in-memory v1 (#117).
+ *
+ * Hosted mode (console #155): `repo` persists every accepted record to
+ * Postgres and `ensureLoaded()` cold-loads the tenant's history (sequence
+ * ascending) into a fresh store + projection. Fail-closed: while the load has
+ * not succeeded, reads return 503 and ingests persist WITHOUT folding — a
+ * later successful load rebuilds the projection from Postgres, which includes
+ * everything persisted during the outage.
+ */
+interface TenantEconomics {
+  store: EconomicsStore;
+  projection: EconomicsProjection;
+  /** Present in hosted mode only — the Postgres persistence layer. */
+  repo?: EconomicsRecordsRepository;
+  /** Resolves true when the (possibly retried) cold load has succeeded. */
+  ensureLoaded(): Promise<boolean>;
+}
+
 /** Lazily create (and cache) the per-tenant economics store + projection. */
 function economicsForTenant(
-  economics: Map<string, { store: EconomicsStore; projection: EconomicsProjection }>,
-  tenantId: string
-): { store: EconomicsStore; projection: EconomicsProjection } {
+  economics: Map<string, TenantEconomics>,
+  tenantId: string,
+  sqlClient?: ConsoleSqlClient
+): TenantEconomics {
   const key = safePathToken(tenantId);
   let existing = economics.get(key);
   if (!existing) {
-    existing = { store: createEconomicsStore(), projection: createEconomicsProjection() };
+    existing = sqlClient
+      ? createDurableTenantEconomics(new EconomicsRecordsRepository(sqlClient), tenantId)
+      : {
+        store: createEconomicsStore(),
+        projection: createEconomicsProjection(),
+        ensureLoaded: () => Promise.resolve(true)
+      };
     economics.set(key, existing);
   }
   return existing;
+}
+
+/**
+ * Hosted-mode durable economics entry (console #155).
+ *
+ * The cold load is memoized on success and RETRIED on the next request after a
+ * failure (mirrors PostgresConsoleHub's #149 posture of never trusting an
+ * incomplete in-memory view: there `loadSucceeded` gates the memory-based
+ * staleness shortcut; here it gates folds and reads outright). A successful
+ * load atomically replaces the store + projection with one rebuilt from the
+ * full Postgres history.
+ */
+function createDurableTenantEconomics(repo: EconomicsRecordsRepository, tenantId: string): TenantEconomics {
+  let loadPromise: Promise<boolean> | undefined;
+
+  const entry: TenantEconomics = {
+    store: createEconomicsStore(),
+    projection: createEconomicsProjection(),
+    repo,
+    ensureLoaded
+  };
+
+  async function loadOnce(): Promise<boolean> {
+    const result = await repo.loadRecords(tenantId);
+    if (!result.ok) return false;
+    const store = createEconomicsStore();
+    const projection = createEconomicsProjection();
+    for (const record of result.records) {
+      store.append(record);
+      projection.apply(record);
+    }
+    entry.store = store;
+    entry.projection = projection;
+    return true;
+  }
+
+  async function ensureLoaded(): Promise<boolean> {
+    if (!loadPromise) loadPromise = loadOnce();
+    const current = loadPromise;
+    const ok = await current;
+    // A failed attempt is not cached: the next request retries the load.
+    if (!ok && loadPromise === current) loadPromise = undefined;
+    return ok;
+  }
+
+  // Kick off the cold load eagerly (mirrors PostgresConsoleHub's constructor-time
+  // load) so the first read after a deploy usually finds a warm projection.
+  void ensureLoaded();
+
+  return entry;
+}
+
+/** Fail-closed economics read (#155): a failed Postgres cold load is a 503, never an empty rollup. */
+function writeEconomicsUnavailable(response: ServerResponse): void {
+  writeApiError(response, 503, "ECONOMICS_STORE_UNAVAILABLE", "economics records could not be loaded from storage; retry shortly");
 }
 
 function foundation() {
