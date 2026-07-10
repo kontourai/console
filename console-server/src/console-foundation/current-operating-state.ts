@@ -97,7 +97,8 @@ function materializeOperatingState(working: MutableReplayState, meta: OperatingS
     actions: [],
     links: [],
     timeline: [],
-    actors: []
+    actors: [],
+    reclaimableActors: []
   };
 
   const processes = sortById([...working.processes.values()]);
@@ -109,15 +110,20 @@ function materializeOperatingState(working: MutableReplayState, meta: OperatingS
   state.evidence = sortById([...working.evidence.values()]);
   state.learnings = sortById([...working.learnings.values()]);
   state.inquiries = sortById([...working.inquiries.values()]);
-  // Liveness actors expire at READ time (not via a stored sweep): an actor whose
-  // last-seen event is older than its TTL is dropped here so a crashed/dropped
-  // session that never sent `release` stops being reported active (flow-agents
-  // #295). Deriving activeness at read time keeps stored state a pure fold and
-  // makes expiry deterministic under an injected clock.
+  // Liveness actors are partitioned at READ time (not via a stored sweep).
+  // Deriving freshness/reclaimability here keeps stored state a pure fold and
+  // makes transitions deterministic under an injected clock.
   const nowMs = resolveNowMs(options.now);
-  state.actors = sortById([...working.actors.values()]
-    .filter((actor: ReplayObject) => actor._livenessType !== "release" && isActorActive(actor, nowMs))
-    .map(publicActor));
+  const actors: ReplayObject[] = [];
+  const reclaimableActors: ReplayObject[] = [];
+  for (const actor of working.actors.values()) {
+    if (actor._livenessType === "release") continue;
+    const livenessState = classifyActorLiveness(actor, nowMs);
+    if (livenessState === "fresh") actors.push(publicActor(actor));
+    if (livenessState === "reclaimable") reclaimableActors.push(publicActor(actor));
+  }
+  state.actors = sortById(actors);
+  state.reclaimableActors = sortById(reclaimableActors);
   state.actions = sortById([...working.actions.values()]).map((action: ConsoleActionRecord) => ({
     ...action,
     readOnly: true
@@ -778,19 +784,20 @@ function resolveNowMs(now: number | string | undefined): number {
 }
 
 /**
- * Whether a folded liveness actor is still active at `nowMs`: its last-seen event
- * must be within `ttlSeconds` (defaulting to DEFAULT_LIVENESS_TTL_SECONDS when the
- * record carried none). An actor whose `lastSeenAt` is missing or unparseable is
- * treated as expired. Ingest requires a non-empty `at`, so this fail-closed case
- * protects against corrupted or hand-edited stored data.
+ * Classify a folded actor at `nowMs`: fresh through its effective TTL,
+ * reclaimable after that TTL through the maximum prune horizon, then absent.
+ * Missing or unparseable `lastSeenAt` values fail closed as absent.
  */
-function isActorActive(actor: ReplayObject, nowMs: number): boolean {
+function classifyActorLiveness(actor: ReplayObject, nowMs: number): "fresh" | "reclaimable" | "absent" {
   const lastSeenAt = actor.lastSeenAt;
-  if (typeof lastSeenAt !== "string") return false;
+  if (typeof lastSeenAt !== "string") return "absent";
   const lastSeenMs = parseCanonicalLivenessAt(lastSeenAt);
-  if (lastSeenMs === undefined) return false;
+  if (lastSeenMs === undefined) return "absent";
+  const ageMs = nowMs - lastSeenMs;
   const ttlSeconds = effectiveLivenessTtl(actor.ttlSeconds);
-  return nowMs - lastSeenMs <= ttlSeconds * 1000;
+  if (ageMs <= ttlSeconds * 1000) return "fresh";
+  if (ageMs <= MAX_LIVENESS_TTL_SECONDS * 1000) return "reclaimable";
+  return "absent";
 }
 
 function updateProcessFromGate(state: MutableReplayState, event: ConsoleEventRecord, refs: CrossProductRef[], after: ReplayPatch, gate: ReplayObject): void {

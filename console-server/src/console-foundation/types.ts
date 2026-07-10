@@ -78,6 +78,8 @@ export interface OperatingState {
    * this array always reflects who is active right now, not full history.
    */
   actors?: Record<string, unknown>[];
+  /** TTL-expired actors still retained within the bounded liveness prune horizon. */
+  reclaimableActors?: Record<string, unknown>[];
 }
 
 export type ConsoleApiErrorCode =
