@@ -862,6 +862,7 @@ function safeErrorMessage(error: unknown): string {
 }
 
 const emitter = require("./emitter");
+const flowBridge = require("./flow-bridge");
 const surfaceClaimHelper = require("./surface-claim-helper");
 const flowProcessHelper = require("./flow-process-helper");
 const currentOperatingState = require("./current-operating-state");
@@ -917,6 +918,11 @@ module.exports = {
   ApiSink: emitter.ApiSink,
   classifyRecord: emitter.classifyRecord,
   formatDeliveryResult: emitter.formatDeliveryResult,
+  bridgeFlowRun: flowBridge.bridgeFlowRun,
+  buildFlowBridgeSink: flowBridge.buildFlowBridgeSink,
+  deriveFlowRunEvents: flowBridge.deriveFlowRunEvents,
+  discoverFlowRuns: flowBridge.discoverFlowRuns,
+  listFlowRunDirs: flowBridge.listFlowRunDirs,
   surfaceClaimStateToProjection: surfaceClaimHelper.surfaceClaimStateToProjection,
   surfaceFreshnessTransitionToEvent: surfaceClaimHelper.surfaceFreshnessTransitionToEvent,
   flowProcessStateToProjection: flowProcessHelper.flowProcessStateToProjection,
@@ -927,6 +933,7 @@ export {
   bridgeFlowRun,
   buildFlowBridgeSink,
   deriveFlowRunEvents,
+  discoverFlowRuns,
   listFlowRunDirs,
 } from "./flow-bridge";
 export type {
@@ -934,6 +941,7 @@ export type {
   FlowBridgeEvent,
   FlowBridgeScopeOptions,
   FlowBridgeSinkConfig,
+  FlowRunDiscovery,
 } from "./flow-bridge";
 
 export {

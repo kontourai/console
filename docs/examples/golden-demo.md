@@ -27,7 +27,7 @@ Set `GOLDEN_DEMO_FAST=1` to skip the narrative pacing. Re-record the GIF with `v
 
 ## Bridging without the script
 
-The demo script emits its own events for narrative pacing. For real work, `kontour-flow-bridge --flow-root .flow --watch` derives the same events from any Flow run's files directly — see the README's *Bridge a real Flow run* section.
+The demo script emits its own events for narrative pacing. For real work, `kontour-flow-bridge --flow-root .kontourai/flow --watch` derives the same events from any Flow run's files directly — see the README's *Bridge a real Flow run* section.
 
 ## Boundaries
 
