@@ -12,6 +12,7 @@ const {
 } = require("../src/console-foundation");
 const { signSessionCookie, verifySessionCookieValue } = require("../src/console-foundation/console-hub-server");
 const { CoreRecordsRepository } = require("../src/console-foundation/core-records");
+const { EconomicsRecordsRepository } = require("../src/console-foundation/economics-records");
 
 type RawResponse = { statusCode?: number; headers: Record<string, any>; body: string };
 type JsonResponse = { statusCode?: number; body: any };
@@ -873,6 +874,272 @@ test("hosted hub server partitions core hub records by tenant", async () => {
     assert.equal(stateA.body.timeline.some((item: any) => item.id === "evt-tenant-b-core"), false);
     assert.equal(stateB.body.timeline.some((item: any) => item.id === "evt-tenant-b-core"), true);
     assert.equal(inspectA.body.eventStreams.some((stream: any) => String(stream.relativePath).includes("tenant-b")), false);
+  } finally {
+    await close(app);
+  }
+});
+
+// ── Durable hosted economics (console #155) ────────────────────────────────────
+
+function economicsRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    schema: "kontour.console.economics",
+    version: "0.1",
+    run_id: "stage-a-smoke-20260707/bf-ho-1/small-bare",
+    at: "1751731200000",
+    task_slug: "econ-durability-155",
+    cost: { estimated_cost_usd: 0.25 },
+    time: { wall_clock_s: 120, human_wait_s: 10 },
+    iterations: { count: 1, route_backs: 0 },
+    defects: {
+      findings_by_severity: { critical: 0, high: 1, medium: 0, low: 0 },
+      caught_false_completions: 1,
+      verification_verdict: "PASS"
+    },
+    model_tier: "small",
+    kit_condition: "+kit",
+    acceptance_label: "accepted",
+    ...overrides
+  };
+}
+
+function hostedEconomicsApp(sqlClient: any, tokens: any[] = [{ token: "token-a", tenantId: "tenant-a" }]) {
+  return createConsoleHubServer({
+    rootDir: tempRoot(),
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: tokens
+  });
+}
+
+const AUTH_A = { authorization: "Bearer token-a" };
+
+test("#155 hosted economics survive a restart: a fresh hub on the same DB rebuilds the identical rollup and value matrix", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const first = hostedEconomicsApp(sqlClient);
+  await listen(first);
+  let before: any;
+  let beforeValue: any;
+  try {
+    const base = serverUrl(first);
+    for (let i = 1; i <= 3; i += 1) {
+      const accepted = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: `run-155-${i}` }), AUTH_A);
+      assert.equal(accepted.statusCode, 202);
+      assert.equal(accepted.body.outcome, "accepted");
+      assert.equal(accepted.body.status, "persisted");
+      assert.equal(accepted.body.recordId, `run-155-${i}`);
+    }
+    before = (await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A)).body;
+    beforeValue = (await requestJson("GET", `${base}/api/economics/value`, undefined, AUTH_A)).body;
+    assert.equal(before.runCount, 3);
+    assert.equal(beforeValue.taggedRunCount, 3);
+  } finally {
+    await close(first);
+  }
+
+  // "Redeploy": a brand-new server instance against the SAME database.
+  const second = hostedEconomicsApp(sqlClient);
+  await listen(second);
+  try {
+    const base = serverUrl(second);
+    const after = await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A);
+    const afterValue = await requestJson("GET", `${base}/api/economics/value`, undefined, AUTH_A);
+    assert.equal(after.statusCode, 200);
+    assert.equal(after.body.runCount, 3);
+    assert.deepEqual(after.body.cost, before.cost);
+    assert.deepEqual(after.body.caughtDefects, before.caughtDefects);
+    assert.deepEqual(after.body.funnel, before.funnel);
+    assert.equal(afterValue.body.taggedRunCount, beforeValue.taggedRunCount);
+    assert.deepEqual(afterValue.body.cells, beforeValue.cells);
+    assert.deepEqual(afterValue.body.headline, beforeValue.headline);
+  } finally {
+    await close(second);
+  }
+});
+
+test("#155 hosted duplicate economics POST (same run_id) is accepted-but-ignored and never double-counts — including a re-relay after restart", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const first = hostedEconomicsApp(sqlClient);
+  await listen(first);
+  try {
+    const base = serverUrl(first);
+    const initial = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "run-dup" }), AUTH_A);
+    const repeat = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "run-dup" }), AUTH_A);
+    assert.equal(initial.statusCode, 202);
+    assert.equal(initial.body.status, "persisted");
+    assert.equal(repeat.statusCode, 202);
+    assert.equal(repeat.body.outcome, "accepted");
+    assert.equal(repeat.body.status, "duplicate_ignored");
+    assert.equal(repeat.body.recordId, "run-dup");
+
+    const rollup = (await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A)).body;
+    assert.equal(rollup.runCount, 1);
+    assert.equal(rollup.cost[0].totalCostUsd, 0.25); // not 0.5
+    assert.equal(rollup.funnel.runs, 1);
+    assert.equal(sqlClient.economicsRows.length, 1);
+  } finally {
+    await close(first);
+  }
+
+  // Re-relay of the same record against a freshly restarted hub: still a no-op.
+  const second = hostedEconomicsApp(sqlClient);
+  await listen(second);
+  try {
+    const base = serverUrl(second);
+    const rerelay = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "run-dup" }), AUTH_A);
+    assert.equal(rerelay.statusCode, 202);
+    assert.equal(rerelay.body.status, "duplicate_ignored");
+    const rollup = (await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A)).body;
+    assert.equal(rollup.runCount, 1);
+    assert.equal(rollup.cost[0].totalCostUsd, 0.25);
+    assert.equal(sqlClient.economicsRows.length, 1);
+  } finally {
+    await close(second);
+  }
+});
+
+test("#155 hosted economics tenant isolation: the same run_id in two tenants never bleeds", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const app = hostedEconomicsApp(sqlClient, [
+    { token: "token-a", tenantId: "tenant-a" },
+    { token: "token-b", tenantId: "tenant-b" }
+  ]);
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    const authB = { authorization: "Bearer token-b" };
+    const acceptedA = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "shared-run" }), AUTH_A);
+    const acceptedB = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "shared-run", cost: { estimated_cost_usd: 0.75 } }), authB);
+    // Same run_id, different tenants: BOTH are newly persisted (no cross-tenant dedup).
+    assert.equal(acceptedA.body.status, "persisted");
+    assert.equal(acceptedB.body.status, "persisted");
+
+    const rollupA = (await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A)).body;
+    const rollupB = (await requestJson("GET", `${base}/api/economics`, undefined, authB)).body;
+    assert.equal(rollupA.runCount, 1);
+    assert.equal(rollupB.runCount, 1);
+    assert.equal(rollupA.cost[0].totalCostUsd, 0.25);
+    assert.equal(rollupB.cost[0].totalCostUsd, 0.75);
+    assert.equal(sqlClient.economicsRows.length, 2);
+    assert.deepEqual(new Set(sqlClient.economicsRows.map((row: any) => row.tenant_id)), new Set(["tenant-a", "tenant-b"]));
+  } finally {
+    await close(app);
+  }
+});
+
+test("#155 EconomicsRecordsRepository synthesizes a stable record id when run_id is missing (same payload still dedups; caller `id` is never trusted)", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const repo = new EconomicsRecordsRepository(sqlClient);
+  const record: any = { ...economicsRecord({ id: "attacker-controlled" }) };
+  delete record.run_id;
+
+  const first = await repo.persist("tenant-a", record, new Date().toISOString());
+  const second = await repo.persist("tenant-a", record, new Date().toISOString());
+  assert.equal(first.outcome, "accepted");
+  assert.equal(first.status, "persisted");
+  assert.ok(String(first.recordId).startsWith("sha256:"), "synthesized id is namespaced");
+  assert.notEqual(first.recordId, "attacker-controlled");
+  assert.equal(second.status, "duplicate_ignored");
+  assert.equal(second.recordId, first.recordId);
+  assert.equal(sqlClient.economicsRows.length, 1);
+
+  // A different payload synthesizes a different id — no accidental collision.
+  const other = { ...record, cost: { estimated_cost_usd: 0.99 } };
+  const third = await repo.persist("tenant-a", other, new Date().toISOString());
+  assert.equal(third.status, "persisted");
+  assert.notEqual(third.recordId, first.recordId);
+});
+
+test("#155 hosted fail-closed: a failed economics cold load 503s reads, still persists POSTs durably, and recovers on retry", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  // Seed one record from a "previous deploy".
+  const seeder = hostedEconomicsApp(sqlClient);
+  await listen(seeder);
+  try {
+    const accepted = await requestJson("POST", `${serverUrl(seeder)}/records`, economicsRecord({ run_id: "run-seeded" }), AUTH_A);
+    assert.equal(accepted.body.status, "persisted");
+  } finally {
+    await close(seeder);
+  }
+
+  sqlClient.failEconomicsLoad = true;
+  const app = hostedEconomicsApp(sqlClient);
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    // Reads fail closed: 503, never an empty rollup presented as truth.
+    const during = await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A);
+    assert.equal(during.statusCode, 503);
+    assert.equal(during.body.error, "ECONOMICS_STORE_UNAVAILABLE");
+    const duringValue = await requestJson("GET", `${base}/api/economics/value`, undefined, AUTH_A);
+    assert.equal(duringValue.statusCode, 503);
+    const duringDelegations = await requestJson("GET", `${base}/api/economics/delegations`, undefined, AUTH_A);
+    assert.equal(duringDelegations.statusCode, 503);
+
+    // POSTs during the outage still persist durably (Postgres is the authority)…
+    const posted = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "run-during-outage" }), AUTH_A);
+    assert.equal(posted.statusCode, 202);
+    assert.equal(posted.body.status, "persisted");
+    assert.equal(sqlClient.economicsRows.filter((row: any) => row.record_id === "run-during-outage").length, 1);
+    // …but do NOT fold into an incomplete projection; reads stay 503.
+    assert.equal((await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A)).statusCode, 503);
+
+    // Outage ends: the next read retries the cold load and rebuilds the
+    // projection from Postgres — INCLUDING the record persisted mid-outage.
+    sqlClient.failEconomicsLoad = false;
+    const recovered = await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A);
+    assert.equal(recovered.statusCode, 200);
+    assert.equal(recovered.body.runCount, 2);
+  } finally {
+    await close(app);
+  }
+});
+
+test("#155 hosted economics persist failure returns 500 ECONOMICS_RECORD_PERSISTENCE_FAILED and folds nothing", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const app = hostedEconomicsApp(sqlClient);
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    sqlClient.failEconomicsInsert = true;
+    const failed = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "run-persist-fail" }), AUTH_A);
+    assert.equal(failed.statusCode, 500);
+    assert.equal(failed.body.error, "ECONOMICS_RECORD_PERSISTENCE_FAILED");
+    assert.equal(sqlClient.economicsRows.length, 0);
+
+    const rollup = (await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A)).body;
+    assert.equal(rollup.runCount, 0);
+
+    // The client retries once Postgres is healthy again: accepted and counted once.
+    sqlClient.failEconomicsInsert = false;
+    const retried = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "run-persist-fail" }), AUTH_A);
+    assert.equal(retried.statusCode, 202);
+    assert.equal(retried.body.status, "persisted");
+    assert.equal((await requestJson("GET", `${base}/api/economics`, undefined, AUTH_A)).body.runCount, 1);
+  } finally {
+    await close(app);
+  }
+});
+
+test("#155 local mode economics stay in-memory and unchanged (no SQL writes, v1 response shape, even with an injected client)", async () => {
+  const sqlClient = new FakeTelemetrySqlClient();
+  const app = createConsoleHubServer({ rootDir: tempRoot(), port: 0, telemetrySqlClient: sqlClient });
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    const accepted = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "run-local" }));
+    const repeat = await requestJson("POST", `${base}/records`, economicsRecord({ run_id: "run-local" }));
+    assert.equal(accepted.statusCode, 202);
+    // EXACT v1 response shape — no hosted-only fields leak into local mode.
+    assert.deepEqual(accepted.body, { recordKind: "economics", recordId: "run-local", outcome: "accepted" });
+    assert.deepEqual(repeat.body, { recordKind: "economics", recordId: "run-local", outcome: "accepted" });
+
+    const rollup = (await requestJson("GET", `${base}/api/economics`, undefined)).body;
+    assert.equal(rollup.runCount, 1); // projection dedups on run_id, as before
+    assert.equal(sqlClient.economicsRows.length, 0); // nothing touched Postgres
   } finally {
     await close(app);
   }
@@ -2796,10 +3063,16 @@ function tempRoot() {
 class FakeTelemetrySqlClient {
   rows: any[] = [];
   coreRows: any[] = [];
+  economicsRows: any[] = [];
   migrations = new Set<string>();
   selects: Array<{ text: string; values: any[] }> = [];
   private coreSequence = 1;
+  private economicsSequence = 1;
   failNextCoreLoad = false;
+  /** While true, every economics load throws (simulates a Postgres outage). */
+  failEconomicsLoad = false;
+  /** While true, every economics insert throws (persistence failure path). */
+  failEconomicsInsert = false;
   beforeCoreInsert?: (payload: any) => Promise<void>;
 
   async query(text: string, values: any[] = []) {
@@ -2861,6 +3134,31 @@ class FakeTelemetrySqlClient {
         });
       }
       return { rows: [{ record_id: recordId }], rowCount: 1 };
+    }
+    // Economics records insert (on conflict DO NOTHING = duplicate is a no-op)
+    if (normalized.startsWith("insert into console_economics_records")) {
+      if (this.failEconomicsInsert) throw new Error("forced economics insert failure");
+      const [tenantId, recordId, observedAt, payload] = values;
+      const exists = this.economicsRows.some((row: any) => row.tenant_id === tenantId && row.record_id === recordId);
+      if (exists) return { rows: [], rowCount: 0 };
+      this.economicsRows.push({
+        tenant_id: tenantId,
+        record_id: recordId,
+        observed_at: observedAt,
+        sequence: this.economicsSequence++,
+        payload
+      });
+      return { rows: [{ record_id: recordId }], rowCount: 1 };
+    }
+    // Economics records select ordered by sequence
+    if (normalized.startsWith("select payload from console_economics_records")) {
+      if (this.failEconomicsLoad) throw new Error("forced economics load failure");
+      const tenantId = values[0];
+      const rows = this.economicsRows
+        .filter((row: any) => row.tenant_id === tenantId)
+        .sort((a: any, b: any) => a.sequence - b.sequence)
+        .map((row: any) => ({ payload: row.payload }));
+      return { rows, rowCount: rows.length };
     }
     // Core records select ordered by sequence
     if (normalized.startsWith("select payload from console_core_records")) {
