@@ -3,6 +3,11 @@ import type {
   ConsoleSqlClient,
   DeliveryResult
 } from "./types";
+import { isLivenessRecord, livenessOrderTuple } from "./liveness";
+
+export type CoreRecordsLoadResult =
+  | { ok: true; records: ConsoleRecord[] }
+  | { ok: false; records: []; error: unknown };
 
 /**
  * Repository for persisting and replaying core (console event / projection)
@@ -13,9 +18,9 @@ import type {
  *
  * Design notes:
  *   - Primary key (tenant_id, record_id) makes duplicate POSTs idempotent.
- *     The on-conflict clause silently replaces, preserving the original
- *     sequence value and returning the same accepted outcome — matching the
- *     existing dedup semantics of the JSONL sink.
+ *     Same-schema non-liveness conflicts replace unconditionally. Cross-schema
+ *     collisions never replace the existing row. Same-schema liveness
+ *     conflicts use the ordering watermark to admit only strictly newer events.
  *   - `sequence` is a bigserial with stable ascending order for replay.
  *   - `payload` stores the full record as jsonb.
  *   - `type` stores the record type field (for events) or empty string
@@ -41,25 +46,41 @@ export class CoreRecordsRepository {
     const schema = typeof record.schema === "string" ? record.schema : "";
     const type = typeof (record as any).type === "string" ? (record as any).type : "";
     const occurredAt = typeof (record as any).occurredAt === "string" ? (record as any).occurredAt : null;
+    const livenessOrder = isLivenessRecord(record) ? livenessOrderTuple(record.at, record.type) : undefined;
+    const livenessOrderMs = livenessOrder?.atMs ?? null;
+    const livenessOrderRank = livenessOrder?.rank ?? null;
 
     try {
-      await this.sqlClient.query(
+      const result = await this.sqlClient.query(
         `insert into console_core_records
-           (tenant_id, record_id, schema, type, occurred_at, observed_at, payload)
-         values ($1, $2, $3, $4, $5, $6, $7)
+           (tenant_id, record_id, schema, type, occurred_at, observed_at, payload, liveness_order_ms, liveness_order_rank)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          on conflict (tenant_id, record_id) do update set
            schema = excluded.schema,
            type = excluded.type,
            occurred_at = excluded.occurred_at,
            observed_at = excluded.observed_at,
-           payload = excluded.payload`,
-        [tenantId, recordId, schema, type, occurredAt, observedAt, record]
+           payload = excluded.payload,
+           liveness_order_ms = excluded.liveness_order_ms,
+           liveness_order_rank = excluded.liveness_order_rank
+         where console_core_records.schema = excluded.schema
+           and (excluded.schema <> 'kontour.console.liveness'
+                or (excluded.liveness_order_ms is not null
+                    and (console_core_records.liveness_order_ms is null
+                         or excluded.liveness_order_ms > console_core_records.liveness_order_ms
+                         or (excluded.liveness_order_ms = console_core_records.liveness_order_ms
+                             and excluded.liveness_order_rank > coalesce(console_core_records.liveness_order_rank, 0)))))
+         returning record_id`,
+        [tenantId, recordId, schema, type, occurredAt, observedAt, record, livenessOrderMs, livenessOrderRank]
       );
+      const advanced = typeof result.rowCount === "number"
+        ? result.rowCount > 0
+        : result.rows.length > 0;
       return {
         sinkId: "postgres-core-records",
         sinkRole: "CoreRecordsStore",
         outcome: "accepted",
-        status: "persisted",
+        status: advanced ? "persisted" : (isLivenessRecord(record) ? "stale_liveness_ignored" : "record_id_collision_ignored"),
         recordId,
         recordKind: resolveRecordKind(record),
         observedAt
@@ -83,9 +104,9 @@ export class CoreRecordsRepository {
   /**
    * Load all core records for a tenant, ordered by sequence ascending.
    *
-   * Returns an empty array on any SQL error (safe degradation for reads).
+   * Preserves the distinction between an empty tenant and a failed load.
    */
-  async loadRecords(tenantId: string): Promise<ConsoleRecord[]> {
+  async loadRecords(tenantId: string): Promise<CoreRecordsLoadResult> {
     try {
       const result = await this.sqlClient.query<{ payload: ConsoleRecord }>(
         `select payload from console_core_records
@@ -93,11 +114,11 @@ export class CoreRecordsRepository {
          order by sequence asc`,
         [tenantId]
       );
-      return result.rows
+      return { ok: true, records: result.rows
         .map((row) => row.payload)
-        .filter((payload): payload is ConsoleRecord => isRecord(payload));
-    } catch {
-      return [];
+        .filter((payload): payload is ConsoleRecord => isRecord(payload)) };
+    } catch (error) {
+      return { ok: false, records: [], error };
     }
   }
 }

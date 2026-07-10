@@ -18,7 +18,7 @@ import type {
   ValidationIssue,
   ValidationSeverity
 } from "./types";
-import { isLivenessRecord, validateLivenessRecord, livenessRecordId, livenessSessionKey, LIVENESS_SCHEMA, DEFAULT_LIVENESS_TTL_SECONDS } from "./liveness";
+import { isLivenessRecord, validateLivenessRecord, livenessRecordId, livenessSessionKey, parseCanonicalLivenessAt, livenessOrderTuple, LIVENESS_SCHEMA, DEFAULT_LIVENESS_TTL_SECONDS, MAX_LIVENESS_TTL_SECONDS } from "./liveness";
 
 export type {
   ActionDescriptor,
@@ -86,7 +86,7 @@ export type {
   ValidationSummary
 } from "./types";
 
-export { isLivenessRecord, validateLivenessRecord, livenessRecordId, livenessSessionKey, LIVENESS_SCHEMA, DEFAULT_LIVENESS_TTL_SECONDS } from "./liveness";
+export { isLivenessRecord, validateLivenessRecord, livenessRecordId, livenessSessionKey, parseCanonicalLivenessAt, livenessOrderTuple, LIVENESS_SCHEMA, DEFAULT_LIVENESS_TTL_SECONDS, MAX_LIVENESS_TTL_SECONDS } from "./liveness";
 
 export {
   assertConsoleRuntimeConfig,
@@ -895,9 +895,12 @@ module.exports = {
   isLivenessRecord,
   validateLivenessRecord,
   livenessRecordId,
+  parseCanonicalLivenessAt,
+  livenessOrderTuple,
   livenessSessionKey,
   LIVENESS_SCHEMA,
   DEFAULT_LIVENESS_TTL_SECONDS,
+  MAX_LIVENESS_TTL_SECONDS,
   createEconomicsStore: economicsStore.createEconomicsStore,
   createEconomicsProjection: economicsProjection.createEconomicsProjection,
   applyConsoleMigrations: migrations.applyConsoleMigrations,

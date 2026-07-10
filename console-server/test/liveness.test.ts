@@ -15,8 +15,55 @@ const {
   validateLivenessRecordBody,
   livenessRecordId,
   livenessSessionKey,
-  LIVENESS_SCHEMA
+  parseCanonicalLivenessAt,
+  livenessOrderTuple,
+  LIVENESS_SCHEMA,
+  MAX_LIVENESS_TTL_SECONDS
 } = require("../src/console-foundation");
+
+test("parseCanonicalLivenessAt accepts UTC Z timestamps with optional 1-9 digit fractions", () => {
+  for (const [accepted, expected] of [
+    ["2026-07-10T05:33:49Z", Date.UTC(2026, 6, 10, 5, 33, 49)],
+    ["2026-07-10T05:33:49.1Z", Date.UTC(2026, 6, 10, 5, 33, 49, 100)],
+    ["2026-07-10T05:33:49.123Z", Date.UTC(2026, 6, 10, 5, 33, 49, 123)],
+    ["2026-07-10T05:33:49.123456789Z", Date.UTC(2026, 6, 10, 5, 33, 49, 123)],
+    ["2026-07-10T05:33:49.123999999Z", Date.UTC(2026, 6, 10, 5, 33, 49, 123)],
+    ["2026-07-10T05:33:49.999999999Z", Date.UTC(2026, 6, 10, 5, 33, 49, 999)]
+  ] as const) {
+    assert.equal(parseCanonicalLivenessAt(accepted), expected, accepted);
+    assert.equal(validateLivenessRecord(validRecord({ at: accepted }), "record").length, 0, accepted);
+  }
+  for (const rejected of [
+    "infinity",
+    "-infinity",
+    "now",
+    "2026-07-07T04:00:00.123-06:00",
+    "2026-07-07T10:00:00+02:00",
+    "2026-07-07T10:00:00.1234567890Z",
+    "2026-07-07T10:00:00.123z",
+    "2026-07-07T24:00:00.000Z",
+    "0000-01-01T00:00:00Z",
+    "2026-02-30T10:00:00.000Z"
+  ]) {
+    assert.equal(parseCanonicalLivenessAt(rejected), undefined, rejected);
+    assert.ok(validateLivenessRecord(validRecord({ at: rejected }), "record").some((issue: any) => issue.path === "record.at"));
+  }
+});
+
+test("livenessOrderTuple models exact nullable migration watermarks and release rank", () => {
+  const canonical = "2026-07-07T10:00:00.123Z";
+  assert.deepEqual(livenessOrderTuple(canonical, "heartbeat"), { atMs: Date.parse(canonical), rank: 0 });
+  assert.deepEqual(livenessOrderTuple(canonical, "release"), { atMs: Date.parse(canonical), rank: 1 });
+  for (const rejected of [
+    "infinity", "-infinity", "now",
+    "2026-07-07T04:00:00.123-06:00",
+    "2026-07-07T10:00:00+02:00",
+    "2026-07-07T10:00:00.1234567890Z",
+    "2026-07-07T24:00:00.000Z"
+  ]) {
+    assert.equal(livenessOrderTuple(rejected, "release"), undefined, rejected);
+  }
+});
 
 function validRecord(overrides: Record<string, unknown> = {}) {
   return {
@@ -63,6 +110,10 @@ test("validateLivenessRecord rejects missing subjectId, actor, at, or a bad type
 
   assert.ok(flags(validateLivenessRecord(validRecord({ type: "bogus" }), "record"), "record.type"));
   assert.ok(flags(validateLivenessRecord(validRecord({ ttlSeconds: "900" }), "record"), "record.ttlSeconds"));
+  assert.ok(flags(validateLivenessRecord(validRecord({ ttlSeconds: 0 }), "record"), "record.ttlSeconds"));
+  assert.ok(flags(validateLivenessRecord(validRecord({ ttlSeconds: Number.POSITIVE_INFINITY }), "record"), "record.ttlSeconds"));
+  assert.ok(flags(validateLivenessRecord(validRecord({ ttlSeconds: MAX_LIVENESS_TTL_SECONDS + 1 }), "record"), "record.ttlSeconds"));
+  assert.ok(flags(validateLivenessRecord(validRecord({ at: "not-a-timestamp" }), "record"), "record.at"));
   assert.ok(flags(validateLivenessRecord({ schema: "kontour.console.event" }, "record"), "record.schema"));
 });
 
@@ -102,7 +153,8 @@ test("livenessRecordId / livenessSessionKey encode components so a colon in subj
   assert.notEqual(livenessSessionKey("a", "b:c"), livenessSessionKey("a:b", "c"));
 });
 
-test("validateLivenessRecordBody preserves an explicit id when the caller provides one", () => {
+test("validateLivenessRecordBody overrides an explicit id to preserve one-row session collapse", () => {
+  // console #139: the collapse guarantee must not depend on caller cooperation.
   const normalized = validateLivenessRecordBody(validRecord({ id: "explicit-id-1" }));
-  assert.equal(normalized.id, "explicit-id-1");
+  assert.equal(normalized.id, "liveness:actor-1:task-alpha");
 });

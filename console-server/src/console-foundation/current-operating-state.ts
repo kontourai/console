@@ -13,7 +13,7 @@ import type {
   ReplayEventStream,
   ReplayInput
 } from "./types";
-import { isLivenessRecord, livenessSessionKey, DEFAULT_LIVENESS_TTL_SECONDS } from "./liveness";
+import { compareLivenessOrder, isLivenessRecord, livenessSessionKey, parseCanonicalLivenessAt, DEFAULT_LIVENESS_TTL_SECONDS, MAX_LIVENESS_TTL_SECONDS } from "./liveness";
 
 type ReplayObject = JsonObject & { id: string; label?: string; [key: string]: unknown };
 type ReplayPatch = OpenRecord;
@@ -42,7 +42,7 @@ function buildCurrentOperatingState(input: ReplayInput | ReplayEventStream[] | C
   const eventStreams = normalizeEventStreams(input);
   const prepared = prepareEvents(eventStreams);
   const working = createMutableReplayState();
-  prepared.acceptedEvents.forEach((entry: ReplayEventEntry) => applyEvent(working, entry.event, entry.streamId));
+  prepared.acceptedEvents.forEach((entry: ReplayEventEntry) => applyEvent(working, entry.event, entry.streamId, resolveNowMs(options.now)));
   const lastEntry = prepared.acceptedEvents[prepared.acceptedEvents.length - 1];
   return materializeOperatingState(working, {
     streamIds: eventStreams.map((stream: ReplayEventStream, index: number) => stream.relativePath || stream.filePath || `stream-${index + 1}`),
@@ -115,7 +115,9 @@ function materializeOperatingState(working: MutableReplayState, meta: OperatingS
   // #295). Deriving activeness at read time keeps stored state a pure fold and
   // makes expiry deterministic under an injected clock.
   const nowMs = resolveNowMs(options.now);
-  state.actors = sortById([...working.actors.values()].filter((actor: ReplayObject) => isActorActive(actor, nowMs)));
+  state.actors = sortById([...working.actors.values()]
+    .filter((actor: ReplayObject) => actor._livenessType !== "release" && isActorActive(actor, nowMs))
+    .map(publicActor));
   state.actions = sortById([...working.actions.values()]).map((action: ConsoleActionRecord) => ({
     ...action,
     readOnly: true
@@ -138,6 +140,7 @@ function materializeOperatingState(working: MutableReplayState, meta: OperatingS
 interface OperatingStateProjection {
   apply(event: ConsoleEventRecord | ConsoleLivenessRecord, streamId?: string): void;
   materialize(options?: CurrentOperatingStateOptions): OperatingState;
+  wouldAdvanceLiveness(event: ConsoleLivenessRecord, options?: CurrentOperatingStateOptions): boolean;
 }
 
 // Incremental projection: maintain the folded operating state as events arrive
@@ -151,7 +154,7 @@ interface OperatingStateProjection {
 // it cold-loads `order by sequence asc` and appends monotonically — so a projection
 // fed the hub's events produces the same OperatingState as buildCurrentOperatingState
 // over the same events (verified by tests/current-operating-state-projection.test.ts).
-function createOperatingStateProjection(defaultStreamId: string = "inline-events"): OperatingStateProjection {
+function createOperatingStateProjection(defaultStreamId: string = "inline-events", maintenanceOptions: CurrentOperatingStateOptions = {}): OperatingStateProjection {
   const working = createMutableReplayState();
   const seen = new Set<string>();
   const streamIds = new Set<string>();
@@ -176,7 +179,7 @@ function createOperatingStateProjection(defaultStreamId: string = "inline-events
         }
         if (event.id) seen.add(event.id);
       }
-      applyEvent(working, event, streamId);
+      applyEvent(working, event, streamId, resolveNowMs(maintenanceOptions.now));
       acceptedEventCount += 1;
       lastAcceptedEventId = event.id ?? null;
       generatedAt = recordTimestamp(event) || null;
@@ -189,6 +192,10 @@ function createOperatingStateProjection(defaultStreamId: string = "inline-events
         lastAcceptedEventId,
         generatedAt
       }, options);
+    },
+    wouldAdvanceLiveness(event: ConsoleLivenessRecord, options: CurrentOperatingStateOptions = {}): boolean {
+      pruneLivenessTombstones(working, resolveNowMs(options.now ?? maintenanceOptions.now));
+      return wouldAdvanceLivenessEvent(working, event);
     }
   };
 }
@@ -261,7 +268,7 @@ function recordTimestamp(record: ConsoleEventRecord | ConsoleLivenessRecord): st
   return typeof value === "string" ? value : undefined;
 }
 
-function applyEvent(state: MutableReplayState, event: ConsoleEventRecord | ConsoleLivenessRecord, streamId: string): void {
+function applyEvent(state: MutableReplayState, event: ConsoleEventRecord | ConsoleLivenessRecord, streamId: string, nowMs: number): void {
   // Liveness (flow-agents #295) is a flat claim/heartbeat/release fact about one
   // (actor, subjectId) pair — it has no subject/payload/producer envelope, so it
   // is folded by a wholly separate function rather than falling through the
@@ -271,7 +278,7 @@ function applyEvent(state: MutableReplayState, event: ConsoleEventRecord | Conso
   // word "claim". Conflating the two would corrupt state.claims with a
   // heterogeneous shape and break the UI's claim rendering assumptions.
   if (isLivenessRecord(event)) {
-    applyLivenessEvent(state, event, streamId);
+    applyLivenessEvent(state, event, streamId, nowMs);
     return;
   }
 
@@ -583,39 +590,32 @@ function isLearningEvent(event: { type?: unknown }): boolean {
  *   Postgres replay sees, since the heartbeat row overwrote the claim row —
  *   still reconstructs an ACTIVE actor), refreshing `lastSeenAt` and carrying
  *   forward ttlSeconds/host/branch/artifactDir when the newer event omits them.
- * - release: remove the entry — this array is "who is active right now", not
- *   a history log (the liveness event itself still lands in state.timeline).
+ * - release: retain a timestamped tombstone internally, excluded from the
+ *   public actors array, until its stale-event safety window expires.
  *
  * The map key is the shared, colon-safe `livenessSessionKey` — the SAME derivation
  * the persisted record id uses — so an in-memory slot and its Postgres row can
  * never disagree, and a `subjectId` containing a `:` can never collide two pairs.
  */
-function applyLivenessEvent(state: MutableReplayState, event: ConsoleLivenessRecord, streamId: string): void {
+function applyLivenessEvent(state: MutableReplayState, event: ConsoleLivenessRecord, streamId: string, nowMs: number): void {
   const actor = typeof event.actor === "string" ? event.actor : "";
   const subjectId = typeof event.subjectId === "string" ? event.subjectId : "";
   if (!actor || !subjectId) return;
 
   const key = livenessSessionKey(actor, subjectId);
-  const lastSeenAt = event.at || event.occurredAt || event.observedAt;
+  const lastSeenAt = typeof event.at === "string" ? event.at : undefined;
 
-  if (event.type === "release") {
-    state.actors.delete(key);
+  pruneLivenessTombstones(state, nowMs);
+  const existing = state.actors.get(key);
+  const atMs = parseCanonicalLivenessAt(event.at);
+  if (atMs === undefined) {
+    if (!existing && event.type !== "release") {
+      state.actors.set(key, compactObject({ id: key, actor, subjectId, status: "active", lastSeenAt, updatedAt: lastSeenAt }));
+    }
+  } else if (event.type === "release") {
+    applyLivenessRelease(state, key, existing, event, actor, subjectId, lastSeenAt, atMs, nowMs);
   } else {
-    const existing = state.actors.get(key);
-    const next: ReplayObject = {
-      id: key,
-      actor,
-      subjectId,
-      status: "active",
-      lastSeenAt: lastSeenAt || (existing && (existing.lastSeenAt as string | undefined)),
-      updatedAt: lastSeenAt || (existing && (existing.updatedAt as string | undefined)),
-      ttlSeconds: event.ttlSeconds ?? (existing && existing.ttlSeconds),
-      actorKey: event.actor_key ?? (existing && existing.actorKey),
-      host: event.host ?? (existing && existing.host),
-      branch: event.branch ?? (existing && existing.branch),
-      artifactDir: event.artifact_dir ?? (existing && existing.artifactDir)
-    };
-    state.actors.set(key, compactObject(next));
+    applyLivenessActive(state, key, existing, event, actor, subjectId, lastSeenAt, atMs);
   }
 
   state.timeline.push({
@@ -628,6 +628,143 @@ function applyLivenessEvent(state: MutableReplayState, event: ConsoleLivenessRec
     summary: `${actor} ${event.type === "release" ? "released" : event.type === "heartbeat" ? "heartbeat on" : "claimed"} ${subjectId}`,
     streamId
   });
+}
+
+const LIVENESS_METADATA_FIELDS = [
+  ["ttlSeconds", "ttlSeconds"],
+  ["actor_key", "actorKey"],
+  ["host", "host"],
+  ["branch", "branch"],
+  ["artifact_dir", "artifactDir"]
+] as const;
+
+type LivenessMetadataProvenance = Record<string, { atMs: number; value: unknown }>;
+
+function applyLivenessRelease(
+  state: MutableReplayState,
+  key: string,
+  existing: ReplayObject | undefined,
+  event: ConsoleLivenessRecord,
+  actor: string,
+  subjectId: string,
+  lastSeenAt: string | undefined,
+  atMs: number,
+  nowMs: number
+): void {
+  const priorReleaseAtMs = numberField(existing, "_livenessReleaseAtMs");
+  if (priorReleaseAtMs !== undefined && atMs <= priorReleaseAtMs) return;
+  const winnerAtMs = numberField(existing, "_livenessAtMs");
+  const metadata = metadataAfterRelease(existing, atMs);
+  const ownership = compareLivenessOrder(atMs, event.type, winnerAtMs, existing?._livenessType);
+  if (ownership <= 0 && existing?._livenessType !== "release") {
+    state.actors.set(key, withLivenessMetadata({
+      ...existing!,
+      _livenessReleaseAtMs: atMs
+    }, metadata));
+    return;
+  }
+  state.actors.set(key, compactObject({
+    id: key,
+    actor,
+    subjectId,
+    status: "released",
+    lastSeenAt,
+    updatedAt: lastSeenAt,
+    ttlSeconds: effectiveLivenessTtl(event.ttlSeconds),
+    _livenessType: "release",
+    _livenessAtMs: atMs,
+    _livenessReleaseAtMs: atMs,
+    _livenessObservedAtMs: nowMs,
+    _livenessMetadata: metadata
+  }));
+}
+
+function applyLivenessActive(
+  state: MutableReplayState,
+  key: string,
+  existing: ReplayObject | undefined,
+  event: ConsoleLivenessRecord,
+  actor: string,
+  subjectId: string,
+  lastSeenAt: string | undefined,
+  atMs: number
+): void {
+  const releaseAtMs = numberField(existing, "_livenessReleaseAtMs");
+  if (releaseAtMs !== undefined && atMs <= releaseAtMs) return;
+  const winnerAtMs = numberField(existing, "_livenessAtMs");
+  const metadata = mergeLivenessMetadata(existing, event, atMs, releaseAtMs);
+  const winner = compareLivenessOrder(atMs, event.type, winnerAtMs, existing?._livenessType) > 0
+    ? { id: key, actor, subjectId, status: "active", lastSeenAt, updatedAt: lastSeenAt, _livenessType: event.type, _livenessAtMs: atMs, _livenessReleaseAtMs: releaseAtMs }
+    : existing!;
+  state.actors.set(key, withLivenessMetadata(winner, metadata));
+}
+
+function mergeLivenessMetadata(existing: ReplayObject | undefined, event: ConsoleLivenessRecord, atMs: number, releaseAtMs: number | undefined): LivenessMetadataProvenance {
+  const metadata: LivenessMetadataProvenance = { ...((existing?._livenessMetadata as LivenessMetadataProvenance | undefined) || {}) };
+  for (const [source, target] of LIVENESS_METADATA_FIELDS) {
+    const rawValue = event[source];
+    const value = target === "ttlSeconds" && rawValue !== undefined && rawValue !== null
+      ? effectiveLivenessTtl(rawValue)
+      : rawValue;
+    if (value === undefined || value === null || (releaseAtMs !== undefined && atMs <= releaseAtMs)) continue;
+    const prior = metadata[target];
+    if (!prior || atMs > prior.atMs) metadata[target] = { atMs, value };
+  }
+  return metadata;
+}
+
+function metadataAfterRelease(existing: ReplayObject | undefined, releaseAtMs: number): LivenessMetadataProvenance {
+  const metadata = (existing?._livenessMetadata as LivenessMetadataProvenance | undefined) || {};
+  return Object.fromEntries(Object.entries(metadata).filter(([, candidate]) => candidate.atMs > releaseAtMs));
+}
+
+function withLivenessMetadata(actor: ReplayObject, metadata: LivenessMetadataProvenance): ReplayObject {
+  const next: ReplayObject = { ...actor, _livenessMetadata: metadata };
+  for (const [, target] of LIVENESS_METADATA_FIELDS) delete next[target];
+  for (const [target, candidate] of Object.entries(metadata)) next[target] = candidate.value;
+  return compactObject(next);
+}
+
+function numberField(object: ReplayObject | undefined, field: string): number | undefined {
+  const value = object && object[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** Strict parseable-at-newest ordering; malformed incoming timestamps are oldest. */
+function wouldAdvanceLivenessEvent(state: MutableReplayState, event: ConsoleLivenessRecord): boolean {
+  const actor = typeof event.actor === "string" ? event.actor : "";
+  const subjectId = typeof event.subjectId === "string" ? event.subjectId : "";
+  const incomingAtMs = parseCanonicalLivenessAt(event.at);
+  if (!actor || !subjectId) return false;
+  const existing = state.actors.get(livenessSessionKey(actor, subjectId));
+  // A malformed event is the oldest possible value: it may establish a
+  // fail-closed active entry when no winner exists, but never a tombstone and
+  // never displaces any existing state.
+  if (!existing) return incomingAtMs !== undefined || event.type !== "release";
+  if (incomingAtMs === undefined) return false;
+  const existingAtMs = numberField(existing, "_livenessAtMs");
+  return compareLivenessOrder(incomingAtMs, event.type, existingAtMs, existing._livenessType) > 0;
+}
+
+function effectiveLivenessTtl(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= MAX_LIVENESS_TTL_SECONDS
+    ? value
+    : DEFAULT_LIVENESS_TTL_SECONDS;
+}
+
+/** Fold-time maintenance only; reads never mutate the retained winner state. */
+function pruneLivenessTombstones(state: MutableReplayState, nowMs: number): void {
+  for (const [key, actor] of state.actors) {
+    if (actor._livenessType !== "release") continue;
+    const observedAtMs = numberField(actor, "_livenessObservedAtMs");
+    if (observedAtMs === undefined || nowMs - observedAtMs <= effectiveLivenessTtl(MAX_LIVENESS_TTL_SECONDS) * 1000) continue;
+    state.actors.delete(key);
+  }
+}
+
+function publicActor(actor: ReplayObject): ReplayObject {
+  const { _livenessType, _livenessAtMs, _livenessReleaseAtMs, _livenessObservedAtMs, _livenessMetadata, ...visible } = actor;
+  return visible as ReplayObject;
 }
 
 /** Resolve the read-time clock (epoch millis or ISO string) to epoch millis; defaults to now. */
@@ -644,17 +781,15 @@ function resolveNowMs(now: number | string | undefined): number {
  * Whether a folded liveness actor is still active at `nowMs`: its last-seen event
  * must be within `ttlSeconds` (defaulting to DEFAULT_LIVENESS_TTL_SECONDS when the
  * record carried none). An actor whose `lastSeenAt` is missing or unparseable is
- * kept active — we never hide a real actor because of a bad timestamp; only a
- * clearly-stale one is expired.
+ * treated as expired. Ingest requires a non-empty `at`, so this fail-closed case
+ * protects against corrupted or hand-edited stored data.
  */
 function isActorActive(actor: ReplayObject, nowMs: number): boolean {
   const lastSeenAt = actor.lastSeenAt;
-  if (typeof lastSeenAt !== "string") return true;
-  const lastSeenMs = Date.parse(lastSeenAt);
-  if (!Number.isFinite(lastSeenMs)) return true;
-  const ttlSeconds = typeof actor.ttlSeconds === "number" && actor.ttlSeconds > 0
-    ? actor.ttlSeconds
-    : DEFAULT_LIVENESS_TTL_SECONDS;
+  if (typeof lastSeenAt !== "string") return false;
+  const lastSeenMs = parseCanonicalLivenessAt(lastSeenAt);
+  if (lastSeenMs === undefined) return false;
+  const ttlSeconds = effectiveLivenessTtl(actor.ttlSeconds);
   return nowMs - lastSeenMs <= ttlSeconds * 1000;
 }
 
