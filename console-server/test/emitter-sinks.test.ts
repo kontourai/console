@@ -7,11 +7,17 @@ const {
   KontourEmitter,
   LocalFileSink,
   CompositeSink,
+  DEFAULT_CONSOLE_RUNTIME_ROOT,
   InMemorySink,
   classifyRecord,
   inspectLocalKontour,
   loadProjectionSnapshots
 } = require("../src/console-foundation");
+
+test("default generated state root is .kontourai/console", () => {
+  assert.equal(DEFAULT_CONSOLE_RUNTIME_ROOT, path.join(".kontourai", "console"));
+  assert.equal(new LocalFileSink().root, path.resolve(".kontourai", "console"));
+});
 
 test("event fanout delivers the same event id to local JSONL and memory sinks", async () => {
   const root = tempRoot();
@@ -57,7 +63,7 @@ test("local projection snapshots are compatible with the existing loader", () =>
 
 test("local discovery loads events written through LocalFileSink", async () => {
   const rootDir = tempRoot();
-  const kontourRoot = path.join(rootDir, ".kontour");
+  const kontourRoot = path.join(rootDir, ".kontourai", "console");
   const event = validEvent({ id: "event-local-discovery" });
   const emitter = new KontourEmitter({
     sink: new LocalFileSink({ root: kontourRoot })
@@ -72,6 +78,19 @@ test("local discovery loads events written through LocalFileSink", async () => {
   assert.equal(report.eventStreams[0].sourceKind, "local");
   assert.equal(report.eventStreams[0].relativePath, path.join("events", event.producer.id, `${event.scope.kind}-${event.scope.id}.jsonl`));
   assert.equal(report.eventStreams[0].events[0].id, event.id);
+});
+
+test("default local discovery ignores state present only under .kontour", async () => {
+  const rootDir = tempRoot();
+  const legacyRoot = path.join(rootDir, ".kontour");
+  const event = validEvent({ id: "event-legacy-only" });
+  await new KontourEmitter({ sink: new LocalFileSink({ root: legacyRoot }) }).emitEvent(event);
+
+  const report = inspectLocalKontour({ rootDir });
+
+  assert.equal(report.kontourRoot, path.join(rootDir, ".kontourai", "console"));
+  assert.equal(report.eventStreams.length, 0);
+  assert.equal(fs.existsSync(path.join(legacyRoot, "events")), true);
 });
 
 test("local discovery resolves relative kontourRoot under rootDir", async () => {
@@ -90,7 +109,7 @@ test("local discovery resolves relative kontourRoot under rootDir", async () => 
 
 test("local discovery loads projections written through LocalFileSink with inert actions", () => {
   const rootDir = tempRoot();
-  const kontourRoot = path.join(rootDir, ".kontour");
+  const kontourRoot = path.join(rootDir, ".kontourai", "console");
   const projection = validProjection();
   const result = new LocalFileSink({ root: kontourRoot }).deliver(projection);
 
@@ -304,8 +323,9 @@ test("local sink rejects symlink intermediate directories before creating outsid
 test("local sink rejects symlink kontour root", { skip: process.platform === "win32" }, () => {
   const parent = tempRoot();
   const outside = tempRoot();
-  const root = path.join(parent, ".kontour");
+  const root = path.join(parent, ".kontourai", "console");
   const event = validEvent();
+  fs.mkdirSync(path.dirname(root), { recursive: true });
   fs.symlinkSync(outside, root, "dir");
 
   const result = new LocalFileSink({ root }).deliver(event);
@@ -317,7 +337,7 @@ test("local sink rejects symlink kontour root", { skip: process.platform === "wi
 
 test("local discovery skips symlink escapes", { skip: process.platform === "win32" }, () => {
   const rootDir = tempRoot();
-  const kontourRoot = path.join(rootDir, ".kontour");
+  const kontourRoot = path.join(rootDir, ".kontourai", "console");
   const outside = tempRoot();
   const event = validEvent({ id: "event-outside-symlink" });
   fs.mkdirSync(path.join(kontourRoot, "events"), { recursive: true });
@@ -335,7 +355,8 @@ test("local discovery rejects symlink kontour root", { skip: process.platform ==
   const outside = tempRoot();
   const event = validEvent({ id: "event-outside-root-symlink" });
   new LocalFileSink({ root: outside }).deliver(event);
-  fs.symlinkSync(outside, path.join(rootDir, ".kontour"), "dir");
+  fs.mkdirSync(path.join(rootDir, ".kontourai"));
+  fs.symlinkSync(outside, path.join(rootDir, ".kontourai", "console"), "dir");
 
   const report = inspectLocalKontour({ rootDir });
 

@@ -6,6 +6,7 @@ const {
   createConsoleHubServer
 } = require("../src/console-foundation/console-hub-server");
 const path = require("node:path");
+const { DEFAULT_CONSOLE_RUNTIME_ROOT } = require("../src/console-foundation/runtime-root");
 import type { ConsoleHubServer } from "../src/console-foundation";
 
 interface ServeOptions {
@@ -104,7 +105,7 @@ function requiredValue(args: string[], index: number, label: string): string {
 }
 
 function printUsage() {
-  console.error("Usage: kontour serve [--host 127.0.0.1] [--port 3737] [--kontour-root .kontour] [--no-ui]");
+  console.error(`Usage: kontour serve [--host 127.0.0.1] [--port 3737] [--kontour-root ${DEFAULT_CONSOLE_RUNTIME_ROOT}] [--no-ui]`);
 }
 
 main(process.argv);

@@ -2,6 +2,7 @@ import http = require("node:http");
 import fs = require("node:fs");
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 const path = require("node:path");
+const { DEFAULT_CONSOLE_RUNTIME_ROOT } = require("./runtime-root");
 const crypto = require("node:crypto");
 import { assertConsoleRuntimeConfig, resolveConsoleRuntimeConfig, type ConsoleRuntimeConfig } from "./config";
 import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./sse-stream";
@@ -1659,7 +1660,7 @@ function hostedHubForTenant(
   const safeTenantId = safePathToken(tenantId);
   const existing = hostedHubs.get(safeTenantId);
   if (existing) return existing;
-  const baseRoot = options.kontourRoot || options.localRoot || ".kontour";
+  const baseRoot = options.kontourRoot || options.localRoot || DEFAULT_CONSOLE_RUNTIME_ROOT;
   const localHub = new LocalConsoleHub({
     ...options,
     hub: undefined,

@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { DEFAULT_CONSOLE_RUNTIME_ROOT } = require("./runtime-root");
 import type {
   ConsoleRequestContext,
   ConsoleHubServerOptions,
@@ -35,7 +36,7 @@ const MAX_TELEMETRY_QUERY_FILTER_PART_LENGTH = 120;
 const MAX_TELEMETRY_QUERY_RANGE_MS = 31 * 24 * 60 * 60 * 1000;
 const LIVE_WINDOW_MS = 60 * 1000;
 const TELEMETRY_LOG_FILES = ["full.jsonl", "analytics.jsonl"];
-const LOCAL_KONTOUR_DIR = ".kontour";
+const LOCAL_KONTOUR_DIR = DEFAULT_CONSOLE_RUNTIME_ROOT;
 const SQLITE_TELEMETRY_MIGRATION = path.resolve(__dirname, "..", "..", "migrations", "sqlite", "0001_telemetry_events.sql");
 
 interface TelemetryDescriptor {
@@ -947,9 +948,6 @@ function resolveTelemetryProductRoots(rootDir: string, options: ConsoleHubServer
   for (const [productId, productRoot] of Object.entries(configured)) {
     if (isSafeProductId(productId) && productRoot) roots[productId] = resolvePath(rootDir, productRoot);
   }
-  if (options.telemetryFlowAgentsRoot && !roots["flow-agents"]) {
-    roots["flow-agents"] = path.resolve(resolvePath(rootDir, options.telemetryFlowAgentsRoot), "..");
-  }
   return roots;
 }
 
@@ -991,10 +989,9 @@ function loadTelemetryDescriptor(rootDir: string, productRoots: TelemetryProduct
   const candidates = [
     ...descriptorPaths.map((descriptorPath) => resolveDescriptorPath(rootDir, productRoots, descriptorPath)),
     path.join(rootDir, "console.telemetry.json"),
-    ...Object.values(productRoots).flatMap((productRoot) => [
-      resolveContainedPath(productRoot, "console.telemetry.json"),
-      resolveContainedPath(productRoot, path.join(".kontour", "console.telemetry.json"))
-    ])
+    ...Object.values(productRoots).map((productRoot) =>
+      resolveContainedPath(productRoot, "console.telemetry.json")
+    )
   ];
   const descriptors = uniqueExistingDescriptorPaths(candidates)
     .filter((candidate: string) => fs.existsSync(candidate))

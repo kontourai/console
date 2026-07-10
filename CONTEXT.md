@@ -42,7 +42,7 @@ _Avoid_: Replacing product-owned queues, generic task board, hiding product auth
 
 **Survey Console Extension**:
 A vertical product extension of Survey's review console surface. A vertical product can provide domain labels, subject refs, field renderers, and admin action context while Survey owns review item, candidate, source, observation, decision, and publication semantics.
-_Avoid_: vertical products depending on `.kontour`, vertical products redefining Survey review semantics, Console becoming the admin review source of truth
+_Avoid_: vertical products depending on `.kontourai/console`, vertical products redefining Survey review semantics, Console becoming the admin review source of truth
 
 **Suite-Level Action**:
 A cross-product action exposed by Console, such as refresh a claim, request producer reverification, approve a Review Item, resume a Flow Run, route a gate back, attach proof, or open a product-native detail view. The product that owns the action remains the authority.

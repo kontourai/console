@@ -50,7 +50,7 @@ Console answers the suite-level questions: what is currently true, what is block
 
 ## Local first
 
-Console v0 runs locally without a hosted service. Producers write JSONL event streams and projection snapshots under `.kontour/`. The `console-inspect` CLI reads them and prints a current operating state summary. `kontour serve` exposes the same state over a loopback SSE hub for the UI.
+Console v0 runs locally without a hosted service. Producers write JSONL event streams and projection snapshots under `.kontourai/console/`. The `console-inspect` CLI reads them and prints a current operating state summary. `kontour serve` exposes the same state over a loopback SSE hub for the UI.
 
 ```sh
 npx @kontourai/console console-inspect

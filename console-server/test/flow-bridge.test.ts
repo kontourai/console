@@ -250,6 +250,13 @@ test("buildFlowBridgeSink local-only: LocalFileSink, no ApiSink, no network", as
   assert.equal(existsSync(eventDir), true);
 });
 
+test("buildFlowBridgeSink defaults its local mirror to .kontourai/console", () => {
+  const sink = buildFlowBridgeSink();
+
+  assert.equal(sink.sinkRole, "LocalFileSink");
+  assert.equal(sink.root, join(process.cwd(), ".kontourai", "console"));
+});
+
 test("buildFlowBridgeSink composes Local + Api when a hub is configured", () => {
   const kontourRoot = mkdtempSync(join(tmpdir(), "flow-bridge-composite-"));
   const sink = buildFlowBridgeSink({ localRoot: kontourRoot, hubUrl: "https://console.kontourai.io", authToken: "tok" });

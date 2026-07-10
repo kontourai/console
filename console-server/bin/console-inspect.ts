@@ -4,7 +4,8 @@ const {
   inspectFixtures,
   inspectLocalKontour,
   getSurfaceClaimStatus,
-  getSurveyReviewState
+  getSurveyReviewState,
+  DEFAULT_CONSOLE_RUNTIME_ROOT
 } = require("../src/console-foundation");
 import type { EventSummary, InspectionReport, ProjectionSummary } from "../src/console-foundation";
 const path = require("node:path");
@@ -29,6 +30,11 @@ type ReviewPrintItem = {
 function main(argv: string[]) {
   const command = argv[2] || "inspect";
   const rootDir = repoRoot();
+
+  if (command === "--help" || command === "-h" || command === "help") {
+    printUsage(console.log);
+    return;
+  }
 
   if (command === "inspect") {
     const report = inspectFixtures({ rootDir });
@@ -74,8 +80,12 @@ function main(argv: string[]) {
     return;
   }
 
-  console.error("Usage: console-inspect [inspect|local [kontourRoot]|surface-claim [claimId]|survey-review [reviewId]]");
+  printUsage(console.error);
   process.exitCode = 2;
+}
+
+function printUsage(write: (message: string) => void) {
+  write(`Usage: console-inspect [inspect|local [kontourRoot=${DEFAULT_CONSOLE_RUNTIME_ROOT}]|surface-claim [claimId]|survey-review [reviewId]]`);
 }
 
 function repoRoot() {

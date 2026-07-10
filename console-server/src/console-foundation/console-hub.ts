@@ -1,4 +1,5 @@
 const path = require("node:path");
+const { DEFAULT_CONSOLE_RUNTIME_ROOT } = require("./runtime-root");
 const { LocalFileSink } = require("./emitter");
 import type {
   ConsoleEventRecord,
@@ -12,7 +13,7 @@ import type {
   Sink
 } from "./types";
 
-const LOCAL_KONTOUR_DIR = ".kontour";
+const LOCAL_KONTOUR_DIR = DEFAULT_CONSOLE_RUNTIME_ROOT;
 
 class LocalConsoleHub {
   rootDir: string;

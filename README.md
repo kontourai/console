@@ -36,7 +36,7 @@ kontour serve              # start the local hub on 127.0.0.1:3737
 kontour-flow-bridge --help # bridge local Flow runs into the hub
 ```
 
-`console-inspect` reads `.kontour/events/**/*.jsonl` and `.kontour/projections/**/*.json` in the current directory, validates the records, and prints event counts plus current claim, process, gate, review, action, and link summaries. It exits 0 on success and 1 if validation errors are found. No network access; no mutations.
+`console-inspect` reads `.kontourai/console/events/**/*.jsonl` and `.kontourai/console/projections/**/*.json` in the current directory, validates the records, and prints event counts plus current claim, process, gate, review, action, and link summaries. It exits 0 on success and 1 if validation errors are found. No network access; no mutations.
 
 ## Published packages
 
@@ -124,9 +124,9 @@ The command reads checked-in files under `docs/examples/event-streams/` and `doc
 
 ## Local Console Producer Emission
 
-A Console producer is the Kontour product or product runtime that emits control-plane records for Console. Surface, Flow, Survey, Veritas, and Flow Agents are the primary Console producers. Vertical products usually contribute through those primitives as extension metadata and refs, rather than depending on `.kontour` or Console directly. This is separate from any product-native "producer" concept inside those products, such as a crawler, verifier, importer, workflow runner, or agent.
+A Console producer is the Kontour product or product runtime that emits control-plane records for Console. Surface, Flow, Survey, Veritas, and Flow Agents are the primary Console producers. Vertical products usually contribute through those primitives as extension metadata and refs, rather than depending on `.kontourai/console` or Console directly. This is separate from any product-native "producer" concept inside those products, such as a crawler, verifier, importer, workflow runner, or agent.
 
-Products can write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under a configured `.kontour` root, appending events below `.kontour/events/` and writing current projection snapshots below `.kontour/projections/`.
+Products can write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under the configured Console runtime root, defaulting to `.kontourai/console`, with events below `events/` and current projection snapshots below `projections/`.
 
 The published `@kontourai/console` package ships compiled CommonJS in `dist`. Programmatic examples below use `require('@kontourai/console')` directly against the compiled output. When working inside this repo, `node --import tsx` also works.
 
@@ -141,7 +141,7 @@ const {
 const memory = new InMemorySink();
 const emitter = new KontourEmitter({
   sink: new CompositeSink([
-    new LocalFileSink({ root: ".kontour" }),
+    new LocalFileSink({ root: ".kontourai/console" }),
     memory
   ])
 });
@@ -165,7 +165,7 @@ console.log(result.children.map((child) => ({
 })));
 ```
 
-After a producer writes local records, inspect the generated `.kontour` tree without copying files into `docs/examples`:
+After a producer writes local records, inspect the generated `.kontourai/console` tree without copying files into `docs/examples`:
 
 ```sh
 node --import tsx console-server/bin/console-inspect.ts local
@@ -180,7 +180,9 @@ const report = inspectLocalKontour({ rootDir: process.cwd() });
 console.log(report.eventStreams.length, report.projections.length);
 ```
 
-`inspectLocalKontour` recursively reads `.kontour/events/**/*.jsonl` and `.kontour/projections/**/*.json`, labels records as `local`, and treats action descriptors as read-only data. `npm run inspect:fixtures` remains fixture-only for checked-in examples under `docs/examples`.
+`inspectLocalKontour` recursively reads `.kontourai/console/events/**/*.jsonl` and `.kontourai/console/projections/**/*.json`, labels records as `local`, and treats action descriptors as read-only data. `npm run inspect:fixtures` remains fixture-only for checked-in examples under `docs/examples`.
+
+Older `.kontour` state is not read automatically. Follow the [runtime root migration](docs/migrations/console-runtime-root.md) before upgrading an existing local store.
 
 `CompositeSink` returns one child result per sink, so a local `accepted` result can remain visible even when another sink fails. A future hosted API sink can be added as another child sink role in this fanout model, but this package does not implement an API, network transport, background retries, or remote ingestion.
 
@@ -211,7 +213,7 @@ kontour serve --no-ui
 CONSOLE_SERVE_UI=0 kontour serve
 ```
 
-`GET /stream` is the canonical server-sent event stream. It sends an initial `ready` event, an initial `state` event, and a `record.accepted` event after an accepted `POST /records`. `GET /events` returns local event stream JSON by default and remains an SSE compatibility path for `Accept: text/event-stream` clients. Browser-origin access is limited to loopback origins unless explicitly configured. Non-loopback local requests require the configured console token (`telemetryToken`, `CONSOLE_AUTH_TOKEN`, or `CONSOLE_TELEMETRY_TOKEN`) through `Authorization: Bearer ...` or `x-console-api-token`. The local hub persists through `.kontour` files and does not add a remote execution channel, product API fetcher, or action executor.
+`GET /stream` is the canonical server-sent event stream. It sends an initial `ready` event, an initial `state` event, and a `record.accepted` event after an accepted `POST /records`. `GET /events` returns local event stream JSON by default and remains an SSE compatibility path for `Accept: text/event-stream` clients. Browser-origin access is limited to loopback origins unless explicitly configured. Non-loopback local requests require the configured console token (`telemetryToken`, `CONSOLE_AUTH_TOKEN`, or `CONSOLE_TELEMETRY_TOKEN`) through `Authorization: Bearer ...` or `x-console-api-token`. The local hub persists through `.kontourai/console` files and does not add a remote execution channel, product API fetcher, or action executor.
 
 ### Surface Claim Status/Freshness Producer Helper
 
@@ -226,7 +228,7 @@ const {
 } = require("@kontourai/console");
 
 const emitter = new KontourEmitter({
-  sink: new LocalFileSink({ root: ".kontour" })
+  sink: new LocalFileSink({ root: ".kontourai/console" })
 });
 
 await emitter.emitProjection(surfaceClaimStateToProjection({
@@ -256,7 +258,7 @@ Optional action descriptors supplied to the helper are persisted as inert projec
 The same `emitProjection` + `emitEvent` pattern applies to the Flow and Survey helpers. Import the relevant pair for your product:
 
 - `flowProcessStateToProjection` / `flowGateTransitionToEvent` — map caller-owned Flow process and gate state into Console records.
-- `inspectLocalKontour` / `getFlowProcessStatus` — read back the local `.kontour` tree and query process projections.
+- `inspectLocalKontour` / `getFlowProcessStatus` — read back the local `.kontourai/console` tree and query process projections.
 
 All helpers are dependency-free and treat action descriptors as inert, read-only metadata — no product commands are executed.
 
@@ -264,14 +266,14 @@ All helpers are dependency-free and treat action descriptors as inert, read-only
 
 Console server telemetry uses a named storage adapter. The default is
 `local-jsonl`, which preserves local behavior and writes accepted records to
-`.kontour/telemetry/records.jsonl`.
+`.kontourai/console/telemetry/records.jsonl`.
 
 Adapter selection can be configured through `ConsoleHubServerOptions`:
 
 ```ts
 createConsoleHubServer({
   telemetryStorageAdapter: "sqlite",
-  telemetryDatabaseUrl: ".kontour/telemetry/console.sqlite"
+  telemetryDatabaseUrl: ".kontourai/console/telemetry/console.sqlite"
 });
 ```
 
@@ -283,7 +285,7 @@ The same selection is available through explicit environment variables:
 
 Use `sqlite` for local SQL-backed testing without adding a package; it writes to
 `CONSOLE_DATABASE_URL` / `CONSOLE_TELEMETRY_DATABASE_URL`, or defaults to
-`.kontour/telemetry/console.sqlite`. Relative SQLite paths resolve under the
+`.kontourai/console/telemetry/console.sqlite`. Relative SQLite paths resolve under the
 repo root; absolute paths and `file:` URLs are trusted local operator
 configuration. Use `postgres` for hosted deployments such as Supabase. Console
 does not fall back to local JSONL when a SQL adapter is selected; writes fail

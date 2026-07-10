@@ -5,6 +5,7 @@
 // re-bridging is state-safe; the bin also tracks sent ids across watch passes.
 const fs = require("node:fs");
 const path = require("node:path");
+const { DEFAULT_CONSOLE_RUNTIME_ROOT } = require("./runtime-root");
 const { LocalFileSink, CompositeSink, ApiSink } = require("./emitter");
 import type { ConsoleRecord, DeliveryResult, Sink } from "./types";
 import { buildPipeline } from "@kontourai/console-core";
@@ -383,7 +384,7 @@ export interface FlowBridgeDelivery {
 // layer is the ONLY place that knows destinations — see issue #73.
 
 export interface FlowBridgeSinkConfig extends FlowBridgeScopeOptions {
-  /** Local mirror root (.kontour by default). Pass null to disable local. */
+  /** Local mirror root (.kontourai/console by default). Pass null to disable local. */
   localRoot?: string | null;
   /** Hosted console base URL. When set, an ApiSink is added to the fanout. */
   hubUrl?: string;
@@ -403,7 +404,7 @@ export interface FlowBridgeSinkConfig extends FlowBridgeScopeOptions {
 export function buildFlowBridgeSink(config: FlowBridgeSinkConfig = {}, sentIds?: Set<string>): Sink {
   const sinks: Sink[] = [];
   if (config.localRoot !== null) {
-    sinks.push(new LocalFileSink({ root: config.localRoot ?? ".kontour" }));
+    sinks.push(new LocalFileSink({ root: config.localRoot ?? DEFAULT_CONSOLE_RUNTIME_ROOT }));
   }
   if (config.hubUrl) {
     sinks.push(new ApiSink(config.hubUrl, config.authToken ?? "", {

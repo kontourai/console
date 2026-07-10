@@ -4,6 +4,7 @@
 // hub-side event-id deduplication. --watch polls for run-state changes so the
 // operating plane follows live work.
 const path = require("node:path");
+const { DEFAULT_CONSOLE_RUNTIME_ROOT } = require("../src/console-foundation/runtime-root");
 const {
   bridgeFlowRun,
   buildFlowBridgeSink,
@@ -27,7 +28,7 @@ interface BridgeOptions {
 function printUsage(): void {
   process.stdout.write(
     `Usage: kontour-flow-bridge [--flow-root ${DEFAULT_FLOW_ROOT}] [--hub http://127.0.0.1:3737]\n` +
-    "                           [--local-root .kontour] [--no-local] [--tenant <id>]\n" +
+    `                           [--local-root ${DEFAULT_CONSOLE_RUNTIME_ROOT}] [--no-local] [--tenant <id>]\n` +
     "                           [--watch] [--interval-ms 2000] [--scope <id>] [--scope-label <label>]\n" +
     "\n" +
     "Auth: set CONSOLE_AUTH_TOKEN to authenticate against a hosted console.\n",
@@ -38,7 +39,7 @@ function parseOptions(argv: string[], env: NodeJS.ProcessEnv = process.env): Bri
   const options: BridgeOptions = {
     flowRoot: DEFAULT_FLOW_ROOT,
     hubUrl: "http://127.0.0.1:3737",
-    localRoot: ".kontour",
+    localRoot: DEFAULT_CONSOLE_RUNTIME_ROOT,
     authToken: env.CONSOLE_AUTH_TOKEN || env.CONSOLE_TELEMETRY_TOKEN,
     tenantId: env.CONSOLE_TENANT_ID,
     watch: false,
