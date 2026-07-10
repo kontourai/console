@@ -20,7 +20,7 @@ test("surface claim helper emits a local projection queryable without a Flow run
   const validationErrors = validateProjection(projection, "surface-projection")
     .filter((item: any) => item.severity === "error");
   const emitter = new KontourEmitter({
-    sink: new LocalFileSink({ root: path.join(rootDir, ".kontour") })
+    sink: new LocalFileSink({ root: path.join(rootDir, ".kontourai", "console") })
   });
 
   const result = await emitter.emitProjection(projection);
@@ -68,7 +68,7 @@ test("surface freshness helper emits a stable local freshness changed event", as
   const validationErrors = validateEvent(event, "surface-event")
     .filter((item: any) => item.severity === "error");
   const emitter = new KontourEmitter({
-    sink: new LocalFileSink({ root: path.join(rootDir, ".kontour") })
+    sink: new LocalFileSink({ root: path.join(rootDir, ".kontourai", "console") })
   });
 
   const result = await emitter.emitEvent(event);

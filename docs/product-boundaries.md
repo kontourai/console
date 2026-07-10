@@ -85,7 +85,7 @@ Survey is the primitive review surface for source-to-candidate-to-review workflo
 
 A vertical product should extend Survey Console for domain-specific admin review UX. It can provide domain labels, subject refs, field renderers, vertical action context, and domain links, but Survey owns review item lifecycle and decision semantics. Surface owns the resulting claims/evidence/trust state. Flow owns process, gate, route-back, and run-control semantics.
 
-The vertical product should not need to know about `.kontour` or Console in the normal path. The primitive layer can emit Console records locally or to future sinks; Console reads those primitive records and composes the suite-level view. A vertical may later expose an optional Console extension, but that should be additive, not a requirement for using Survey, Surface, or Flow.
+The vertical product should not need to know about `.kontourai/console` or Console in the normal path. The primitive layer can emit Console records locally or to future sinks; Console reads those primitive records and composes the suite-level view. A vertical may later expose an optional Console extension, but that should be additive, not a requirement for using Survey, Surface, or Flow.
 
 ## Console Contract Foundation
 
@@ -101,7 +101,7 @@ The shared foundation should be contracts first:
 
 ## Console Producers
 
-For Console contracts, a producer is the Kontour product or product runtime emitting control-plane records for suite-level visibility. The primary producers are the portable primitives: Surface, Flow, Survey, Veritas, and Flow Agents. Vertical products usually contribute through those primitives as extension metadata and cross-product refs; they should not be required to emit `.kontour` or Console records directly.
+For Console contracts, a producer is the Kontour product or product runtime emitting control-plane records for suite-level visibility. The primary producers are the portable primitives: Surface, Flow, Survey, Veritas, and Flow Agents. Vertical products usually contribute through those primitives as extension metadata and cross-product refs; they should not be required to emit `.kontourai/console` or Console records directly.
 
 That meaning is separate from product-native producers inside each product. A crawler, extractor, verifier, importer, workflow runner, agent, or policy clock should be preserved as an actor/source/provenance detail, but it does not replace the top-level product authority boundary.
 

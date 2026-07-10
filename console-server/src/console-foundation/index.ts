@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { DEFAULT_CONSOLE_RUNTIME_ROOT } = require("./runtime-root");
 import type {
   ActionDescriptor,
   ConsoleEventRecord,
@@ -155,7 +156,7 @@ export type {
 
 const EVENT_DIR = path.join("docs", "examples", "event-streams");
 const PROJECTION_DIR = path.join("docs", "examples", "projections");
-const LOCAL_KONTOUR_DIR = ".kontour";
+const LOCAL_KONTOUR_DIR = DEFAULT_CONSOLE_RUNTIME_ROOT;
 const OBJECT_ARRAY_KEYS = [
   "claims",
   "processes",
@@ -918,6 +919,7 @@ module.exports = {
   ApiSink: emitter.ApiSink,
   classifyRecord: emitter.classifyRecord,
   formatDeliveryResult: emitter.formatDeliveryResult,
+  DEFAULT_CONSOLE_RUNTIME_ROOT,
   bridgeFlowRun: flowBridge.bridgeFlowRun,
   buildFlowBridgeSink: flowBridge.buildFlowBridgeSink,
   deriveFlowRunEvents: flowBridge.deriveFlowRunEvents,
@@ -943,6 +945,7 @@ export type {
   FlowBridgeSinkConfig,
   FlowRunDiscovery,
 } from "./flow-bridge";
+export { DEFAULT_CONSOLE_RUNTIME_ROOT } from "./runtime-root";
 
 export {
   handleFlowIngest,

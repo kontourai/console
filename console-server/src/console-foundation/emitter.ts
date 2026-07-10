@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { DEFAULT_CONSOLE_RUNTIME_ROOT } = require("./runtime-root");
 import type {
   ApiSinkFetch,
   ApiSinkOptions,
@@ -16,7 +17,7 @@ import type {
 } from "./types";
 import { isLivenessRecord } from "./liveness";
 
-const DEFAULT_ROOT = ".kontour";
+const DEFAULT_ROOT = DEFAULT_CONSOLE_RUNTIME_ROOT;
 type SinkIdentity = Pick<Sink, "sinkId" | "sinkRole" | "id" | "name">;
 
 class KontourEmitter {

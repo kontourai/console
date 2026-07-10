@@ -170,7 +170,8 @@ test("local hub server accepts projection records through local file sink", asyn
     const inspection = await requestJson("GET", `${baseUrl}/inspect`);
     const projectionPath = path.join(
       rootDir,
-      ".kontour",
+      ".kontourai",
+      "console",
       "projections",
       projection.snapshot.producer.id,
       `${projection.snapshot.scope.kind}-${projection.snapshot.scope.id}.json`
@@ -254,7 +255,7 @@ test("local hub server allows explicitly configured browser origins", async () =
 test("local hub server summarizes telemetry logs without product-specific descriptors", async () => {
   const rootDir = tempRoot();
   const telemetryRoot = path.join(rootDir, ".telemetry");
-  const flowAgentsRoot = path.join(rootDir, "flow-agents", ".flow-agents");
+  const flowAgentsRoot = path.join(rootDir, "flow-agents", ".kontourai", "flow-agents");
   fs.mkdirSync(telemetryRoot, { recursive: true });
   fs.mkdirSync(path.join(flowAgentsRoot, "telemetry-task"), { recursive: true });
   const richRecord: any = telemetryRecord("evt-telemetry-1", "tool.invoke", "session-a", "2026-06-08T12:00:00.000Z");
@@ -277,7 +278,7 @@ test("local hub server summarizes telemetry logs without product-specific descri
     updated_at: "2026-06-08T12:02:00.000Z"
   }), "utf8");
 
-  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot, telemetryFlowAgentsRoot: flowAgentsRoot });
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot });
   await listen(app);
   try {
     const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
@@ -373,7 +374,7 @@ test("local hub server filters telemetry query by time, search, repeated facets,
   old.tool = { name: "Bash", normalized_name: "bash", status: "ok" };
   fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), [bashA, bashB, edit, old].map((record) => JSON.stringify(record)).join("\n"), "utf8");
 
-  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot, telemetryFlowAgentsRoot: path.join(rootDir, "missing", ".flow-agents") });
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot });
   await listen(app);
   try {
     const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry?preset=custom&from=2026-06-08T00%3A00%3A00.000Z&to=2026-06-09T00%3A00%3A00.000Z&q=bash&filter=tools%3Abash&filter=projects%3Aproject-alpha&filter=projects%3Aproject-beta&limit=1&offset=1&sort=asc`);
@@ -400,7 +401,7 @@ test("local hub server keeps empty telemetry query compatible while adding optio
   const telemetryRoot = path.join(rootDir, ".telemetry");
   fs.mkdirSync(telemetryRoot, { recursive: true });
   fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), `${JSON.stringify(telemetryRecord("evt-empty-query", "turn.user", "session-empty", "2026-06-08T12:00:00.000Z"))}\n`, "utf8");
-  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot, telemetryFlowAgentsRoot: path.join(rootDir, "missing", ".flow-agents") });
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot });
   await listen(app);
   try {
     const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
@@ -440,7 +441,7 @@ test("local hub server rejects malformed telemetry queries safely", async () => 
 test("local hub server keeps newest telemetry log records when logs are over the read limit", async () => {
   const rootDir = tempRoot();
   const telemetryRoot = path.join(rootDir, ".telemetry");
-  const flowAgentsRoot = path.join(rootDir, "flow-agents", ".flow-agents");
+  const flowAgentsRoot = path.join(rootDir, "flow-agents", ".kontourai", "flow-agents");
   fs.mkdirSync(telemetryRoot, { recursive: true });
   const records = Array.from({ length: 5001 }, (_, index) => {
     const id = `evt-overflow-${String(index + 1).padStart(4, "0")}`;
@@ -448,7 +449,7 @@ test("local hub server keeps newest telemetry log records when logs are over the
   });
   fs.writeFileSync(path.join(telemetryRoot, "full.jsonl"), `${records.join("\n")}\n`, "utf8");
 
-  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot, telemetryFlowAgentsRoot: flowAgentsRoot });
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot });
   await listen(app);
   try {
     const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
@@ -471,7 +472,7 @@ test("local hub server accepts telemetry records and includes them in process li
     const record = telemetryRecord("evt-accepted-telemetry", "session.stop", "session-post", "2026-06-08T12:03:00.000Z");
     const accepted = await requestJson("POST", `${baseUrl}/api/telemetry/records`, record);
     const telemetry = await requestJson("GET", `${baseUrl}/api/telemetry`);
-    const sinkPath = path.join(rootDir, ".kontour", "telemetry", "records.jsonl");
+    const sinkPath = path.join(rootDir, ".kontourai", "console", "telemetry", "records.jsonl");
 
     assert.equal(accepted.statusCode, 202);
     assert.equal(accepted.body.outcome, "accepted");
@@ -519,7 +520,7 @@ test("local hub server honors explicit local-jsonl telemetry adapter", async () 
     const baseUrl = serverUrl(app);
     const record = telemetryRecord("evt-explicit-local-telemetry", "session.stop", "session-local", "2026-06-08T12:03:00.000Z");
     const accepted = await requestJson("POST", `${baseUrl}/api/telemetry/records`, record);
-    const sinkPath = path.join(rootDir, ".kontour", "telemetry", "records.jsonl");
+    const sinkPath = path.join(rootDir, ".kontourai", "console", "telemetry", "records.jsonl");
 
     assert.equal(accepted.statusCode, 202);
     assert.equal(accepted.body.outcome, "accepted");
@@ -544,7 +545,7 @@ test("local hub server persists telemetry through sqlite storage", async () => {
     const record: any = telemetryRecord("evt-sqlite-telemetry", "tool.invoke", "session-sqlite", "2026-06-08T12:03:00.000Z");
     record.tool = { name: "Bash", normalized_name: "bash", status: "ok" };
     const accepted = await requestJson("POST", `${baseUrl}/api/telemetry/records`, record);
-    const sinkPath = path.join(rootDir, ".kontour", "telemetry", "records.jsonl");
+    const sinkPath = path.join(rootDir, ".kontourai", "console", "telemetry", "records.jsonl");
 
     assert.equal(accepted.statusCode, 202);
     assert.equal(accepted.body.outcome, "accepted");
@@ -573,6 +574,28 @@ test("local hub server persists telemetry through sqlite storage", async () => {
   }
 });
 
+test("sqlite telemetry defaults its database under .kontourai/console", async () => {
+  const rootDir = tempRoot();
+  const databasePath = path.join(rootDir, ".kontourai", "console", "telemetry", "console.sqlite");
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    telemetryStorageAdapter: "sqlite"
+  });
+  await listen(app);
+  try {
+    const record = telemetryRecord("evt-sqlite-default-root", "session.stop", "session-sqlite-default", "2026-06-08T12:03:00.000Z");
+    const accepted = await requestJson("POST", `${serverUrl(app)}/api/telemetry/records`, record);
+
+    assert.equal(accepted.statusCode, 202);
+    assert.equal(accepted.body.sinkId, "sqlite-telemetry-api");
+    assert.equal(fs.existsSync(databasePath), true);
+    assert.equal(fs.existsSync(path.join(rootDir, ".kontour", "telemetry", "console.sqlite")), false);
+  } finally {
+    await close(app);
+  }
+});
+
 test("local hub server selects sqlite telemetry adapter from env", async () => {
   const rootDir = tempRoot();
   const databasePath = path.join(rootDir, "env-telemetry.sqlite");
@@ -587,7 +610,7 @@ test("local hub server selects sqlite telemetry adapter from env", async () => {
     const record = telemetryRecord("evt-sqlite-env-telemetry", "session.stop", "session-sqlite-env", "2026-06-08T12:03:00.000Z");
     const accepted = await requestJson("POST", `${baseUrl}/api/telemetry/records`, record);
     const telemetry = await requestJson("GET", `${baseUrl}/api/telemetry`);
-    const sinkPath = path.join(rootDir, ".kontour", "telemetry", "records.jsonl");
+    const sinkPath = path.join(rootDir, ".kontourai", "console", "telemetry", "records.jsonl");
 
     assert.equal(accepted.statusCode, 202);
     assert.equal(accepted.body.sinkId, "sqlite-telemetry-api");
@@ -612,7 +635,7 @@ test("local hub server fails safely for explicit postgres telemetry adapter with
     const record = telemetryRecord("evt-postgres-telemetry", "session.stop", "session-postgres", "2026-06-08T12:03:00.000Z");
     const rejected = await requestJson("POST", `${baseUrl}/api/telemetry/records`, record);
     const telemetry = await requestJson("GET", `${baseUrl}/api/telemetry`);
-    const sinkPath = path.join(rootDir, ".kontour", "telemetry", "records.jsonl");
+    const sinkPath = path.join(rootDir, ".kontourai", "console", "telemetry", "records.jsonl");
 
     assert.equal(rejected.statusCode, 500);
     assert.equal(rejected.body.error, "TELEMETRY_STORAGE_NOT_CONFIGURED");
@@ -637,7 +660,7 @@ test("local hub server selects sql telemetry adapter from env without local side
     const baseUrl = serverUrl(app);
     const record = telemetryRecord("evt-sql-env-telemetry", "session.stop", "session-sql", "2026-06-08T12:03:00.000Z");
     const rejected = await requestJson("POST", `${baseUrl}/api/telemetry/records`, record);
-    const sinkPath = path.join(rootDir, ".kontour", "telemetry", "records.jsonl");
+    const sinkPath = path.join(rootDir, ".kontourai", "console", "telemetry", "records.jsonl");
 
     assert.equal(rejected.statusCode, 500);
     assert.equal(rejected.body.error, "TELEMETRY_STORAGE_NOT_CONFIGURED");
@@ -693,7 +716,7 @@ test("hosted hub server persists postgres telemetry through injected SQL client 
       authorization: "Bearer token-a",
       "x-console-tenant-id": "tenant-b"
     });
-    const sinkPath = path.join(rootDir, ".kontour", "telemetry", "records.jsonl");
+    const sinkPath = path.join(rootDir, ".kontourai", "console", "telemetry", "records.jsonl");
 
     assert.equal(unauthenticated.statusCode, 401);
     assert.equal(acceptedA.statusCode, 202);
@@ -1253,7 +1276,7 @@ test("local hub server streams telemetry updates over SSE", async () => {
 test("local hub server applies product-owned telemetry descriptors", async () => {
   const rootDir = tempRoot();
   const flowAgentsRepo = path.join(rootDir, "flow-agents");
-  const flowAgentsRoot = path.join(flowAgentsRepo, ".flow-agents");
+  const flowAgentsRoot = path.join(flowAgentsRepo, ".kontourai", "flow-agents");
   const widgetRepo = path.join(rootDir, "widget-product");
   const widgetRoot = path.join(widgetRepo, ".workflows");
   const telemetryRoot = path.join(rootDir, ".telemetry");
@@ -1264,7 +1287,7 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
   fs.writeFileSync(path.join(flowAgentsRepo, "console.telemetry.json"), JSON.stringify({
     recordSources: [{
       id: "flow-agents-workflows",
-      root: "product:flow-agents:.flow-agents",
+      root: "product:flow-agents:.kontourai/flow-agents",
       files: ["state.json", "acceptance.json"],
       attributes: {
         taskSlug: "task_slug",
@@ -1425,10 +1448,44 @@ test("local hub server applies product-owned telemetry descriptors", async () =>
   }
 });
 
+test("local hub server ignores legacy descriptors hidden under .kontour", async () => {
+  const rootDir = tempRoot();
+  const productRoot = path.join(rootDir, "legacy-product");
+  const workRoot = path.join(productRoot, "work");
+  fs.mkdirSync(path.join(productRoot, ".kontour"), { recursive: true });
+  fs.mkdirSync(workRoot, { recursive: true });
+  fs.writeFileSync(path.join(workRoot, "state.json"), JSON.stringify({
+    task_slug: "legacy-hidden-descriptor",
+    status: "complete"
+  }), "utf8");
+  fs.writeFileSync(path.join(productRoot, ".kontour", "console.telemetry.json"), JSON.stringify({
+    recordSources: [{
+      id: "legacy-hidden-source",
+      root: "product:legacy:work",
+      files: ["state.json"],
+      attributes: { taskSlug: "task_slug", status: "status" }
+    }]
+  }), "utf8");
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    telemetryProductRoots: { legacy: productRoot }
+  });
+  await listen(app);
+  try {
+    const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
+
+    assert.equal(telemetry.statusCode, 200);
+    assert.equal(telemetry.body.records.some((record: any) => record.taskSlug === "legacy-hidden-descriptor"), false);
+  } finally {
+    await close(app);
+  }
+});
+
 test("local hub server rejects descriptor record source symlink escapes", async () => {
   const rootDir = tempRoot();
   const flowAgentsRepo = path.join(rootDir, "flow-agents");
-  const flowAgentsRoot = path.join(flowAgentsRepo, ".flow-agents");
+  const flowAgentsRoot = path.join(flowAgentsRepo, ".kontourai", "flow-agents");
   const outsideRoot = path.join(rootDir, "outside");
   fs.mkdirSync(flowAgentsRoot, { recursive: true });
   fs.mkdirSync(outsideRoot, { recursive: true });
@@ -1441,7 +1498,7 @@ test("local hub server rejects descriptor record source symlink escapes", async 
   fs.writeFileSync(path.join(flowAgentsRepo, "console.telemetry.json"), JSON.stringify({
     recordSources: [{
       id: "flow-agents-workflows",
-      root: "product:.flow-agents",
+      root: "product:.kontourai/flow-agents",
       files: ["state.json"],
       attributes: {
         taskSlug: "task_slug",
@@ -1450,7 +1507,12 @@ test("local hub server rejects descriptor record source symlink escapes", async 
     }]
   }), "utf8");
 
-  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot: path.join(rootDir, ".telemetry"), telemetryFlowAgentsRoot: flowAgentsRoot });
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    telemetryRoot: path.join(rootDir, ".telemetry"),
+    telemetryProductRoots: { "flow-agents": flowAgentsRepo }
+  });
   await listen(app);
   try {
     const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);
@@ -1502,7 +1564,7 @@ test("local hub server reports missing descriptor record sources without failing
       files: ["state.json"]
     }]
   }), "utf8");
-  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot: path.join(rootDir, ".telemetry"), telemetryFlowAgentsRoot: path.join(rootDir, "missing-product", ".flow-agents") });
+  const app = createConsoleHubServer({ rootDir, port: 0, telemetryRoot: path.join(rootDir, ".telemetry") });
   await listen(app);
   try {
     const telemetry = await requestJson("GET", `${serverUrl(app)}/api/telemetry`);

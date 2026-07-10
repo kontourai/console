@@ -25,7 +25,7 @@ test("flow process helper emits local process and gate status without selected S
   const validationErrors = validateProjection(projection, "flow-projection")
     .filter((item: any) => item.severity === "error");
   const emitter = new KontourEmitter({
-    sink: new LocalFileSink({ root: path.join(rootDir, ".kontour") })
+    sink: new LocalFileSink({ root: path.join(rootDir, ".kontourai", "console") })
   });
 
   const result = await emitter.emitProjection(projection);
@@ -93,7 +93,7 @@ test("flow gate transition helper emits a stable local gate event", async () => 
   const validationErrors = validateEvent(event, "flow-event")
     .filter((item: any) => item.severity === "error");
   const emitter = new KontourEmitter({
-    sink: new LocalFileSink({ root: path.join(rootDir, ".kontour") })
+    sink: new LocalFileSink({ root: path.join(rootDir, ".kontourai", "console") })
   });
 
   const result = await emitter.emitEvent(event);

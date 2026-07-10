@@ -24,12 +24,12 @@ test("local console hub appends handoff events and exposes replayed current stat
 
   assert.deepEqual(results.map((result: any) => result.outcome), ["accepted", "accepted", "accepted", "accepted", "accepted", "accepted"]);
   assert.equal(results[0].sinkRole, "LocalConsoleHub");
-  assert.equal(report.kontourRoot, path.join(rootDir, ".kontour"));
+  assert.equal(report.kontourRoot, path.join(rootDir, ".kontourai", "console"));
   assert.equal(report.validation.errors.length, 0);
   assert.equal(report.eventStreams.length, 2);
   assert.equal(report.eventStreams.reduce((sum: any, item: any) => sum + item.events.length, 0), 6);
-  assert.equal(fs.existsSync(path.join(rootDir, ".kontour", "events", "flow-local", "project-provider-directory-refresh.jsonl")), true);
-  assert.equal(fs.existsSync(path.join(rootDir, ".kontour", "events", "surface-local", "project-provider-directory-refresh.jsonl")), true);
+  assert.equal(fs.existsSync(path.join(rootDir, ".kontourai", "console", "events", "flow-local", "project-provider-directory-refresh.jsonl")), true);
+  assert.equal(fs.existsSync(path.join(rootDir, ".kontourai", "console", "events", "surface-local", "project-provider-directory-refresh.jsonl")), true);
 
   assert.equal(state.source.acceptedEventCount, 6);
   assert.equal(state.source.duplicateEventCount, 0);

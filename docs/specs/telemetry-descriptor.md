@@ -15,7 +15,6 @@ Console currently looks for descriptors at:
 
 - `console.telemetry.json` in the Console repo root
 - each configured product root's `console.telemetry.json`
-- each configured product root's `.kontour/console.telemetry.json`
 - every explicit path in `CONSOLE_TELEMETRY_DESCRIPTOR_PATHS`
 
 Configure product roots with the typed server option `telemetryProductRoots` or
@@ -28,10 +27,10 @@ CONSOLE_TELEMETRY_PRODUCT_ROOTS=flow-agents:/opt/flow-agents,acme:/srv/acme
 CONSOLE_TELEMETRY_DESCRIPTOR_PATHS=product:flow-agents:console.telemetry.json,console:config/local.telemetry.json
 ```
 
-`telemetryFlowAgentsRoot` remains a compatibility alias that seeds a
-`flow-agents` product root from the parent of the configured `.flow-agents`
-directory. New integrations should use `telemetryProductRoots` or
-`CONSOLE_TELEMETRY_PRODUCT_ROOTS`.
+Product roots are configured through `telemetryProductRoots` or
+`CONSOLE_TELEMETRY_PRODUCT_ROOTS`. Flow Agents runtime artifacts live under
+`.kontourai/flow-agents` within its configured repository root; Console does not
+infer product roots from artifact directories.
 
 Hosted deployments may mount descriptors and product roots through deployment
 config. The descriptor remains product-owned display metadata; it must not

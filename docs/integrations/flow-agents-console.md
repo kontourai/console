@@ -15,7 +15,7 @@ For local development, Flow Agents should keep using local file emission:
 - emit control-plane Console handoff records through the Console emitter
 - write local JSONL event streams and projections with `LocalFileSink`
 - keep stable event ids across retry and fanout
-- store task/session artifacts under `.flow-agents`
+- store task/session artifacts under `.kontourai/flow-agents`
 - expose display metadata through `console.telemetry.json`
 
 Local output must remain useful when hosted Console is unavailable.
@@ -50,8 +50,7 @@ path:
 CONSOLE_TELEMETRY_PRODUCT_ROOTS=flow-agents:/path/to/flow-agents
 ```
 
-Console then discovers `console.telemetry.json` and
-`.kontour/console.telemetry.json` below that product root. A hosted deployment
+Console then discovers `console.telemetry.json` at that product root. A hosted deployment
 may mount descriptors and point Console at them with
 `CONSOLE_TELEMETRY_DESCRIPTOR_PATHS`, including product-qualified entries such
 as `product:flow-agents:console.telemetry.json`. The descriptor maps
@@ -59,11 +58,11 @@ product-owned fields into generic Console display attributes. It must not
 redefine Flow Definition gates, typed `expects`, route-control semantics, or
 learning authority.
 
-The older Console server option `telemetryFlowAgentsRoot` is a compatibility
-alias for local callers that only know the `.flow-agents` artifact directory.
-New local, hosted, and user-hosted configurations should use
-`telemetryProductRoots` or `CONSOLE_TELEMETRY_PRODUCT_ROOTS` so multiple
-products can publish descriptors side by side.
+Local, hosted, and user-hosted configurations use `telemetryProductRoots` or
+`CONSOLE_TELEMETRY_PRODUCT_ROOTS` so multiple products can publish descriptors
+side by side. The removed `telemetryFlowAgentsRoot` alias is not supported by
+current versions; configure the Flow Agents repository root as a generic product
+root instead.
 
 ## Control Plane Versus Telemetry Plane
 

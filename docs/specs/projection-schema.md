@@ -79,7 +79,7 @@ The same story can be represented by local JSONL events and current projections:
 | Surface verifies the claim | `claim.status.changed` or `claim.reverification.completed` | Surface claim | Claim remains linked to evidence and the Flow gate/run. | `claims[]` shows `status: "verified"` and `freshness.status: "fresh"`. |
 | Flow continues | `process.progressed` or `gate.passed` | Flow run or gate | Gate refs the verified claim/evidence. | `gates[]` shows `passed`; `processes[]` advances. |
 
-This handoff requires no hosted server, database, action endpoint, or product API call. A local producer can append the events under `.kontour/events/...` and write current snapshots under `.kontour/projections/...`. A later server Sink can receive the same semantic events/projections without changing their product meaning.
+This handoff requires no hosted server, database, action endpoint, or product API call. A local producer can append the events under `.kontourai/console/events/...` and write current snapshots under `.kontourai/console/projections/...`. A later server Sink can receive the same semantic events/projections without changing their product meaning.
 
 The operator-facing Console view should prioritize the plain-language current stage, such as "checking provider directory freshness" or "still waiting on Surface claim." Raw event and projection detail should remain inspectable, but it is supporting evidence rather than the primary user experience.
 
@@ -91,12 +91,12 @@ Recommended location:
 
 ```text
 docs/examples/event-streams/<scenario>.jsonl
-.kontour/events/<producer-id>/<scope-kind>-<scope-id>.jsonl
+.kontourai/console/events/<producer-id>/<scope-kind>-<scope-id>.jsonl
 ```
 
-The `docs/examples` path is for checked-in examples. The `.kontour/events` path is the recommended local working convention for Console producer output when a repo wants replayable console state.
+The `docs/examples` path is for checked-in examples. The `.kontourai/console/events` path is the recommended local working convention for Console producer output when a repo wants replayable console state.
 
-The path tokens in this convention are sanitized identifiers, not raw path fragments. Console producers and consumers must reject `producer-id`, `scope-kind`, and `scope-id` values that are absolute paths, contain `..`, path separators, control characters, or otherwise escape identifier syntax. Consumers must resolve candidate stream files under an allowed stream root such as `.kontour/events`, verify the resolved path remains inside that root, and reject symlink escapes before opening a file.
+The path tokens in this convention are sanitized identifiers, not raw path fragments. Console producers and consumers must reject `producer-id`, `scope-kind`, and `scope-id` values that are absolute paths, contain `..`, path separators, control characters, or otherwise escape identifier syntax. Consumers must resolve candidate stream files under an allowed stream root such as `.kontourai/console/events`, verify the resolved path remains inside that root, and reject symlink escapes before opening a file.
 
 Rules:
 
@@ -1001,4 +1001,3 @@ Surface says: the same question resolves as matched on the next inquiry — inqu
 | Subsequent inquiry resolves matched | `inquiry.resolved` | Surface inquiry | `outcome: "matched"`; refs the matched claim; `statusFunctionVersion`. | `inquiries[]` adds the matched record; `claimRefs` links to the Surface claim for cross-product navigation; Console does not recompute the match — Surface is the authority. |
 
 This lifecycle requires no changes to Survey review machinery. The `inquiry_unsupported_gap` and `mapping_proposal` kinds are new values in the `ReviewItemProjection.kind` vocabulary; Survey's candidate-to-review path handles them as additional item types through the existing workbench.
-
