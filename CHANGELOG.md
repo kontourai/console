@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.2.0](https://github.com/kontourai/console/compare/v2.1.0...v2.2.0) (2026-07-10)
+
+
+### Features
+
+* **console-server:** durable Postgres-backed economics store in hosted mode ([#155](https://github.com/kontourai/console/issues/155)) ([bbc73ab](https://github.com/kontourai/console/commit/bbc73ab1cf3fd593c7b8d93e4a83b8b801d26a2e))
+* **console-server:** durable Postgres-backed economics store in hosted mode ([#155](https://github.com/kontourai/console/issues/155)) ([718ee52](https://github.com/kontourai/console/commit/718ee52413a6bdde48b3078a5c31232b9ce7de93))
+
 ## [2.1.0](https://github.com/kontourai/console/compare/v2.0.1...v2.1.0) (2026-07-10)
 
 
