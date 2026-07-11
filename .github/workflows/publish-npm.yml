@@ -115,7 +115,7 @@ jobs:
         working-directory: console
 
       # Best-effort standalone publish of the shared contract package so other
-      # repos (e.g. flow-agents) can depend on @kontourai/console-telemetry from
+      # repos (e.g. flow-agents) can depend on @kontourai/telemetry from
       # npm. Versioned independently of the root; the guard makes it idempotent.
       #
       # The FIRST publish of a new scoped package must be bootstrapped once by an
@@ -124,8 +124,8 @@ jobs:
       # of failing the release. Once bootstrapped, it publishes cleanly on bumps.
       - name: Publish console-telemetry (best-effort)
         run: |
-          NAME=$(node -p "require('./console-telemetry/package.json').name")
-          VERSION=$(node -p "require('./console-telemetry/package.json').version")
+          NAME=$(node -p "require('./telemetry/package.json').name")
+          VERSION=$(node -p "require('./telemetry/package.json').version")
           if npm view "${NAME}@${VERSION}" version >/dev/null 2>&1; then
             echo "${NAME}@${VERSION} already published; skipping."
           elif npm publish -w "${NAME}" --access public --provenance; then

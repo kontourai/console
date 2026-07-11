@@ -5,7 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 import { createTelemetryStore } from "../src/console-foundation/telemetry";
-import { getRegistry, setRegistry } from "@kontourai/console-telemetry";
+import { getRegistry, setRegistry } from "@kontourai/telemetry";
 import type { TelemetrySummary } from "../src/console-foundation/types";
 
 // --- helpers ---------------------------------------------------------------
