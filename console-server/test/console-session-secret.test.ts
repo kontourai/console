@@ -50,5 +50,8 @@ test("#104 signSessionCookie throws when no key source is available", () => {
 test("#104 scoped (OIDC) sessions still carry scopes under the session secret", () => {
   const withSecret = cfg({ sessionSecret: "S" });
   const cookie = signSessionCookie("t", withSecret, ["telemetry:read"]);
-  assert.deepEqual(verifySessionCookieValue(cookie, withSecret), { tenantId: "t", scopes: ["telemetry:read"] });
+  const result = verifySessionCookieValue(cookie, withSecret);
+  assert.equal(result?.tenantId, "t");
+  assert.deepEqual(result?.scopes, ["telemetry:read"]);
+  assert.ok(result?.sid && typeof result.sid === "string", "carries a session id (#104)");
 });

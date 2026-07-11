@@ -110,6 +110,16 @@ require a hosted token for the tenant, and rotating that token logs its sessions
 Rotating `CONSOLE_SESSION_SECRET` invalidates all sessions (a global logout). Recommended
 for hosted deployments.
 
+### Per-session revocation (#104)
+
+Each session cookie carries a random session id (`sid`). `POST /session/logout` **revokes
+that sid server-side** — so a stolen copy of the cookie can't be replayed after logout, even
+before its signed max-age elapses. Revocations are stored in `console_revoked_sessions`
+(migration `0005`, applied by the standard `npx console-db-migrate` release step) in hosted
+mode — durable and shared across instances — and in-memory in local mode. Entries self-expire
+at the session's max-age, so the table stays bounded. (Global revocation of *all* of a user's
+sessions is a tracked follow-up; today revocation is per-session, keyed on the sid.)
+
 ## Production checklist
 
 - Serve over HTTPS (cookies are `Secure`); terminate TLS at the edge.

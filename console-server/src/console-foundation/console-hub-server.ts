@@ -7,6 +7,7 @@ const crypto = require("node:crypto");
 import { assertConsoleRuntimeConfig, resolveConsoleRuntimeConfig, type ConsoleRuntimeConfig } from "./config";
 import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./sse-stream";
 import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
+import { createRevocationStore, newSessionId, type RevocationStore } from "./session-revocation";
 import { validateFlowIngestRequest, wrapFlowIngestRecord } from "./flow-ingest";
 import { isLivenessRecord, normalizeLivenessRecord, validateLivenessRecord, LIVENESS_SCHEMA } from "./liveness";
 import { getRegistry } from "@kontourai/console-telemetry";
@@ -152,6 +153,9 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
         ? (options.telemetryDatabaseUrl || process.env.CONSOLE_DATABASE_URL || process.env.CONSOLE_TELEMETRY_DATABASE_URL)
         : undefined
     );
+  // Per-session revocation store (#104): Postgres-backed in hosted mode (durable +
+  // shared across instances), in-memory in local mode. Reuses the resolved SQL client.
+  const revocationStore = createRevocationStore(coreSqlClient);
   const uiDistDir = resolveUiDistDir();
   const server = http.createServer((request: IncomingMessage, response: ServerResponse) => {
     routeRequest({
@@ -165,6 +169,7 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
       options,
       runtimeConfig,
       coreSqlClient,
+      revocationStore,
       uiDistDir,
       request,
       response
@@ -213,11 +218,12 @@ async function routeRequest(input: {
   options: ConsoleHubServerOptions;
   runtimeConfig: ConsoleRuntimeConfig;
   coreSqlClient?: ConsoleSqlClient;
+  revocationStore: RevocationStore;
   uiDistDir: string;
   request: IncomingMessage;
   response: ServerResponse;
 }): Promise<void> {
-  const { telemetry, ingestState, economics, options, runtimeConfig, coreSqlClient, uiDistDir, request, response } = input;
+  const { telemetry, ingestState, economics, options, runtimeConfig, coreSqlClient, revocationStore, uiDistDir, request, response } = input;
   const url = new URL(request.url || "/", `http://${request.headers.host || DEFAULT_HOST}`);
   if (!applyCorsPolicy(request, response, runtimeConfig)) return;
 
@@ -267,12 +273,12 @@ async function routeRequest(input: {
     }
 
     if (request.method === "GET" && url.pathname === "/session") {
-      handleSessionCheck(request, response, runtimeConfig);
+      await handleSessionCheck(request, response, runtimeConfig, revocationStore);
       return;
     }
 
     if (request.method === "POST" && url.pathname === "/session/logout") {
-      handleSessionLogout(response);
+      await handleSessionLogout(request, response, runtimeConfig, revocationStore);
       return;
     }
 
@@ -322,7 +328,7 @@ async function routeRequest(input: {
       const decodedPath = safeDecodePath(url.pathname);
       const isHtmlRequest = !decodedPath || decodedPath === "/" || !path.extname(decodedPath);
       if (isHtmlRequest) {
-        const sessionContext = verifySessionCookie(request, runtimeConfig);
+        const sessionContext = await verifySessionActive(request, runtimeConfig, revocationStore);
         if (!sessionContext) {
           serveSessionGatePage(response);
           return;
@@ -336,7 +342,7 @@ async function routeRequest(input: {
       if (served) return;
     }
 
-    const auth = await authenticateRequest(request, runtimeConfig, options);
+    const auth = await authenticateRequest(request, runtimeConfig, options, revocationStore);
     if (!auth.ok) {
       writeApiError(response, auth.statusCode, auth.error, auth.safeMessage);
       return;
@@ -552,16 +558,17 @@ async function handleSessionCreate(
  * GET /session — return {tenantId} if a valid session cookie is present, else 401.
  * This endpoint is exempt from the HTML gate so the UI can check it on startup.
  */
-function handleSessionCheck(
+async function handleSessionCheck(
   request: IncomingMessage,
   response: ServerResponse,
-  runtimeConfig: ConsoleRuntimeConfig
-): void {
+  runtimeConfig: ConsoleRuntimeConfig,
+  revocationStore: RevocationStore
+): Promise<void> {
   if (runtimeConfig.mode !== "hosted") {
     writeApiError(response, 404, "NOT_FOUND", "route was not found");
     return;
   }
-  const sessionContext = verifySessionCookie(request, runtimeConfig);
+  const sessionContext = await verifySessionActive(request, runtimeConfig, revocationStore);
   if (!sessionContext) {
     writeApiError(response, 401, "UNAUTHORIZED", "no valid session");
     return;
@@ -570,10 +577,26 @@ function handleSessionCheck(
 }
 
 /**
- * POST /session/logout — clear the session cookie.
- * Always succeeds with 204 (idempotent).
+ * POST /session/logout — revoke the session server-side (#104), then clear the
+ * cookie. Revoking the sid means a stolen copy of the cookie can't be replayed
+ * after logout, even before its signed max-age expires. Idempotent (204).
  */
-function handleSessionLogout(response: ServerResponse): void {
+async function handleSessionLogout(
+  request: IncomingMessage,
+  response: ServerResponse,
+  runtimeConfig: ConsoleRuntimeConfig,
+  revocationStore: RevocationStore
+): Promise<void> {
+  const sessionContext = verifySessionCookie(request, runtimeConfig);
+  if (sessionContext) {
+    // Revoke until the session's signed max-age would have elapsed — the cookie is
+    // worthless after that anyway (server-side max-age), so this fully covers it.
+    await revocationStore.revoke(
+      sessionContext.sid,
+      sessionContext.tenantId,
+      Date.now() + SESSION_COOKIE_MAX_AGE_SECONDS * 1000
+    );
+  }
   response.writeHead(204, {
     "set-cookie": buildSessionCookieHeader("", 0),
     "cache-control": "no-store"
@@ -813,26 +836,28 @@ function sessionKey(runtimeConfig: ConsoleRuntimeConfig, tenantId: string): Buff
 /**
  * Build a signed session cookie value for a given tenant.
  *
- * Legacy (token-issued, full-access) format: base64url(tenantId).timestampMs.HMAC
- * Scoped (OIDC-issued) format:               base64url(tenantId).timestampMs.base64url(scopes).HMAC
- * The HMAC covers all preceding dot-joined parts. Presence of the scope segment
- * is what makes a session scope-enforced (ADR 0003, Phase 2). The signing key comes
- * from CONSOLE_SESSION_SECRET when set, else the tenant's hosted token (#104).
+ * Full-access (token-issued) format: base64url(tenantId).timestampMs.sid.HMAC
+ * Scoped (OIDC-issued) format:        base64url(tenantId).timestampMs.sid.base64url(scopes).HMAC
+ * `sid` is a random per-session id (#104) that the revocation store keys on. The
+ * HMAC covers all preceding dot-joined parts. Presence of the scope segment is what
+ * makes a session scope-enforced (ADR 0003, Phase 2). The signing key comes from
+ * CONSOLE_SESSION_SECRET when set, else the tenant's hosted token (#104).
  */
 export function signSessionCookie(tenantId: string, runtimeConfig: ConsoleRuntimeConfig, scopes?: string[]): string {
   const tenantPart = Buffer.from(tenantId, "utf8").toString("base64url");
   const tsPart = String(Date.now());
+  const sid = newSessionId();
   const key = sessionKey(runtimeConfig, tenantId);
   if (!key) {
     throw new Error("no session signing key (set CONSOLE_SESSION_SECRET or a hosted auth token for the tenant)");
   }
   if (scopes === undefined) {
-    const sig = crypto.createHmac("sha256", key).update(`${tenantPart}.${tsPart}`).digest("hex");
-    return `${tenantPart}.${tsPart}.${sig}`;
+    const sig = crypto.createHmac("sha256", key).update(`${tenantPart}.${tsPart}.${sid}`).digest("hex");
+    return `${tenantPart}.${tsPart}.${sid}.${sig}`;
   }
   const scopePart = Buffer.from(scopes.join(" "), "utf8").toString("base64url");
-  const sig = crypto.createHmac("sha256", key).update(`${tenantPart}.${tsPart}.${scopePart}`).digest("hex");
-  return `${tenantPart}.${tsPart}.${scopePart}.${sig}`;
+  const sig = crypto.createHmac("sha256", key).update(`${tenantPart}.${tsPart}.${sid}.${scopePart}`).digest("hex");
+  return `${tenantPart}.${tsPart}.${sid}.${scopePart}.${sig}`;
 }
 
 /**
@@ -845,17 +870,18 @@ export function signSessionCookie(tenantId: string, runtimeConfig: ConsoleRuntim
 export function verifySessionCookieValue(
   cookieValue: string,
   runtimeConfig: ConsoleRuntimeConfig
-): { tenantId: string; scopes?: string[] } | null {
+): { tenantId: string; scopes?: string[]; sid: string } | null {
   const parts = cookieValue.split(".");
-  // 3 parts = legacy (full-access); 4 parts = scoped (OIDC). base64url + hex are
-  // dot-free, so the segment count is unambiguous.
-  if (parts.length !== 3 && parts.length !== 4) return null;
-  const scoped = parts.length === 4;
+  // 4 parts = full-access; 5 parts = scoped (OIDC). Both carry a sid (#104).
+  // base64url + hex are dot-free, so the segment count is unambiguous.
+  if (parts.length !== 4 && parts.length !== 5) return null;
+  const scoped = parts.length === 5;
   const tenantPart = parts[0];
   const tsPart = parts[1];
-  const scopePart = scoped ? parts[2] : undefined;
-  const sig = scoped ? parts[3] : parts[2];
-  if (!tenantPart || !tsPart || !sig) return null;
+  const sid = parts[2];
+  const scopePart = scoped ? parts[3] : undefined;
+  const sig = scoped ? parts[4] : parts[3];
+  if (!tenantPart || !tsPart || !sid || !sig) return null;
   if (!/^\d+$/.test(tsPart)) return null;
 
   // Server-side max-age: reject cookies older than the signed lifetime.
@@ -873,7 +899,7 @@ export function verifySessionCookieValue(
   const key = sessionKey(runtimeConfig, tenantId);
   if (!key) return null;
 
-  const sigInput = scoped ? `${tenantPart}.${tsPart}.${scopePart}` : `${tenantPart}.${tsPart}`;
+  const sigInput = scoped ? `${tenantPart}.${tsPart}.${sid}.${scopePart}` : `${tenantPart}.${tsPart}.${sid}`;
   const expected = crypto.createHmac("sha256", key).update(sigInput).digest("hex");
   // Compare as ASCII hex — both sides are fixed-length lowercase hex, so this is
   // constant-time and never throws (unlike Buffer.from(sig, "hex") on bad input).
@@ -881,13 +907,29 @@ export function verifySessionCookieValue(
   const expBuf = Buffer.from(expected, "ascii");
   if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
 
-  if (!scoped) return { tenantId };
+  if (!scoped) return { tenantId, sid };
   try {
     const raw = Buffer.from(scopePart as string, "base64url").toString("utf8");
-    return { tenantId, scopes: raw ? raw.split(" ").filter(Boolean) : [] };
+    return { tenantId, scopes: raw ? raw.split(" ").filter(Boolean) : [], sid };
   } catch {
     return null;
   }
+}
+
+/**
+ * Verify a session cookie AND confirm its sid has not been revoked (#104). Returns
+ * the session context or null. Used on every session-authenticated path so a
+ * logged-out / revoked session is rejected even before its signed max-age expires.
+ */
+async function verifySessionActive(
+  request: IncomingMessage,
+  runtimeConfig: ConsoleRuntimeConfig,
+  revocationStore: RevocationStore
+): Promise<{ tenantId: string; scopes?: string[]; sid: string } | null> {
+  const context = verifySessionCookie(request, runtimeConfig);
+  if (!context) return null;
+  if (await revocationStore.isRevoked(context.sid)) return null;
+  return context;
 }
 
 /**
@@ -897,7 +939,7 @@ export function verifySessionCookieValue(
 function verifySessionCookie(
   request: IncomingMessage,
   runtimeConfig: ConsoleRuntimeConfig
-): { tenantId: string; scopes?: string[] } | null {
+): { tenantId: string; scopes?: string[]; sid: string } | null {
   const cookieHeader = request.headers.cookie;
   if (!cookieHeader) return null;
   const cookieValue = parseCookieValue(cookieHeader, SESSION_COOKIE_NAME);
@@ -1678,7 +1720,7 @@ function isKnownRoute(pathname: string): boolean {
   return KNOWN_ROUTES.includes(pathname);
 }
 
-async function authenticateRequest(request: IncomingMessage, runtimeConfig: ConsoleRuntimeConfig, options: ConsoleHubServerOptions): Promise<{ ok: true; context: ConsoleRequestContext } | { ok: false; statusCode: number; error: string; safeMessage: string }> {
+async function authenticateRequest(request: IncomingMessage, runtimeConfig: ConsoleRuntimeConfig, options: ConsoleHubServerOptions, revocationStore: RevocationStore): Promise<{ ok: true; context: ConsoleRequestContext } | { ok: false; statusCode: number; error: string; safeMessage: string }> {
   if (runtimeConfig.mode !== "hosted") {
     if (!authorizeLocalRequest(request, runtimeConfig)) {
       return { ok: false, statusCode: 401, error: "UNAUTHORIZED", safeMessage: "console token is required for non-loopback clients" };
@@ -1688,7 +1730,7 @@ async function authenticateRequest(request: IncomingMessage, runtimeConfig: Cons
 
   // Accept session cookie as credential (equivalent to bearer token + tenant).
   // This supports EventSource (SSE) from the browser, which cannot set headers.
-  const sessionContext = verifySessionCookie(request, runtimeConfig);
+  const sessionContext = await verifySessionActive(request, runtimeConfig, revocationStore);
   if (sessionContext) {
     return { ok: true, context: { tenantId: sessionContext.tenantId, runtimeMode: "hosted", authMethod: "session", scopes: sessionContext.scopes } };
   }
