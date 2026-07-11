@@ -10,7 +10,7 @@ import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, vali
 import { createRevocationStore, newSessionId, type RevocationStore } from "./session-revocation";
 import { validateFlowIngestRequest, wrapFlowIngestRecord } from "./flow-ingest";
 import { isLivenessRecord, normalizeLivenessRecord, validateLivenessRecord, LIVENESS_SCHEMA } from "./liveness";
-import { getRegistry } from "@kontourai/console-telemetry";
+import { getRegistry } from "@kontourai/telemetry";
 import type {
   ConsoleEconomicsRecord,
   ConsoleEventRecord,

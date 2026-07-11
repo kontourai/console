@@ -14,7 +14,7 @@
   },
   "workspaces": [
     "console-core",
-    "console-telemetry",
+    "telemetry",
     "console-server",
     "console-ui"
   ],
@@ -61,8 +61,8 @@
   },
   "dependencies": {
     "@kontourai/console-core": "^0.1.0",
-    "@kontourai/console-telemetry": "^0.1.0",
-    "jose": "^6.2.3"
+    "jose": "^6.2.3",
+    "@kontourai/telemetry": "^0.1.0"
   },
   "devDependencies": {
     "@kontourai/surface": "^1.0.1",
