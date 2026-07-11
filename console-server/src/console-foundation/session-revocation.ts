@@ -70,6 +70,9 @@ export class PostgresRevocationStore implements RevocationStore {
       "insert into console_revoked_sessions (sid, tenant_id, expires_at) values ($1, $2, to_timestamp($3)) on conflict (sid) do nothing",
       [sid, tenantId, expiresAtMs / 1000]
     );
+    // Opportunistically prune expired revocations so the table stays bounded (the
+    // expires_at index supports this). Logout is infrequent, so the cost is negligible.
+    await this.sql.query("delete from console_revoked_sessions where expires_at <= now()");
   }
 }
 

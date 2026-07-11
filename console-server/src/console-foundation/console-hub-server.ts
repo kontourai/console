@@ -852,12 +852,14 @@ export function signSessionCookie(tenantId: string, runtimeConfig: ConsoleRuntim
     throw new Error("no session signing key (set CONSOLE_SESSION_SECRET or a hosted auth token for the tenant)");
   }
   if (scopes === undefined) {
-    const sig = crypto.createHmac("sha256", key).update(`${tenantPart}.${tsPart}.${sid}`).digest("hex");
-    return `${tenantPart}.${tsPart}.${sid}.${sig}`;
+    const signed = `v2.${tenantPart}.${tsPart}.${sid}`;
+    const sig = crypto.createHmac("sha256", key).update(signed).digest("hex");
+    return `${signed}.${sig}`;
   }
   const scopePart = Buffer.from(scopes.join(" "), "utf8").toString("base64url");
-  const sig = crypto.createHmac("sha256", key).update(`${tenantPart}.${tsPart}.${sid}.${scopePart}`).digest("hex");
-  return `${tenantPart}.${tsPart}.${sid}.${scopePart}.${sig}`;
+  const signed = `v2.${tenantPart}.${tsPart}.${sid}.${scopePart}`;
+  const sig = crypto.createHmac("sha256", key).update(signed).digest("hex");
+  return `${signed}.${sig}`;
 }
 
 /**
@@ -872,15 +874,19 @@ export function verifySessionCookieValue(
   runtimeConfig: ConsoleRuntimeConfig
 ): { tenantId: string; scopes?: string[]; sid: string } | null {
   const parts = cookieValue.split(".");
-  // 4 parts = full-access; 5 parts = scoped (OIDC). Both carry a sid (#104).
-  // base64url + hex are dot-free, so the segment count is unambiguous.
-  if (parts.length !== 4 && parts.length !== 5) return null;
-  const scoped = parts.length === 5;
-  const tenantPart = parts[0];
-  const tsPart = parts[1];
-  const sid = parts[2];
-  const scopePart = scoped ? parts[3] : undefined;
-  const sig = scoped ? parts[4] : parts[3];
+  // v2 format (#104): v2.tenant.ts.sid.sig (5 parts, full-access) or
+  // v2.tenant.ts.sid.scope.sig (6 parts, scoped OIDC). The explicit "v2" version
+  // marker makes pre-#104 cookies (3/4 parts, no marker) fail closed here — old 4-part
+  // scoped cookies otherwise had a byte-identical HMAC input to the new 4-part
+  // full-access shape and would be silently upgraded to full access.
+  if (parts[0] !== "v2") return null;
+  if (parts.length !== 5 && parts.length !== 6) return null;
+  const scoped = parts.length === 6;
+  const tenantPart = parts[1];
+  const tsPart = parts[2];
+  const sid = parts[3];
+  const scopePart = scoped ? parts[4] : undefined;
+  const sig = scoped ? parts[5] : parts[4];
   if (!tenantPart || !tsPart || !sid || !sig) return null;
   if (!/^\d+$/.test(tsPart)) return null;
 
@@ -899,7 +905,7 @@ export function verifySessionCookieValue(
   const key = sessionKey(runtimeConfig, tenantId);
   if (!key) return null;
 
-  const sigInput = scoped ? `${tenantPart}.${tsPart}.${sid}.${scopePart}` : `${tenantPart}.${tsPart}.${sid}`;
+  const sigInput = scoped ? `v2.${tenantPart}.${tsPart}.${sid}.${scopePart}` : `v2.${tenantPart}.${tsPart}.${sid}`;
   const expected = crypto.createHmac("sha256", key).update(sigInput).digest("hex");
   // Compare as ASCII hex — both sides are fixed-length lowercase hex, so this is
   // constant-time and never throws (unlike Buffer.from(sig, "hex") on bad input).

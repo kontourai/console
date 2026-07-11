@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import {
   InMemoryRevocationStore,
   newSessionId,
@@ -53,4 +54,22 @@ test("#104 InMemoryRevocationStore: an expired revocation is no longer revoked",
 test("#104 createRevocationStore defaults to in-memory when no SQL client", () => {
   const store = createRevocationStore(undefined);
   assert.ok(store instanceof InMemoryRevocationStore);
+});
+
+test("#104 SECURITY: pre-#104 cookies (no v2 marker) are rejected — no silent full-access upgrade", () => {
+  const c = cfg();
+  const secret = c.sessionSecret as string;
+  const key = crypto.createHash("sha256").update(`console-session-secret-v1:${secret}`).digest();
+  const tenantPart = Buffer.from("t", "utf8").toString("base64url");
+  const ts = String(Date.now());
+  // Pre-#104 SCOPED format: tenant.ts.scope.sig (4 parts) — this is the one that used to
+  // collide with the new 4-part full-access shape and grant unscoped access. It MUST NOT verify.
+  const scopePart = Buffer.from("telemetry:read", "utf8").toString("base64url");
+  const oldScopedSig = crypto.createHmac("sha256", key).update(`${tenantPart}.${ts}.${scopePart}`).digest("hex");
+  assert.equal(verifySessionCookieValue(`${tenantPart}.${ts}.${scopePart}.${oldScopedSig}`, c), null, "old scoped cookie must be rejected");
+  // Pre-#104 full-access format: tenant.ts.sig (3 parts) — also rejected.
+  const oldFullSig = crypto.createHmac("sha256", key).update(`${tenantPart}.${ts}`).digest("hex");
+  assert.equal(verifySessionCookieValue(`${tenantPart}.${ts}.${oldFullSig}`, c), null, "old full-access cookie must be rejected");
+  // A current v2 cookie still verifies (sanity).
+  assert.equal(verifySessionCookieValue(signSessionCookie("t", c), c)?.tenantId, "t");
 });

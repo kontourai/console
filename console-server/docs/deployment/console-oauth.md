@@ -112,13 +112,18 @@ for hosted deployments.
 
 ### Per-session revocation (#104)
 
-Each session cookie carries a random session id (`sid`). `POST /session/logout` **revokes
-that sid server-side** — so a stolen copy of the cookie can't be replayed after logout, even
-before its signed max-age elapses. Revocations are stored in `console_revoked_sessions`
-(migration `0005`, applied by the standard `npx console-db-migrate` release step) in hosted
-mode — durable and shared across instances — and in-memory in local mode. Entries self-expire
-at the session's max-age, so the table stays bounded. (Global revocation of *all* of a user's
-sessions is a tracked follow-up; today revocation is per-session, keyed on the sid.)
+Each session cookie carries a random session id (`sid`) and a format-version marker (`v2`).
+`POST /session/logout` **revokes that sid server-side** — so a stolen copy of the cookie can't
+be replayed after logout, even before its signed max-age elapses. Revocations are stored in
+`console_revoked_sessions` (migration `0005`, applied by the standard `npx console-db-migrate`
+release step) in hosted mode — durable and shared across instances — and in-memory in local
+mode. Expired revocations are pruned on each logout, so the table stays bounded.
+
+**Rollout:** the `v2` cookie format is deliberately distinct from the pre-#104 format, so any
+session cookie minted before this change fails verification and the user re-logs in once. This
+is intentional — it closes a format-collision where an old scope-limited cookie could otherwise
+be reinterpreted as full-access. (Global revocation of *all* of a user's sessions is a tracked
+follow-up; today revocation is per-session, keyed on the sid.)
 
 ## Production checklist
 
