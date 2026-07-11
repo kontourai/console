@@ -319,3 +319,52 @@ test("#104 OIDC with session secret + EMPTY allowlist: deny-all (403)", async ()
     assert.equal(cb.status, 403);
   } finally { await closeApp(app); }
 });
+
+// #104: logout revokes the session server-side. A FakeSql that tracks the
+// console_revoked_sessions table so the Postgres revocation store actually works.
+class RevocationFakeSql {
+  revoked = new Set<string>();
+  async query(text: string, values?: any[]) {
+    const n = text.toLowerCase();
+    if (n.includes("console_revoked_sessions")) {
+      if (n.trim().startsWith("insert into")) { this.revoked.add(values?.[0]); return { rows: [], rowCount: 1 }; }
+      const hit = this.revoked.has(values?.[0]);
+      return { rows: hit ? [{ revoked: 1 }] : [], rowCount: hit ? 1 : 0 };
+    }
+    return n.includes("select 1") ? { rows: [{ ok: 1 }], rowCount: 1 } : { rows: [], rowCount: 0 };
+  }
+}
+function makeHostedRevocation(sql: RevocationFakeSql) {
+  return createConsoleHubServer({
+    rootDir: tempRoot(), port: 0, runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres", telemetryDatabaseUrl: "postgres://u:p@invalid/db",
+    telemetrySqlClient: sql as any, coreSqlClient: sql as any,
+    hostedTenantIds: ["tenant-a"], hostedAuthTokens: [{ token: "opaque-tok", tenantId: "tenant-a" }]
+  });
+}
+
+test("#104 logout revokes the session server-side (revoked cookie is rejected)", async () => {
+  const sql = new RevocationFakeSql();
+  const app = makeHostedRevocation(sql); await listen(app);
+  try {
+    const base = urlOf(app);
+    const { state, nonce, stateCookie } = await startLogin(base);
+    stubTokenEndpoint(await mintAccess("tenant-a"), await mintIdToken(nonce, await mintAccess("tenant-a")));
+    const cb = await req("GET", `${base}/auth/callback?code=abc&state=${encodeURIComponent(state)}`, { cookie: `console_oauth_state=${stateCookie}` });
+    assert.equal(cb.status, 302);
+    const cookie = cookieFrom(cb.headers["set-cookie"], "console_session")!;
+    assert.ok(cookie, "session issued");
+
+    // works before logout
+    assert.equal((await req("GET", `${base}/session`, { cookie: `console_session=${cookie}` })).status, 200);
+
+    // logout revokes the sid server-side
+    const out = await req("POST", `${base}/session/logout`, { cookie: `console_session=${cookie}` });
+    assert.equal(out.status, 204);
+    assert.equal(sql.revoked.size, 1, "logout recorded exactly one revocation");
+
+    // the SAME cookie is now rejected on /session AND the API (not just cleared client-side)
+    assert.equal((await req("GET", `${base}/session`, { cookie: `console_session=${cookie}` })).status, 401);
+    assert.equal((await req("GET", `${base}/api/telemetry`, { cookie: `console_session=${cookie}` })).status, 401);
+  } finally { await closeApp(app); }
+});
