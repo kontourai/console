@@ -836,11 +836,14 @@ function sessionKey(runtimeConfig: ConsoleRuntimeConfig, tenantId: string): Buff
 /**
  * Build a signed session cookie value for a given tenant.
  *
- * Full-access (token-issued) format: base64url(tenantId).timestampMs.sid.HMAC
- * Scoped (OIDC-issued) format:        base64url(tenantId).timestampMs.sid.base64url(scopes).HMAC
- * `sid` is a random per-session id (#104) that the revocation store keys on. The
- * HMAC covers all preceding dot-joined parts. Presence of the scope segment is what
- * makes a session scope-enforced (ADR 0003, Phase 2). The signing key comes from
+ * Full-access (token-issued) format: v2.base64url(tenantId).timestampMs.sid.HMAC
+ * Scoped (OIDC-issued) format:        v2.base64url(tenantId).timestampMs.sid.base64url(scopes).HMAC
+ * `sid` is a random per-session id (#104) that the revocation store keys on. The leading
+ * `v2` is an explicit format-version marker (folded into the HMAC) so pre-#104 cookies —
+ * whose 4-part scoped shape otherwise had a byte-identical HMAC input to the new 4-part
+ * full-access shape — fail closed instead of being silently upgraded to full access. The
+ * HMAC covers all preceding dot-joined parts. Presence of the scope segment is what makes
+ * a session scope-enforced (ADR 0003, Phase 2). The signing key comes from
  * CONSOLE_SESSION_SECRET when set, else the tenant's hosted token (#104).
  */
 export function signSessionCookie(tenantId: string, runtimeConfig: ConsoleRuntimeConfig, scopes?: string[]): string {
