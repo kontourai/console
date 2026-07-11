@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/kontourai/console/compare/v2.2.0...v2.3.0) (2026-07-11)
+
+
+### Features
+
+* **console:** per-session revocation — logout invalidates server-side ([#104](https://github.com/kontourai/console/issues/104)) ([#161](https://github.com/kontourai/console/issues/161)) ([d3687f7](https://github.com/kontourai/console/commit/d3687f71f1dfd8297c6650ceef541828a1f01b0c))
+
 ## [2.2.0](https://github.com/kontourai/console/compare/v2.1.0...v2.2.0) (2026-07-10)
 
 
