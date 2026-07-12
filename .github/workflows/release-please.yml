@@ -14,6 +14,13 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      console_release_created: ${{ steps.release.outputs.release_created }}
+      console_tag_name: ${{ steps.release.outputs.tag_name }}
+      core_release_created: ${{ steps.release.outputs['console-core--release_created'] }}
+      core_tag_name: ${{ steps.release.outputs['console-core--tag_name'] }}
+      cli_release_created: ${{ steps.release.outputs['cli--release_created'] }}
+      cli_tag_name: ${{ steps.release.outputs['cli--tag_name'] }}
     steps:
       # Release PRs authored by the default GITHUB_TOKEN (github-actions[bot])
       # get their CI runs held as action_required on every refresh. Minting a
@@ -34,17 +41,43 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # Tags created with GITHUB_TOKEN do not trigger tag-push workflows, so
-      # dispatch the publish pipeline for each independently released package.
-      # The root package retains its established v* tags; the CLI uses cli-v*.
-      - name: Dispatch Console publish workflow
-        if: steps.release.outputs.release_created == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run publish-npm.yml --repo "$GITHUB_REPOSITORY" --ref "${{ steps.release.outputs.tag_name }}"
 
-      - name: Dispatch CLI publish workflow
-        if: steps.release.outputs['cli--release_created'] == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run publish-npm.yml --repo "$GITHUB_REPOSITORY" --ref "${{ steps.release.outputs['cli--tag_name'] }}"
+  # Call the workflow definition from this main revision while package contents
+  # remain authoritative at each immutable Release Please tag.
+  publish-core:
+    needs: release-please
+    if: needs.release-please.outputs.core_release_created == 'true'
+    uses: ./.github/workflows/publish-npm.yml
+    with:
+      target_tag: ${{ needs.release-please.outputs.core_tag_name }}
+    permissions:
+      contents: read
+      id-token: write
+
+  publish-console:
+    needs: [release-please, publish-core]
+    if: >-
+      always() &&
+      needs.release-please.result == 'success' &&
+      needs.release-please.outputs.console_release_created == 'true' &&
+      (needs.publish-core.result == 'success' || needs.publish-core.result == 'skipped')
+    uses: ./.github/workflows/publish-npm.yml
+    with:
+      target_tag: ${{ needs.release-please.outputs.console_tag_name }}
+    permissions:
+      contents: read
+      id-token: write
+
+  publish-cli:
+    needs: [release-please, publish-core]
+    if: >-
+      always() &&
+      needs.release-please.result == 'success' &&
+      needs.release-please.outputs.cli_release_created == 'true' &&
+      (needs.publish-core.result == 'success' || needs.publish-core.result == 'skipped')
+    uses: ./.github/workflows/publish-npm.yml
+    with:
+      target_tag: ${{ needs.release-please.outputs.cli_tag_name }}
+    permissions:
+      contents: read
+      id-token: write
