@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.0](https://github.com/kontourai/console/compare/v2.4.0...v2.5.0) (2026-07-12)
+
+
+### Features
+
+* add Kontour suite CLI router ([#167](https://github.com/kontourai/console/issues/167)) ([26fe1c2](https://github.com/kontourai/console/commit/26fe1c27d61f1e8b480206204cedc1f79bea39b6))
+
 ## [2.4.0](https://github.com/kontourai/console/compare/v2.3.0...v2.4.0) (2026-07-12)
 
 
