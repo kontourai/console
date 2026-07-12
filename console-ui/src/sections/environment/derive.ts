@@ -303,7 +303,8 @@ function topFromFacetOrRecords(
 
 // ── Process staleness helpers ────────────────────────────────────────────────
 
-export function deriveProcessList(state: OperatingState): ConsoleProcess[] {
+export function deriveProcessList(input: OperatingState | null | undefined): ConsoleProcess[] {
+  const state: OperatingState = input ?? ({} as OperatingState);
   return (state.processes || []).filter((p) => {
     const status = (p.status || "").toLowerCase();
     return status !== "complete" && status !== "done" && status !== "closed" && status !== "cancelled";

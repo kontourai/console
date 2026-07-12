@@ -5,6 +5,7 @@ import {
   deriveAttentionItems,
   deriveActivityBuckets,
   deriveTopWorkloads,
+  deriveProcessList,
   formatAge,
   isSourceQuiet,
   LONG_RUNNING_PROCESS_MS,
@@ -41,6 +42,11 @@ test("deriveHealthCounts tolerates undefined/null state", () => {
 test("deriveAttentionItems tolerates undefined/null state", () => {
   assert.deepEqual(deriveAttentionItems(undefined, null), []);
   assert.deepEqual(deriveAttentionItems(null, null), []);
+});
+
+test("deriveProcessList tolerates undefined/null state", () => {
+  assert.deepEqual(deriveProcessList(undefined), []);
+  assert.deepEqual(deriveProcessList(null), []);
 });
 
 test("deriveHealthCounts counts active processes (excludes done/complete/closed/cancelled)", () => {
