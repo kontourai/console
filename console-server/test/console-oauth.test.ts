@@ -152,7 +152,7 @@ test("scope: JWT allowed with the required scope; rejected (403 + WWW-Authentica
     const ok = await req("GET", `${base}/api/telemetry`, { authorization: `Bearer ${await mint({ scope: "telemetry:read" })}` });
     assert.notEqual(ok.status, 403);
 
-    const denied = await req("GET", `${base}/api/telemetry`, { authorization: `Bearer ${await mint({ scope: "pricing:read" })}` });
+    const denied = await req("GET", `${base}/api/telemetry`, { authorization: `Bearer ${await mint({ scope: "records:read" })}` });
     assert.equal(denied.status, 403);
     assert.match(denied.body, /INSUFFICIENT_SCOPE/);
     assert.match(String(denied.headers["www-authenticate"]), /insufficient_scope/);

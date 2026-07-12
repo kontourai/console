@@ -112,7 +112,6 @@ export function buildOpenApiDocument(options: { serverUrl?: string; version?: st
                 "telemetry:write": "Ingest telemetry records",
                 "records:read": "Read console records / state / streams",
                 "records:write": "Append console records",
-                "pricing:read": "Read the pricing registry",
                 "economics:read": "Read kit-economics rollups + the value comparison"
               }
             }

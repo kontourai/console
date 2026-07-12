@@ -10,7 +10,6 @@ import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, vali
 import { createRevocationStore, newSessionId, type RevocationStore } from "./session-revocation";
 import { validateFlowIngestRequest, wrapFlowIngestRecord } from "./flow-ingest";
 import { isLivenessRecord, normalizeLivenessRecord, validateLivenessRecord, LIVENESS_SCHEMA } from "./liveness";
-import { getRegistry } from "@kontourai/telemetry";
 import type {
   ConsoleEconomicsRecord,
   ConsoleEventRecord,
@@ -45,7 +44,7 @@ const { LocalConsoleHub } = require("./console-hub");
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/telemetry/pricing", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
+export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -462,12 +461,6 @@ async function routeRequest(input: {
       return;
     }
 
-    if (request.method === "GET" && url.pathname === "/api/telemetry/pricing") {
-      // Console is the pricing distribution hub: serve the live versioned
-      // registry (the TELEMETRY_PRICING_URL target for runtimes + the UI).
-      writeJson(response, 200, getRegistry());
-      return;
-    }
 
     if (request.method === "POST" && url.pathname === "/api/telemetry/records") {
       await handleTelemetryRecords(telemetry, events, request, response, context);
@@ -1677,7 +1670,6 @@ function applyCorsPolicy(request: IncomingMessage, response: ServerResponse, run
  *  route is unscoped. Mirrors the `scopes_supported` in the RFC 9728 metadata. */
 export function requiredScopeForRoute(method: string, pathname: string): string | undefined {
   const m = method.toUpperCase();
-  if (pathname === "/api/telemetry/pricing") return "pricing:read";
   if (pathname === "/api/telemetry" || pathname === "/api/telemetry/records") {
     return m === "POST" ? "telemetry:write" : "telemetry:read";
   }
