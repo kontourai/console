@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.0](https://github.com/kontourai/console/compare/cli-v0.2.0...cli-v0.3.0) (2026-07-12)
+
+
+### Features
+
+* **cli:** compose repository onboarding ([#170](https://github.com/kontourai/console/issues/170)) ([621b307](https://github.com/kontourai/console/commit/621b30775933b1c379e52b9ffa9ebe5582837efe))
+
+
+### Bug Fixes
+
+* **cli:** derive init version from package ([#172](https://github.com/kontourai/console/issues/172)) ([ba15178](https://github.com/kontourai/console/commit/ba15178e5cfc90a60e89d186b7f58577aaa0da20))
+
 ## [0.2.0](https://github.com/kontourai/console/compare/cli-v0.1.0...cli-v0.2.0) (2026-07-12)
 
 
