@@ -38,13 +38,14 @@ import { looksLikeJwt, verifyAccessToken, verifyOidcIdToken, protectedResourceMe
 import { buildAuthorizeRedirect, exchangeCodeForToken, signLoginState, verifyLoginState } from "./oidc-login";
 import { handleMcpRequest } from "./mcp-server";
 import { buildOpenApiDocument } from "./openapi";
+import { resolveBuildInfo } from "./version";
 
 const { LocalConsoleHub } = require("./console-hub");
 
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/healthz", "/readyz", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
+export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/healthz", "/readyz", "/version", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -241,6 +242,11 @@ async function routeRequest(input: {
     if (request.method === "GET" && url.pathname === "/readyz") {
       const readiness = await telemetry.ready();
       writeJson(response, readiness.ok ? 200 : 503, readiness);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/version") {
+      writeJson(response, 200, resolveBuildInfo());
       return;
     }
 

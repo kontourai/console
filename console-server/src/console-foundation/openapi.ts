@@ -5,6 +5,7 @@
 // Served live at GET /openapi.json.
 import { API_ROUTES, type ApiRoute, type ApiResponse } from "./api-registry";
 import { GENERATED_DEFINITIONS } from "./openapi/schemas.generated";
+import { resolveConsoleVersion } from "./version";
 
 const ref = (name: string) => ({ $ref: `#/components/schemas/${name}` });
 
@@ -93,7 +94,7 @@ export function buildOpenApiDocument(options: { serverUrl?: string; version?: st
     openapi: "3.1.0",
     info: {
       title: "Kontour Console API",
-      version: options.version ?? "0.1.0",
+      version: options.version ?? resolveConsoleVersion(),
       description: "Console HTTP API: telemetry + cost/usage analytics, records, OAuth 2.1 / OIDC auth, and an MCP server. Generated from the in-code route registry + TypeScript types."
     },
     servers: options.serverUrl ? [{ url: options.serverUrl }] : [],

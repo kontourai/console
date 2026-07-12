@@ -58,6 +58,8 @@ export const API_ROUTES: ApiRoute[] = [
     responses: { "200": { description: "Service is up.", schema: "HealthResponse" } } },
   { method: "GET", path: "/readyz", auth: "public", knownRoute: true, summary: "Readiness probe (telemetry storage).", tags: ["ops"],
     responses: { "200": { description: "Ready." }, "503": { description: "Not ready." } } },
+  { method: "GET", path: "/version", auth: "public", knownRoute: true, summary: "Release/build info (package version + optional git sha and build time).", tags: ["ops"],
+    responses: { "200": { description: "Version and build metadata." } } },
   { method: "GET", path: "/openapi.json", auth: "public", knownRoute: true, summary: "This OpenAPI 3.1 document (generated).", tags: ["ops"],
     responses: { "200": { description: "OpenAPI document." } } },
   { method: "GET", path: "/.well-known/oauth-protected-resource", auth: "public", knownRoute: true, summary: "RFC 9728 Protected Resource Metadata (when OAuth configured).", tags: ["auth"],
