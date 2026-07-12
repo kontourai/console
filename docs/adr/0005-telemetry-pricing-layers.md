@@ -4,7 +4,48 @@ Date: 2026-06-29
 
 ## Status
 
-Proposed
+Accepted, with amendment (see below).
+
+## Amendment (2026-07, post-implementation) — the "shared contract" premise did not hold
+
+Implementing this ADR revealed that its central framing is wrong, and the honest boundary is
+**simpler** than "a neutral package consumed by both producers and console":
+
+- **flow-agents never consumed the package's *shapes* — only its cost math.** Once the cost
+  math moved in-house (kontourai/flow-agents#557 reverted #243), flow-agents consumes
+  **nothing** from `@kontourai/telemetry`. It defines its own telemetry event shapes and
+  computes cost internally across bash/Python/TS (golden-vector-verified).
+- **`@kontourai/telemetry` is therefore console-only** — the only importer, in any repo, is the
+  console. It is console's telemetry/cost library with a neutral name, **not** a shared
+  contract.
+- **The real producer↔consumer contract is the wire format** (the JSONL telemetry event
+  structure), not a shared code package.
+
+Corrected boundary (supersedes the "two layers / shared package" model below):
+
+- **flow-agents owns its telemetry end-to-end** (shapes + cost + pricing), fully self-contained,
+  with **zero** console/`@kontourai/*` telemetry dependency. This — not a renamed shared
+  package — is what actually solves the original boundary concern (a portable primitive
+  depending on a console-*branded* package).
+- **console keeps its own telemetry/cost lib** (`@kontourai/telemetry`, neutrally named).
+- The two agree on the **wire format**, documented as data, not shared as code.
+
+Consequences of the amendment:
+
+- The neutral **rename** (#163) is retained (a neutral name is harmless and avoids the branded
+  smell) but is **cosmetic** — it did not create a shared contract.
+- The npm **publish** was not strictly necessary (a console-only package need not be published);
+  it is harmless and left in place. `@kontourai/telemetry` could equally be console-internal.
+- **Dropped:** the original step "flow-agents depends on `@kontourai/telemetry` for shapes." It
+  would re-introduce a pointless flow-agents→console-lib dependency to satisfy a contract that
+  is really just the wire format. Do not do this.
+- **Not yet done (and now optional):** the console-side "read *stamped* cost instead of
+  recompute" change. The console still recomputes cost from its own registry; that is fine —
+  it is a local implementation detail, not a boundary violation, now that flow-agents owns and
+  stamps cost independently.
+
+The original decision text is retained below for history; where it conflicts with this
+amendment, the amendment governs.
 
 ## Context
 
