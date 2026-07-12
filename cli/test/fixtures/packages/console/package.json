@@ -1,0 +1,10 @@
+{
+  "name": "@kontourai/console",
+  "version": "2.4.0",
+  "type": "module",
+  "bin": {
+    "kontour": "bin/record.mjs",
+    "console-inspect": "bin/record.mjs"
+  },
+  "files": ["bin"]
+}

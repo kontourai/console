@@ -24,6 +24,10 @@ description: Suite-level operating plane for Kontour. Claim status, process stat
     <strong>Product Capability Descriptor</strong>
     <span>The versioned, offline discovery contract for safely routing to product-owned CLI capabilities without importing product kernels.</span>
   </a>
+  <a class="doc-card" href="specs/kontour-cli-router.html">
+    <strong>Kontour CLI Router</strong>
+    <span>Explicit install and product-root usage, offline delegation, nested Flow/Flow Agents ownership, and legacy Console migration.</span>
+  </a>
   <a class="doc-card" href="deployment/hosted-console.html">
     <strong>Hosted Console</strong>
     <span>How a hosted deployment composes the base Console with deployment-owned infrastructure and environment mapping.</span>
@@ -51,6 +55,8 @@ The primitives remain portable and useful without Console:
 - **Flow Agents** owns agent-facing runtime: modes, skills, adapters, workflow learning.
 
 Console answers the suite-level questions: what is currently true, what is blocked, what proof supports this state, and what is the next action.
+
+The [`@kontourai/cli` router](specs/kontour-cli-router.md) provides suite navigation while keeping Flow, Flow Agents, and Console commands in their product-owned executables. It never installs a missing product or treats descriptor confirmation metadata as permission.
 
 ## Local first
 

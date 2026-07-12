@@ -106,6 +106,7 @@ function requiredValue(args: string[], index: number, label: string): string {
 
 function printUsage() {
   console.error(`Usage: kontour serve [--host 127.0.0.1] [--port 3737] [--kontour-root ${DEFAULT_CONSOLE_RUNTIME_ROOT}] [--no-ui]`);
+  console.error("Deprecated suite entry point: install @kontourai/cli and use `kontour console serve`. This legacy alias will not be removed before Console 3.0.");
 }
 
 main(process.argv);
