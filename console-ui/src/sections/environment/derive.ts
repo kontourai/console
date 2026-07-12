@@ -25,7 +25,8 @@ const BLOCKED_GATE_STATUSES = new Set(["blocked", "failed", "route-back", "rejec
 const PASSED_GATE_STATUSES = new Set(["passed", "approved", "accepted", "complete"]);
 const OPEN_INQUIRY_OUTCOMES = new Set(["unsupported", "derived", "matched"]);
 
-export function deriveHealthCounts(state: OperatingState): HealthCounts {
+export function deriveHealthCounts(input: OperatingState | null | undefined): HealthCounts {
+  const state: OperatingState = input ?? ({} as OperatingState);
   const processes = state.processes || [];
   const gates = state.gates || [];
   const claims = state.claims || [];
@@ -91,10 +92,11 @@ export const LONG_RUNNING_PROCESS_MS = 30 * 60 * 1000; // 30 minutes
 export const QUIET_SOURCE_MS = 60 * 60 * 1000; // 60 minutes
 
 export function deriveAttentionItems(
-  state: OperatingState,
+  input: OperatingState | null | undefined,
   telemetry: ConsoleTelemetryResponse | null,
   now = Date.now(),
 ): AttentionItem[] {
+  const state: OperatingState = input ?? ({} as OperatingState);
   const items: AttentionItem[] = [];
 
   // Blocked gates
@@ -301,7 +303,8 @@ function topFromFacetOrRecords(
 
 // ── Process staleness helpers ────────────────────────────────────────────────
 
-export function deriveProcessList(state: OperatingState): ConsoleProcess[] {
+export function deriveProcessList(input: OperatingState | null | undefined): ConsoleProcess[] {
+  const state: OperatingState = input ?? ({} as OperatingState);
   return (state.processes || []).filter((p) => {
     const status = (p.status || "").toLowerCase();
     return status !== "complete" && status !== "done" && status !== "closed" && status !== "cancelled";
