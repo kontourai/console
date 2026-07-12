@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.6.2](https://github.com/kontourai/console/compare/v2.6.1...v2.6.2) (2026-07-12)
+
+
+### Bug Fixes
+
+* **release:** keep server workspace internal ([#192](https://github.com/kontourai/console/issues/192)) ([d158d8d](https://github.com/kontourai/console/commit/d158d8df7a3cb38db25099c197ab929827990a7f))
+* **release:** publish CLI core contract ([#189](https://github.com/kontourai/console/issues/189)) ([3d038b3](https://github.com/kontourai/console/commit/3d038b37f55d115ca23a10cb0e133b4b7f3fb064))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @kontourai/console-core bumped from 0.1.0 to 0.2.0
+
 ## [2.6.1](https://github.com/kontourai/console/compare/v2.6.0...v2.6.1) (2026-07-12)
 
 
