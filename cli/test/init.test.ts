@@ -66,6 +66,8 @@ test("init inspect and plan are deterministic and select zero kits by default", 
   assert.equal(await runCli([`--product-root=flow-agents=${root}`, "init", "--plan", "--runtime", "codex", "--json"], second.io, { cwd }), 0);
   assert.equal(first.read().stdout, second.read().stdout);
   const plan = JSON.parse(first.read().stdout);
+  const cliManifest = JSON.parse(await readFile(resolve(fileURLToPath(new URL("../package.json", import.meta.url))), "utf8"));
+  assert.equal(plan.pins.cli, cliManifest.version);
   assert.deepEqual(plan.desired.kits, []);
   assert.equal(plan.actions.some((action: { argv: string[] }) => action.argv.includes("builder")), false);
   assert.equal(plan.pins.flowAgents, "3.8.0");
