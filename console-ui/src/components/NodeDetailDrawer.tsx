@@ -197,25 +197,25 @@ function findRecord(node: FlowNode, state: OperatingState): unknown {
 
 function findGate(node: FlowNode, state: OperatingState) {
   const id = node.id.replace(/^gate:/, "");
-  return (state.gates || []).find((g) => g.id === id) ?? null;
+  return (state?.gates || []).find((g) => g.id === id) ?? null;
 }
 
 function findClaim(node: FlowNode, state: OperatingState) {
   const id = node.id.replace(/^claim:/, "");
-  return (state.claims || []).find((c) => c.id === id) ?? null;
+  return (state?.claims || []).find((c) => c.id === id) ?? null;
 }
 
 function findAction(node: FlowNode, state: OperatingState) {
   const id = node.id.replace(/^action:/, "");
-  return (state.actions || []).find((a) => a.id === id) ?? null;
+  return (state?.actions || []).find((a) => a.id === id) ?? null;
 }
 
 function findProcess(node: FlowNode, state: OperatingState) {
   const id = node.id.replace(/^(?:process|step):/, "");
-  return (state.processes || []).find((p) => p.id === id) ?? null;
+  return (state?.processes || []).find((p) => p.id === id) ?? null;
 }
 
 function findTimeline(node: FlowNode, state: OperatingState) {
   const id = node.id.replace(/^timeline:/, "");
-  return (state.timeline || []).find((t) => t.id === id) ?? null;
+  return (state?.timeline || []).find((t) => t.id === id) ?? null;
 }

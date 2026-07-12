@@ -70,7 +70,10 @@ function addEdge(edges: FlowEdge[], edge: FlowEdge) {
   edges.push(edge);
 }
 
-export function buildProcessFlow(state: OperatingState): ProcessFlow {
+export function buildProcessFlow(input: OperatingState | null | undefined): ProcessFlow {
+  // Read-model projection: tolerate a missing/partial operating state (e.g. before the
+  // hub stream has delivered flow data) instead of throwing on `state.processes`.
+  const state: OperatingState = input ?? ({} as OperatingState);
   const activeProcess = selectActiveProcess(state.processes || []);
   const nodes: FlowNode[] = [];
   const edges: FlowEdge[] = [];

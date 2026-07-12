@@ -182,7 +182,7 @@ function wireEventSource(source: EventSource, streamUrl: string, handlers: HubEv
     const accepted = parseSseJson<ConsoleAcceptedRecordSsePayload>((event as MessageEvent).data, "record.accepted");
     if (!accepted) return;
     handlers.onRecordAccepted(accepted);
-    handlers.onState(accepted.state);
+    if (accepted.state) handlers.onState(accepted.state); // never clobber good state with an omitted (undefined) payload state
   });
 
   source.addEventListener("telemetry.updated", (event) => {
@@ -311,7 +311,7 @@ function dispatchSseEvent(eventName: ConsoleSseEventName, data: string, handlers
     const accepted = parseSseJson<ConsoleAcceptedRecordSsePayload>(data, "record.accepted");
     if (!accepted) return;
     handlers.onRecordAccepted(accepted);
-    handlers.onState(accepted.state);
+    if (accepted.state) handlers.onState(accepted.state); // never clobber good state with an omitted (undefined) payload state
   } else if (eventName === "telemetry.updated") {
     const updated = parseSseJson<ConsoleTelemetryUpdatedSsePayload>(data, "telemetry.updated");
     if (updated) handlers.onTelemetryUpdated?.(updated);
