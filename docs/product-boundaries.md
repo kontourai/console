@@ -107,4 +107,4 @@ That meaning is separate from product-native producers inside each product. A cr
 
 Shared UI code can come later, after Surface Console, Flow Console, and Survey Console prove which primitives are actually common. Vertical admin review UX is expected to extend Survey Console first, then appear in Console through Survey/Surface/Flow records.
 
-See [Event And Projection Schema](specs/projection-schema.md) for the v0.1 local event stream and projection envelope, and [Emitter, Sink, And Plane Contract](specs/emitter-sink-plane-contract.md) for the Console producer boundary between semantic records, required local file output, future sinks, and telemetry.
+See [Event And Projection Schema](specs/projection-schema.md) for the v0.1 local event stream and projection envelope, [Emitter, Sink, And Plane Contract](specs/emitter-sink-plane-contract.md) for the Console producer boundary between semantic records, required local file output, future sinks, and telemetry, and [Product Capability Descriptor Protocol](specs/product-capability-descriptor.md) for offline discovery of product-owned CLI capabilities without transferring execution authority to Console.
