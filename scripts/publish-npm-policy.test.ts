@@ -31,3 +31,16 @@ test("Core is a first-class release and CLI publication waits for its exact publ
   assert.match(workflow, /Verify CLI Core Dependency Is Public/);
   assert.match(workflow, /node --import tsx scripts\/verify-cli-core-release\.ts/);
 });
+
+test("tag ancestry is checked against an authoritative main ref with complete history", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const ancestry = workflow.slice(
+    workflow.indexOf("- name: Verify Tagged Commit Is On Main"),
+    workflow.indexOf("- name: Check Published Version"),
+  );
+
+  assert.match(ancestry, /git fetch --no-tags origin \+refs\/heads\/main:refs\/remotes\/origin\/main/);
+  assert.match(ancestry, /git merge-base --is-ancestor "\$\{GITHUB_SHA\}" "refs\/remotes\/origin\/main"/);
+  assert.doesNotMatch(ancestry, /--depth=1/);
+  assert.doesNotMatch(ancestry, /FETCH_HEAD/);
+});
