@@ -16,14 +16,26 @@ function identity(value: unknown, label: string): { name: string; version: strin
   return { name: item.name, version: item.version };
 }
 
-export function validateReleasePackageVersions(input: { rootManifest: unknown; cliManifest: unknown; lockfile: unknown; releaseConfig: unknown }): void {
+export function validateReleasePackageVersions(input: { rootManifest: unknown; cliManifest: unknown; coreManifest: unknown; serverManifest: unknown; lockfile: unknown; releaseConfig: unknown }): void {
   const rootManifest = identity(input.rootManifest, "root package manifest");
   const cliManifest = identity(input.cliManifest, "CLI package manifest");
+  const coreManifest = identity(input.coreManifest, "Core package manifest");
+  const exactCoreEdge = (value: unknown, label: string): string => {
+    const dependency = record(record(value, label).dependencies, `${label} dependencies`)["@kontourai/console-core"];
+    if (typeof dependency !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(dependency)) throw new Error(`${label} Core dependency must be an exact semver version`);
+    if (dependency !== coreManifest.version) throw new Error(`${label} Core dependency ${dependency} does not match Core manifest ${coreManifest.version}`);
+    return dependency;
+  };
+  const rootCoreDependency = exactCoreEdge(input.rootManifest, "root package manifest");
+  const cliCoreDependency = exactCoreEdge(input.cliManifest, "CLI package manifest");
+  const serverCoreDependency = exactCoreEdge(input.serverManifest, "Console Server package manifest");
   const lockfile = record(input.lockfile, "root package lock");
   const rootLockIdentity = identity(lockfile, "root package lock");
   const lockPackages = record(lockfile.packages, "root package lock packages");
   const rootLock = identity(lockPackages[""], "root package lock workspace");
   const cliLock = identity(lockPackages.cli, "CLI package lock workspace");
+  const coreLock = identity(lockPackages["console-core"], "Core package lock workspace");
+  const serverLock = record(lockPackages["console-server"], "Console Server package lock workspace");
 
   if (rootLockIdentity.name !== rootManifest.name) throw new Error(`root package lock top-level name ${rootLockIdentity.name} does not match manifest ${rootManifest.name}`);
   if (rootLockIdentity.version !== rootManifest.version) throw new Error(`root package lock top-level version ${rootLockIdentity.version} does not match manifest ${rootManifest.version}`);
@@ -31,6 +43,13 @@ export function validateReleasePackageVersions(input: { rootManifest: unknown; c
   if (rootLock.version !== rootManifest.version) throw new Error(`root package lock version ${rootLock.version} does not match manifest ${rootManifest.version}`);
   if (cliLock.name !== cliManifest.name) throw new Error(`CLI package lock name ${cliLock.name} does not match manifest ${cliManifest.name}`);
   if (cliLock.version !== cliManifest.version) throw new Error(`CLI package lock version ${cliLock.version} does not match manifest ${cliManifest.version}`);
+  if (coreLock.name !== coreManifest.name || coreLock.version !== coreManifest.version) throw new Error(`Core package lock identity ${coreLock.name}@${coreLock.version} does not match manifest ${coreManifest.name}@${coreManifest.version}`);
+  const rootLockDependencies = record(record(lockPackages[""], "root package lock workspace").dependencies, "root package lock dependencies");
+  const cliLockDependencies = record(record(lockPackages.cli, "CLI package lock workspace").dependencies, "CLI package lock dependencies");
+  const serverLockDependencies = record(serverLock.dependencies, "Console Server package lock dependencies");
+  if (rootLockDependencies["@kontourai/console-core"] !== rootCoreDependency) throw new Error("root Core dependency does not match package lock workspace edge");
+  if (cliLockDependencies["@kontourai/console-core"] !== cliCoreDependency) throw new Error("CLI Core dependency does not match package lock workspace edge");
+  if (serverLockDependencies["@kontourai/console-core"] !== serverCoreDependency) throw new Error("Console Server Core dependency does not match package lock workspace edge");
 
   const releaseConfig = record(input.releaseConfig, "Release Please config");
   const releasePackages = record(releaseConfig.packages, "Release Please packages");
@@ -45,6 +64,13 @@ export function validateReleasePackageVersions(input: { rootManifest: unknown; c
   const updater = lockUpdaters[0];
   if (updater.path !== "/package-lock.json") throw new Error("Release Please CLI package-lock updater must use repository-root path /package-lock.json");
   if (updater.type !== "json" || updater.jsonpath !== "$.packages.cli.version") throw new Error("Release Please CLI package-lock updater must target $.packages.cli.version as JSON");
+  const coreRelease = record(releasePackages["console-core"], "Release Please Core package");
+  const coreExtraFiles = coreRelease["extra-files"];
+  if (!Array.isArray(coreExtraFiles) || coreExtraFiles.length !== 5) throw new Error("Release Please Core package must declare exactly five dependency updaters");
+  const coreUpdaters = coreExtraFiles.map((value, index) => record(value, `Release Please Core package-lock updater ${index}`));
+  const targets = new Set(coreUpdaters.map(value => `${value.type}:${value.path}:${value.jsonpath}`));
+  for (const [path, jsonpath] of [["/package-lock.json", "$.packages.console-core.version"], ["/package-lock.json", "$.packages.cli.dependencies['@kontourai/console-core']"], ["/console-server/package.json", "$.dependencies['@kontourai/console-core']"], ["/package-lock.json", "$.packages.console-server.dependencies['@kontourai/console-core']"], ["/package-lock.json", "$.packages[''].dependencies['@kontourai/console-core']"]])
+    if (!targets.has(`json:${path}:${jsonpath}`)) throw new Error(`Release Please Core updater must target ${path} ${jsonpath}`);
 }
 
 function readJson(path: string): unknown {
@@ -55,6 +81,8 @@ export function checkReleasePackageVersions(repositoryRoot = resolve(__dirname, 
   validateReleasePackageVersions({
     rootManifest: readJson(resolve(repositoryRoot, "package.json")),
     cliManifest: readJson(resolve(repositoryRoot, "cli/package.json")),
+    coreManifest: readJson(resolve(repositoryRoot, "console-core/package.json")),
+    serverManifest: readJson(resolve(repositoryRoot, "console-server/package.json")),
     lockfile: readJson(resolve(repositoryRoot, "package-lock.json")),
     releaseConfig: readJson(resolve(repositoryRoot, "release-please-config.json")),
   });

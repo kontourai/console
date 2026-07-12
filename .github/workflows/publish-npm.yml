@@ -5,6 +5,7 @@ on:
     tags:
       - 'v*'
       - 'cli-v*'
+      - 'console-core-v*'
   workflow_dispatch:
 
 permissions:
@@ -58,9 +59,13 @@ jobs:
         run: npm --workspace @kontourai/cli pack --dry-run
         working-directory: console
 
+      - name: Pack Console Core Dry Run
+        run: npm --workspace @kontourai/console-core pack --dry-run
+        working-directory: console
+
   publish:
     needs: verify
-    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/cli-v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/cli-v') || startsWith(github.ref, 'refs/tags/console-core-v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -85,23 +90,7 @@ jobs:
 
       - name: Select package for release tag
         id: package
-        run: |
-          case "${GITHUB_REF_NAME}" in
-            cli-v*)
-              echo "workspace=@kontourai/cli" >> "${GITHUB_OUTPUT}"
-              echo "manifest=cli/package.json" >> "${GITHUB_OUTPUT}"
-              echo "tag_prefix=cli-v" >> "${GITHUB_OUTPUT}"
-              ;;
-            v*)
-              echo "workspace=." >> "${GITHUB_OUTPUT}"
-              echo "manifest=package.json" >> "${GITHUB_OUTPUT}"
-              echo "tag_prefix=v" >> "${GITHUB_OUTPUT}"
-              ;;
-            *)
-              echo "Unsupported release tag ${GITHUB_REF_NAME}" >&2
-              exit 1
-              ;;
-          esac
+        run: node --import tsx scripts/npm-release-policy.ts select "${GITHUB_REF_NAME}"
         working-directory: console
 
       - name: Verify Tag Matches Package Version
@@ -149,6 +138,11 @@ jobs:
             cat "${VIEW_OUTPUT}" >&2
             exit 1
           fi
+        working-directory: console
+
+      - name: Verify CLI Core Dependency Is Public
+        if: startsWith(github.ref, 'refs/tags/cli-v')
+        run: node --import tsx scripts/verify-cli-core-release.ts
         working-directory: console
 
       - name: Publish
