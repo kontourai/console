@@ -58,6 +58,8 @@ Console answers the suite-level questions: what is currently true, what is block
 
 The [`@kontourai/cli` router](specs/kontour-cli-router.md) provides suite navigation while keeping Flow, Flow Agents, and Console commands in their product-owned executables. It never installs a missing product or treats descriptor confirmation metadata as permission.
 
+The [`kontour init` workflow](specs/kontour-init.md) can inspect and plan onboarding with zero implicit kits, then recompute and apply the exact stdout-emitted plan id only with explicit consent. Product-owned setup and diagnostics remain delegated to Flow Agents.
+
 ## Local first
 
 Console v0 runs locally without a hosted service. Producers write JSONL event streams and projection snapshots under `.kontourai/console/`. The `console-inspect` CLI reads them and prints a current operating state summary. `kontour serve` exposes the same state over a loopback SSE hub for the UI.

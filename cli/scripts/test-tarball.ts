@@ -53,6 +53,7 @@ function assertPackedCli(project: string): string {
     "descriptors/flow-agents.json",
     "descriptors/console.json",
     "schemas/router-output.schema.json",
+    "schemas/init-plan.schema.json",
   ]) assert.ok(existsSync(join(installed, file)), `packed @kontourai/cli is missing ${file}`);
   const executable = join(project, "node_modules/.bin/kontour");
   assert.ok(existsSync(executable), "packed @kontourai/cli did not install its advertised kontour bin");
