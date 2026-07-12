@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { buildOpenApiDocument } from "../src/console-foundation/openapi";
 import { API_ROUTES, registryKnownRoutePaths, registryScopeFor } from "../src/console-foundation/api-registry";
 import { KNOWN_ROUTES, requiredScopeForRoute } from "../src/console-foundation/console-hub-server";
+import { resolveConsoleVersion } from "../src/console-foundation/version";
 
 test("buildOpenApiDocument is a valid 3.1 doc with a path per registry route", () => {
   const doc = buildOpenApiDocument({ serverUrl: "https://console.test" }) as any;
@@ -18,6 +19,19 @@ test("buildOpenApiDocument is a valid 3.1 doc with a path per registry route", (
     assert.ok(op, `missing ${route.method} ${route.path}`);
     assert.equal(op.summary, route.summary);
   }
+});
+
+test("openapi info.version tracks the @kontourai/console release version (#191, no drift)", () => {
+  // Read the published package version directly (independent of the resolver) and
+  // assert the served OpenAPI doc reports it — so a hardcoded/stale info.version
+  // can never ship again, and `curl /openapi.json | .info.version` is a true deploy signal.
+  const rootPkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "package.json"), "utf8"));
+  assert.equal(rootPkg.name, "@kontourai/console", "sanity: read the root package.json");
+  const resolved = resolveConsoleVersion();
+  assert.equal(resolved, rootPkg.version, "resolveConsoleVersion must equal the package version");
+  assert.notEqual(resolved, "0.0.0-unknown", "the version must actually resolve in the test env");
+  const doc = buildOpenApiDocument() as any;
+  assert.equal(doc.info.version, rootPkg.version, "openapi info.version must equal the package version");
 });
 
 test("data schemas are generated from the TS types (refs rewritten to components)", () => {

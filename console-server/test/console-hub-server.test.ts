@@ -135,6 +135,21 @@ test("record.accepted for an economics record still carries operating state (con
   }
 });
 
+test("GET /version returns the resolved package version (#191)", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const res = await requestJson("GET", `${serverUrl(app)}/version`);
+    assert.equal(res.statusCode, 200);
+    assert.equal(typeof res.body.version, "string");
+    assert.notEqual(res.body.version, "0.0.0-unknown");
+    assert.match(res.body.version, /^\d+\.\d+\.\d+/);
+  } finally {
+    await close(app);
+  }
+});
+
 test("local hub server keeps /events as an SSE compatibility alias", async () => {
   const rootDir = tempRoot();
   const app = createConsoleHubServer({ rootDir, port: 0 });
