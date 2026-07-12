@@ -28,6 +28,21 @@ test("deriveHealthCounts returns zeros for empty state", () => {
   });
 });
 
+// Regression (console#182): the Operate tab white-screened with
+// "Cannot read properties of undefined (reading 'processes')" when the hub
+// stream had not yet delivered an operating state. These projections must
+// tolerate an undefined/null state instead of throwing.
+test("deriveHealthCounts tolerates undefined/null state", () => {
+  const zeros = deriveHealthCounts({});
+  assert.deepEqual(deriveHealthCounts(undefined), zeros);
+  assert.deepEqual(deriveHealthCounts(null), zeros);
+});
+
+test("deriveAttentionItems tolerates undefined/null state", () => {
+  assert.deepEqual(deriveAttentionItems(undefined, null), []);
+  assert.deepEqual(deriveAttentionItems(null, null), []);
+});
+
 test("deriveHealthCounts counts active processes (excludes done/complete/closed/cancelled)", () => {
   const state: OperatingState = {
     processes: [
