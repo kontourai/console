@@ -1,0 +1,189 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontour.ai/schemas/product-capability-descriptor/1.0.0",
+  "title": "Kontour Product Capability Descriptor",
+  "description": "Closed, inert declarations used to discover product-owned CLI capabilities.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "protocolVersion",
+    "product",
+    "executables",
+    "commands",
+    "artifacts",
+    "projections"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "protocolVersion": { "$ref": "#/$defs/semanticVersion" },
+    "product": { "$ref": "#/$defs/product" },
+    "executables": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": { "$ref": "#/$defs/executable" }
+    },
+    "commands": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": { "$ref": "#/$defs/command" }
+    },
+    "artifacts": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/artifact" }
+    },
+    "projections": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/projection" }
+    }
+  },
+  "$defs": {
+    "semanticVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,5})\\.(0|[1-9][0-9]{0,5})\\.(0|[1-9][0-9]{0,5})$",
+      "maxLength": 20
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "packageName": {
+      "type": "string",
+      "pattern": "^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$",
+      "minLength": 1,
+      "maxLength": 214
+    },
+    "printableText": {
+      "type": "string",
+      "pattern": "^[^\\u0000-\\u001f\\u007f]*$"
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "displayName", "packageName"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "displayName": {
+          "type": "string",
+          "allOf": [{ "$ref": "#/$defs/printableText" }],
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "packageName": { "$ref": "#/$defs/packageName" }
+      }
+    },
+    "argv": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "allOf": [{ "$ref": "#/$defs/printableText" }],
+        "minLength": 1,
+        "maxLength": 1024,
+        "not": {
+          "pattern": "^(?:--exec(?:utable)?|--shell)(?:=|$)|^-c$"
+        }
+      }
+    },
+    "executable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "packageBin"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "packageBin": { "$ref": "#/$defs/identifier" },
+        "argvPrefix": { "$ref": "#/$defs/argv" }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "productId", "confirmation"],
+      "properties": {
+        "kind": { "const": "product" },
+        "productId": { "$ref": "#/$defs/identifier" },
+        "confirmation": {
+          "enum": ["never", "user-request", "operator-request"]
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "summary",
+        "executableId",
+        "argv",
+        "sideEffect",
+        "authority"
+      ],
+      "properties": {
+        "path": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/identifier" }
+        },
+        "summary": {
+          "type": "string",
+          "allOf": [{ "$ref": "#/$defs/printableText" }],
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "executableId": { "$ref": "#/$defs/identifier" },
+        "argv": { "$ref": "#/$defs/argv" },
+        "sideEffect": {
+          "enum": ["none", "read-local", "write-local", "write-external"]
+        },
+        "authority": { "$ref": "#/$defs/authority" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "direction", "mediaType", "description"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "direction": { "enum": ["input", "output", "input-output"] },
+        "mediaType": {
+          "type": "string",
+          "pattern": "^[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+$",
+          "maxLength": 127
+        },
+        "description": {
+          "type": "string",
+          "allOf": [{ "$ref": "#/$defs/printableText" }],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "schemaRef", "description"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "schemaRef": {
+          "type": "string",
+          "allOf": [{ "$ref": "#/$defs/printableText" }],
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "description": {
+          "type": "string",
+          "allOf": [{ "$ref": "#/$defs/printableText" }],
+          "minLength": 1,
+          "maxLength": 256
+        }
+      }
+    }
+  }
+}

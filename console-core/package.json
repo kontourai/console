@@ -6,10 +6,22 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./product-capability-descriptor": {
+      "types": "./dist/product-capability-descriptor.d.ts",
+      "default": "./dist/product-capability-descriptor.js"
+    },
+    "./product-capability-descriptor/node": {
+      "types": "./dist/product-capability-descriptor-node.d.ts",
+      "default": "./dist/product-capability-descriptor-node.js"
+    },
+    "./schemas/product-capability-descriptor.schema.json": {
+      "default": "./schemas/product-capability-descriptor.schema.json"
     }
   },
   "scripts": {
     "test": "node --import tsx --test test/*.ts",
+    "check:descriptor-boundary": "node --import tsx --test --test-name-pattern='descriptor import boundary|descriptor package' test/product-capability-descriptor-boundary.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",
@@ -17,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "ajv": "^8.20.0",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   },
@@ -30,7 +43,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "schemas"
   ],
   "publishConfig": {
     "access": "public"
