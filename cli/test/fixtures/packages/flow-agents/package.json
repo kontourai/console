@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/flow-agents",
-  "version": "3.6.0",
+  "version": "3.8.0",
   "type": "module",
   "bin": { "flow-agents": "bin/record.mjs" },
   "files": ["bin"]

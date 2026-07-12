@@ -6,7 +6,10 @@ export type ForwardedSignal = "SIGINT" | "SIGTERM";
 export interface DelegateOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  stdio?: "inherit" | "ignore";
 }
+
+export interface CapturedDelegationResult { readonly code: number; readonly stdout: string; readonly stderr: string }
 
 export class DelegationError extends Error {
   readonly code = "KONTOUR_DELEGATION_SPAWN_FAILED";
@@ -38,7 +41,7 @@ export function delegateProduct(
     const spawnOptions: SpawnOptions = {
       cwd: options.cwd ?? process.cwd(),
       env: options.env ?? process.env,
-      stdio: "inherit",
+      stdio: options.stdio ?? "inherit",
       shell: false,
     };
     const child = spawn(executable, [...argv], spawnOptions);
@@ -74,5 +77,26 @@ export function delegateProduct(
     child.once("close", (code, signal) => {
       settle(() => resolve(code ?? (signal ? signalExitCode(signal) : 1)));
     });
+  });
+}
+
+/** Execute a product CLI with bounded captured output for composition into Kontour JSON. */
+export function delegateProductCaptured(executable: string, argv: readonly string[], options: DelegateOptions = {}): Promise<CapturedDelegationResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(executable, [...argv], { cwd: options.cwd ?? process.cwd(), env: options.env ?? process.env, stdio: ["ignore", "pipe", "pipe"], shell: false });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const forward = (signal: ForwardedSignal): void => { if (child.exitCode === null && child.signalCode === null) child.kill(signal); };
+    const onSigint = (): void => forward("SIGINT");
+    const onSigterm = (): void => forward("SIGTERM");
+    const cleanup = (): void => { process.removeListener("SIGINT", onSigint); process.removeListener("SIGTERM", onSigterm); };
+    process.on("SIGINT", onSigint);
+    process.on("SIGTERM", onSigterm);
+    const append = (current: string, chunk: Buffer): string => `${current}${chunk.toString("utf8")}`.slice(0, 1024 * 1024);
+    child.stdout?.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
+    child.stderr?.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
+    child.once("error", (error) => { if (!settled) { settled = true; cleanup(); reject(new DelegationError(error)); } });
+    child.once("close", (code, signal) => { if (!settled) { settled = true; cleanup(); resolve({ code: code ?? (signal ? signalExitCode(signal) : 1), stdout, stderr }); } });
   });
 }

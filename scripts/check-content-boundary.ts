@@ -51,6 +51,23 @@ function lineNumberFor(content: string, index: number): number {
 
 const findings: Finding[] = [];
 
+const initRouterSpec = readFileSync("docs/specs/kontour-cli-router.md", "utf8");
+for (const staleClaim of ["plan output file", "requires a saved plan"]) {
+  const index = initRouterSpec.indexOf(staleClaim);
+  if (index >= 0) findings.push({
+    filePath: "docs/specs/kontour-cli-router.md",
+    line: lineNumberFor(initRouterSpec, index),
+    label: `stale kontour init filesystem contract: ${staleClaim}`,
+  });
+}
+for (const requiredClaim of ["stdout", "`--plan-id`", "`--plan-file`", "`--output`"]) {
+  if (!initRouterSpec.includes(requiredClaim)) findings.push({
+    filePath: "docs/specs/kontour-cli-router.md",
+    line: 1,
+    label: `kontour init router contract must document ${requiredClaim}`,
+  });
+}
+
 for (const filePath of trackedFiles()) {
   if (filePath.startsWith(".flow-agents/")) {
     findings.push({

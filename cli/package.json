@@ -24,6 +24,9 @@
     },
     "./schemas/router-output.schema.json": {
       "default": "./schemas/router-output.schema.json"
+    },
+    "./schemas/init-plan.schema.json": {
+      "default": "./schemas/init-plan.schema.json"
     }
   },
   "files": [
@@ -35,6 +38,7 @@
     "test": "node --import tsx --test test/*.test.ts",
     "check:import-boundary": "npm run build && node --import tsx scripts/check-import-boundary.ts && node --import tsx scripts/check-import-boundary.ts --compiled && node --import tsx scripts/check-import-boundary.ts --negative",
     "test:tarball": "node --import tsx scripts/test-tarball.ts",
+    "test:init-e2e": "npm run build && node --import tsx scripts/test-init-tarball.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build"

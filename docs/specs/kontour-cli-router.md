@@ -61,6 +61,8 @@ Longest-prefix matching gives `flow agents` to Flow Agents before general Flow r
 
 `products`, `capabilities`, and `doctor` are read-only router commands. They expose descriptor identity, package/version, provenance, protocol compatibility, command side effects, prerequisites, and required confirmation. This is transparency metadata, not consent.
 
+`kontour init` adds an explicit suite onboarding transaction above the router. Inspect and plan are read-only, and plan emits its deterministic artifact and SHA-256 plan id on stdout. Apply recomputes that plan from the same requested state plus live repository and package authority, requires the exact `--plan-id` with explicit `--yes` consent, and then delegates every action to Flow Agents. Saved plan files and output paths are unsupported; `--plan-file` and `--output` are rejected. See [Kontour Init](kontour-init.md). It does not broaden normal router discovery or grant the router product authority.
+
 Every delegated command remains under the named product's authority. The product owns its artifacts, gates, lifecycle, confirmation, exit status, and signal behavior. The router cannot skip a Flow step, synthesize a cancellation, grant an exception, weaken a confirmation rule, or reinterpret a product failure. Cancellation remains a user-requested product operation where the product descriptor says so.
 
 ## Compatibility catalog

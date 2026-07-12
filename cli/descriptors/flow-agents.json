@@ -4,6 +4,8 @@
   "product": { "id": "flow-agents", "displayName": "Flow Agents", "packageName": "@kontourai/flow-agents" },
   "executables": [{ "id": "flow-agents-cli", "packageBin": "flow-agents" }],
   "commands": [
+    { "path": ["init"], "summary": "Install and configure Flow Agents-owned runtime assets.", "executableId": "flow-agents-cli", "argv": ["init"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "user-request" } },
+    { "path": ["telemetry-doctor"], "summary": "Run Flow Agents-owned installation diagnostics.", "executableId": "flow-agents-cli", "argv": ["telemetry-doctor"], "sideEffect": "read-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "never" } },
     { "path": ["workflow", "status"], "summary": "Read the current Builder workflow state.", "executableId": "flow-agents-cli", "argv": ["workflow", "status"], "sideEffect": "read-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "never" } },
     { "path": ["workflow", "start"], "summary": "Start a product-owned Builder workflow.", "executableId": "flow-agents-cli", "argv": ["workflow", "start"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "user-request" } },
     { "path": ["workflow", "cancel"], "summary": "Request cancellation of a product-owned Builder workflow.", "executableId": "flow-agents-cli", "argv": ["workflow", "cancel"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "user-request" } },

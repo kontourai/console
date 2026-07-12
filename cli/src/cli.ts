@@ -1,10 +1,11 @@
 import type { CatalogProductId } from "./catalog";
 import { parseCommandLine } from "./command-line";
-import { delegateProduct } from "./delegate";
+import { delegateProduct, delegateProductCaptured } from "./delegate";
 import { discoverProducts } from "./discovery";
 import { buildRouterOutput, renderRouterOutput } from "./output";
 import { routeCommand } from "./router";
 import type { RouterCommand } from "./router-output";
+import { runInit } from "./init";
 
 const PRODUCT_IDS = new Set<CatalogProductId>(["console", "flow", "flow-agents"]);
 const BUILT_INS = new Set<RouterCommand>(["products", "capabilities", "doctor"]);
@@ -16,6 +17,8 @@ export interface CliIo {
 
 export interface CliDependencies {
   readonly delegate?: typeof delegateProduct;
+  readonly cwd?: string;
+  readonly delegateCaptured?: typeof delegateProductCaptured;
 }
 
 function error(io: CliIo, code: string, message: string): number {
@@ -31,6 +34,7 @@ export async function runCli(
   const parsed = parseCommandLine(argv);
   if (!parsed.ok) return error(io, parsed.code, parsed.message);
   const [name, ...rest] = parsed.argv;
+  if (name === "init") return runInit(rest, parsed.productRoots, io, dependencies);
   if (BUILT_INS.has(name as RouterCommand)) {
     const command = name as RouterCommand;
     if (rest.includes("--online")) return error(io, "ROUTER_ARGUMENT_INVALID", "--online is reserved and performs no network access.");
