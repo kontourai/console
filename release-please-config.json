@@ -11,7 +11,14 @@
     "cli": {
       "component": "cli",
       "package-name": "@kontourai/cli",
-      "include-component-in-tag": true
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/package-lock.json",
+          "jsonpath": "$.packages.cli.version"
+        }
+      ]
     }
   }
 }
