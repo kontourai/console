@@ -7,7 +7,7 @@ description: Inspect, plan, and explicitly apply product-owned repository and ha
 
 `kontour init` is a suite-level onboarding transaction planner. It shows how a repository would be configured and delegates approved actions to the product that owns them. It does not implement Flow Agents runtime, provider, power, doctor, or kit semantics.
 
-Use exact, explicitly installed product roots. The initial released contract pins `@kontourai/cli@0.2.0`, `@kontourai/console@2.5.0`, `@kontourai/flow-agents@3.8.0`, and `@kontourai/flow@3.1.4`.
+Use exact, explicitly installed product roots. Each plan identifies the exact version of the installed `@kontourai/cli` package that is executing it. The product contract separately pins `@kontourai/console@2.5.0`, `@kontourai/flow-agents@3.8.0`, and `@kontourai/flow@3.1.4`.
 
 ```sh
 kontour --product-root=flow-agents=/absolute/path/to/node_modules/@kontourai/flow-agents \

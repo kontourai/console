@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
+import { CLI_PACKAGE_VERSION } from "./package-identity";
 
 export const INIT_PLAN_SCHEMA_VERSION = "1.0.0" as const;
 export const INIT_PINS = {
-  cli: "0.2.0",
+  cli: CLI_PACKAGE_VERSION,
   console: "2.5.0",
   flowAgents: "3.8.0",
   flow: "3.1.4",

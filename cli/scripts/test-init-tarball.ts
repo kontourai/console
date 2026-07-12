@@ -21,12 +21,15 @@ function command(executable: string, args: string[], cwd: string) {
 }
 command("git", ["init", "--quiet"], project);
 command("npm", ["pack", "--silent", "--pack-destination", packages, "@kontourai/flow-agents@3.8.0", "@kontourai/flow@3.1.4"], root);
+const cliTarball = command("npm", ["pack", "--silent", "--pack-destination", packages, join(repo, "cli")], root).trim().split("\n").at(-1)!;
+const coreTarball = command("npm", ["pack", "--silent", "--pack-destination", packages, join(repo, "console-core")], root).trim().split("\n").at(-1)!;
 command("npm", ["init", "-y"], install);
-command("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...["kontourai-flow-agents-3.8.0.tgz", "kontourai-flow-3.1.4.tgz"].map((name) => join(packages, name))], install);
+command("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...["kontourai-flow-agents-3.8.0.tgz", "kontourai-flow-3.1.4.tgz", cliTarball, coreTarball].map((name) => join(packages, name))], install);
 const agents = join(install, "node_modules/@kontourai/flow-agents");
+const installedCli = join(install, "node_modules/@kontourai/cli");
 
 function kontour(args: string[]) {
-  return command(process.execPath, [join(repo, "cli/dist/bin/kontour.js"), `--product-root=flow-agents=${agents}`, ...args], project);
+  return command(process.execPath, [join(installedCli, "dist/bin/kontour.js"), `--product-root=flow-agents=${agents}`, ...args], project);
 }
 
 const before = readFileSync(join(project, ".gitignore"), "utf8");
@@ -36,6 +39,7 @@ assert.equal(typeof inspected.diagnostics.doctor.exitCode, "number");
 assert.equal(typeof inspected.diagnostics.kitStatus.exitCode, "number");
 const planned = JSON.parse(kontour(["init", "--plan", "--runtime", "codex", "--kit", "builder", "--json"]));
 assert.deepEqual(planned.desired.kits, ["builder"]);
+assert.equal(planned.pins.cli, JSON.parse(readFileSync(join(installedCli, "package.json"), "utf8")).version);
 assert.equal(readFileSync(join(project, ".gitignore"), "utf8"), before);
 const applied = JSON.parse(kontour(["init", "--apply", "--runtime", "codex", "--kit", "builder", "--plan-id", planned.plan_id, "--yes", "--json"]));
 assert.equal(applied.status, "completed");
