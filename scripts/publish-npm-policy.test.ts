@@ -64,12 +64,21 @@ test("current workflow definition requires an explicit immutable target tag", as
   assert.doesNotMatch(workflow, /ref: \$\{\{ inputs\.target_tag \}\}/);
 });
 
-test("exact tag resolution rejects an identically named branch and a removed tag", () => {
+test("exact tag fixture sanitizes inherited Git state and rejects a branch replacing a removed tag", () => {
   const root = mkdtempSync(path.join(tmpdir(), "console-release-target-"));
   const remote = path.join(root, "remote.git");
   const source = path.join(root, "source");
   const checkout = path.join(root, "checkout");
-  const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+  const hostileEnvironment: NodeJS.ProcessEnv = {
+    ...process.env,
+    GIT_DIR: path.join(root, "caller.git"),
+    GIT_WORK_TREE: path.join(root, "caller-worktree"),
+    GIT_PREFIX: "caller-prefix/",
+    GIT_INDEX_FILE: path.join(root, "caller-index"),
+    GIT_OBJECT_DIRECTORY: path.join(root, "caller-objects"),
+  };
+  const childEnvironment = Object.fromEntries(Object.entries(hostileEnvironment).filter(([key]) => !key.startsWith("GIT_")));
+  const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", env: childEnvironment }).trim();
   try {
     mkdirSync(source);
     git(root, "init", "--bare", remote);
@@ -82,13 +91,13 @@ test("exact tag resolution rejects an identically named branch and a removed tag
     git(source, "tag", "v1.2.3"); git(source, "push", "origin", "refs/tags/v1.2.3");
     git(root, "clone", "--branch", "main", remote, checkout);
     const output = path.join(root, "output");
-    execFileSync("bash", [resolverPath, "v1.2.3"], { cwd: checkout, env: { ...process.env, GITHUB_OUTPUT: output } });
+    execFileSync("bash", [resolverPath, "v1.2.3"], { cwd: checkout, env: { ...childEnvironment, GITHUB_OUTPUT: output } });
     assert.match(require("node:fs").readFileSync(output, "utf8"), /^target_sha=[0-9a-f]{40}$/m);
 
     git(source, "push", "origin", ":refs/tags/v1.2.3");
     git(source, "branch", "v1.2.3"); git(source, "push", "origin", "refs/heads/v1.2.3");
     git(checkout, "tag", "-d", "v1.2.3"); git(checkout, "checkout", "main");
-    const rejected = spawnSync("bash", [resolverPath, "v1.2.3"], { cwd: checkout, encoding: "utf8" });
+    const rejected = spawnSync("bash", [resolverPath, "v1.2.3"], { cwd: checkout, encoding: "utf8", env: childEnvironment });
     assert.notEqual(rejected.status, 0, "a same-named branch must not replace a missing exact tag");
     assert.doesNotMatch(`${rejected.stdout}${rejected.stderr}`, /target_sha=/);
   } finally {
