@@ -80,7 +80,7 @@ test("POST /mcp with telemetry:read: initialize + tools/list + tools/call work",
 test("POST /mcp without telemetry:read scope -> 403", async () => {
   const app = makeHosted(); await listen(app);
   try {
-    const res = await post(`${urlOf(app)}/mcp`, { jsonrpc: "2.0", id: 1, method: "tools/list" }, { authorization: `Bearer ${await mint("pricing:read")}` });
+    const res = await post(`${urlOf(app)}/mcp`, { jsonrpc: "2.0", id: 1, method: "tools/list" }, { authorization: `Bearer ${await mint("records:read")}` });
     assert.equal(res.status, 403);
     assert.match(res.body, /INSUFFICIENT_SCOPE/);
   } finally { await closeApp(app); }
