@@ -1,26 +1,69 @@
 name: Publish NPM
 
 on:
-  push:
-    tags:
-      - 'v*'
-      - 'cli-v*'
-      - 'console-core-v*'
+  workflow_call:
+    inputs:
+      target_tag:
+        description: Immutable release tag whose package contents will be published
+        required: true
+        type: string
   workflow_dispatch:
+    inputs:
+      target_tag:
+        description: Immutable release tag to retry using the current main workflow definition
+        required: true
+        type: string
 
 permissions:
   contents: read
   id-token: write
 
-# Tag-push and the release workflow dispatch can both fire for one tag;
-# serialize so the already-published guard skips cleanly (flow v0.1.20 race).
+# Serialize retries for the same immutable release without cancelling a required publish.
 concurrency:
-  group: publish-npm
+  group: publish-npm-${{ inputs.target_tag }}
   cancel-in-progress: false
 
 jobs:
-  verify:
+  gate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      target_sha: ${{ steps.target.outputs.target_sha }}
+      workspace: ${{ steps.target.outputs.workspace }}
+      manifest: ${{ steps.target.outputs.manifest }}
+      tag_prefix: ${{ steps.target.outputs.tag_prefix }}
+    steps:
+      - name: Verify Current Main Workflow Definition
+        run: |
+          if [ "${GITHUB_REF}" != "refs/heads/main" ]; then
+            echo "Publish must be invoked from the current main workflow definition; got ${GITHUB_REF}" >&2
+            exit 1
+          fi
+
+      - name: Checkout Current Main For Safe Resolution
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: false
+          persist-credentials: false
+          path: console
+
+      # Resolve only the exact tag namespace. A branch or other ref with the
+      # same short name is never package authority.
+      - name: Resolve And Validate Immutable Target
+        id: target
+        env:
+          TARGET_TAG: ${{ inputs.target_tag }}
+        run: bash scripts/resolve-release-target.sh "${TARGET_TAG}"
+        working-directory: console
+
+  verify:
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -29,6 +72,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ needs.gate.outputs.target_sha }}
           fetch-depth: 0
           path: console
 
@@ -64,8 +108,7 @@ jobs:
         working-directory: console
 
   publish:
-    needs: verify
-    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/cli-v') || startsWith(github.ref, 'refs/tags/console-core-v')
+    needs: [gate, verify]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -74,6 +117,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
+          ref: ${{ needs.gate.outputs.target_sha }}
           fetch-depth: 0
           path: console
 
@@ -88,36 +132,10 @@ jobs:
         run: npm ci --no-fund --no-audit
         working-directory: console
 
-      - name: Select package for release tag
-        id: package
-        run: node --import tsx scripts/npm-release-policy.ts select "${GITHUB_REF_NAME}"
-        working-directory: console
-
-      - name: Verify Tag Matches Package Version
-        env:
-          PACKAGE_MANIFEST: ${{ steps.package.outputs.manifest }}
-          TAG_PREFIX: ${{ steps.package.outputs.tag_prefix }}
-        run: |
-          PACKAGE_VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync(process.env.PACKAGE_MANIFEST, 'utf8')).version")
-          if [ "${TAG_PREFIX}${PACKAGE_VERSION}" != "${GITHUB_REF_NAME}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match ${PACKAGE_MANIFEST} version ${TAG_PREFIX}${PACKAGE_VERSION}" >&2
-            exit 1
-          fi
-        working-directory: console
-
-      - name: Verify Tagged Commit Is On Main
-        run: |
-          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
-          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "refs/remotes/origin/main"; then
-            echo "Tagged commit ${GITHUB_SHA} is not reachable from the fetched origin/main tip" >&2
-            exit 1
-          fi
-        working-directory: console
-
       - name: Check Published Version
         id: published
         env:
-          PACKAGE_MANIFEST: ${{ steps.package.outputs.manifest }}
+          PACKAGE_MANIFEST: ${{ needs.gate.outputs.manifest }}
         run: |
           PACKAGE_NAME=$(node -p "JSON.parse(require('node:fs').readFileSync(process.env.PACKAGE_MANIFEST, 'utf8')).name")
           PACKAGE_VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync(process.env.PACKAGE_MANIFEST, 'utf8')).version")
@@ -141,15 +159,15 @@ jobs:
         working-directory: console
 
       - name: Verify CLI Core Dependency Is Public
-        if: startsWith(github.ref, 'refs/tags/cli-v')
+        if: startsWith(inputs.target_tag, 'cli-v')
         run: node --import tsx scripts/verify-cli-core-release.ts
         working-directory: console
 
       - name: Publish
         if: steps.published.outputs.published != 'true'
         env:
-          PACKAGE_WORKSPACE: ${{ steps.package.outputs.workspace }}
-          PACKAGE_MANIFEST: ${{ steps.package.outputs.manifest }}
+          PACKAGE_WORKSPACE: ${{ needs.gate.outputs.workspace }}
+          PACKAGE_MANIFEST: ${{ needs.gate.outputs.manifest }}
         run: |
           if [ "${PACKAGE_WORKSPACE}" = "." ]; then
             npm publish --access public --provenance
@@ -179,7 +197,7 @@ jobs:
       # So this step is non-fatal: it warns with bootstrap instructions instead
       # of failing the release. Once bootstrapped, it publishes cleanly on bumps.
       - name: Publish console-telemetry (best-effort)
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(inputs.target_tag, 'v')
         run: |
           NAME=$(node -p "require('./telemetry/package.json').name")
           VERSION=$(node -p "require('./telemetry/package.json').version")
