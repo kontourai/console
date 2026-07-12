@@ -3,6 +3,15 @@
   "release-type": "node",
   "include-component-in-tag": false,
   "packages": {
-    ".": {}
+    ".": {
+      "exclude-paths": [
+        "cli"
+      ]
+    },
+    "cli": {
+      "component": "cli",
+      "package-name": "@kontourai/cli",
+      "include-component-in-tag": true
+    }
   }
 }

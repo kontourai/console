@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+      - 'cli-v*'
   workflow_dispatch:
 
 permissions:
@@ -53,9 +54,13 @@ jobs:
         run: npm pack --dry-run
         working-directory: console
 
+      - name: Pack CLI Dry Run
+        run: npm --workspace @kontourai/cli pack --dry-run
+        working-directory: console
+
   publish:
     needs: verify
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/cli-v')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -78,11 +83,35 @@ jobs:
         run: npm ci --no-fund --no-audit
         working-directory: console
 
-      - name: Verify Tag Matches Package Version
+      - name: Select package for release tag
+        id: package
         run: |
-          PACKAGE_VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")
-          if [ "v${PACKAGE_VERSION}" != "${GITHUB_REF_NAME}" ]; then
-            echo "Tag ${GITHUB_REF_NAME} does not match package.json version v${PACKAGE_VERSION}" >&2
+          case "${GITHUB_REF_NAME}" in
+            cli-v*)
+              echo "workspace=@kontourai/cli" >> "${GITHUB_OUTPUT}"
+              echo "manifest=cli/package.json" >> "${GITHUB_OUTPUT}"
+              echo "tag_prefix=cli-v" >> "${GITHUB_OUTPUT}"
+              ;;
+            v*)
+              echo "workspace=." >> "${GITHUB_OUTPUT}"
+              echo "manifest=package.json" >> "${GITHUB_OUTPUT}"
+              echo "tag_prefix=v" >> "${GITHUB_OUTPUT}"
+              ;;
+            *)
+              echo "Unsupported release tag ${GITHUB_REF_NAME}" >&2
+              exit 1
+              ;;
+          esac
+        working-directory: console
+
+      - name: Verify Tag Matches Package Version
+        env:
+          PACKAGE_MANIFEST: ${{ steps.package.outputs.manifest }}
+          TAG_PREFIX: ${{ steps.package.outputs.tag_prefix }}
+        run: |
+          PACKAGE_VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync(process.env.PACKAGE_MANIFEST, 'utf8')).version")
+          if [ "${TAG_PREFIX}${PACKAGE_VERSION}" != "${GITHUB_REF_NAME}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match ${PACKAGE_MANIFEST} version ${TAG_PREFIX}${PACKAGE_VERSION}" >&2
             exit 1
           fi
         working-directory: console
@@ -98,20 +127,53 @@ jobs:
 
       - name: Check Published Version
         id: published
+        env:
+          PACKAGE_MANIFEST: ${{ steps.package.outputs.manifest }}
         run: |
-          PACKAGE_NAME=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).name")
-          PACKAGE_VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version")
-          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version >/dev/null 2>&1; then
-            echo "published=true" >> "${GITHUB_OUTPUT}"
-            echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published; skipping npm publish."
-          else
+          PACKAGE_NAME=$(node -p "JSON.parse(require('node:fs').readFileSync(process.env.PACKAGE_MANIFEST, 'utf8')).name")
+          PACKAGE_VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync(process.env.PACKAGE_MANIFEST, 'utf8')).version")
+          VIEW_OUTPUT=$(mktemp)
+          if npm view "${PACKAGE_NAME}" versions --json >"${VIEW_OUTPUT}" 2>&1; then
+            if node -e 'const fs=require("node:fs"); const versions=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); process.exit((Array.isArray(versions)?versions:[versions]).includes(process.argv[2])?0:1)' "${VIEW_OUTPUT}" "${PACKAGE_VERSION}"; then
+              echo "published=true" >> "${GITHUB_OUTPUT}"
+              echo "${PACKAGE_NAME}@${PACKAGE_VERSION} is already published; skipping npm publish."
+            else
+              echo "published=false" >> "${GITHUB_OUTPUT}"
+            fi
+          elif grep -Fq "E404" "${VIEW_OUTPUT}" && grep -Fq "${PACKAGE_NAME}" "${VIEW_OUTPUT}" && grep -Eq "(is not in this registry|Not found)" "${VIEW_OUTPUT}"; then
+            # The only tolerated lookup failure is an exact public-package absence.
+            # Authentication, registry, network, policy, and malformed-response failures stay fatal.
             echo "published=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "npm registry lookup failed for ${PACKAGE_NAME}; refusing to classify it as unpublished." >&2
+            cat "${VIEW_OUTPUT}" >&2
+            exit 1
           fi
         working-directory: console
 
       - name: Publish
         if: steps.published.outputs.published != 'true'
-        run: npm publish --access public --provenance
+        env:
+          PACKAGE_WORKSPACE: ${{ steps.package.outputs.workspace }}
+          PACKAGE_MANIFEST: ${{ steps.package.outputs.manifest }}
+        run: |
+          if [ "${PACKAGE_WORKSPACE}" = "." ]; then
+            npm publish --access public --provenance
+          else
+            npm publish --workspace "${PACKAGE_WORKSPACE}" --access public --provenance
+          fi
+
+          PACKAGE_NAME=$(node -p "JSON.parse(require('node:fs').readFileSync(process.env.PACKAGE_MANIFEST, 'utf8')).name")
+          PACKAGE_VERSION=$(node -p "JSON.parse(require('node:fs').readFileSync(process.env.PACKAGE_MANIFEST, 'utf8')).version")
+          for ATTEMPT in 1 2 3 4 5; do
+            if [ "$(npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version)" = "${PACKAGE_VERSION}" ]; then
+              echo "Confirmed ${PACKAGE_NAME}@${PACKAGE_VERSION} on npm."
+              exit 0
+            fi
+            if [ "${ATTEMPT}" -lt 5 ]; then sleep 5; fi
+          done
+          echo "Publish returned success but ${PACKAGE_NAME}@${PACKAGE_VERSION} could not be confirmed on npm." >&2
+          exit 1
         working-directory: console
 
       # Best-effort standalone publish of the shared contract package so other
@@ -123,6 +185,7 @@ jobs:
       # So this step is non-fatal: it warns with bootstrap instructions instead
       # of failing the release. Once bootstrapped, it publishes cleanly on bumps.
       - name: Publish console-telemetry (best-effort)
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           NAME=$(node -p "require('./telemetry/package.json').name")
           VERSION=$(node -p "require('./telemetry/package.json').version")

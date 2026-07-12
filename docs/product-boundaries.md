@@ -79,6 +79,8 @@ Console must not redefine:
 
 Suite-level actions must route through the product that owns the authority for that action.
 
+The [`@kontourai/cli` router](specs/kontour-cli-router.md) is the command-line expression of this boundary. `kontour flow agents ...` routes to Flow Agents before general `kontour flow ...` routing; Flow owns its kit commands, while Flow Agents owns `flow agents kit install/activate/status`. Direct product bins remain usable. Descriptor confirmation and side-effect metadata provide transparency but never authorize a skip, cancellation, exception, installation, or product mutation. Station remains separate from this namespace because it is an application and operating environment, not a routed product CLI.
+
 ## Survey And Vertical Review Boundary
 
 Survey is the primitive review surface for source-to-candidate-to-review workflows. A Survey Console can expose review queues, review item detail, candidate/evidence context, reviewer decisions, and publication intent without requiring Console.
@@ -107,4 +109,4 @@ That meaning is separate from product-native producers inside each product. A cr
 
 Shared UI code can come later, after Surface Console, Flow Console, and Survey Console prove which primitives are actually common. Vertical admin review UX is expected to extend Survey Console first, then appear in Console through Survey/Surface/Flow records.
 
-See [Event And Projection Schema](specs/projection-schema.md) for the v0.1 local event stream and projection envelope, [Emitter, Sink, And Plane Contract](specs/emitter-sink-plane-contract.md) for the Console producer boundary between semantic records, required local file output, future sinks, and telemetry, and [Product Capability Descriptor Protocol](specs/product-capability-descriptor.md) for offline discovery of product-owned CLI capabilities without transferring execution authority to Console.
+See [Event And Projection Schema](specs/projection-schema.md) for the v0.1 local event stream and projection envelope, [Emitter, Sink, And Plane Contract](specs/emitter-sink-plane-contract.md) for the Console producer boundary between semantic records, required local file output, future sinks, and telemetry, [Product Capability Descriptor Protocol](specs/product-capability-descriptor.md) for offline discovery, and [Kontour CLI Router](specs/kontour-cli-router.md) for explicit suite routing without transferring execution authority to Console.
