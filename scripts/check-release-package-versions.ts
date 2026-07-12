@@ -20,6 +20,10 @@ export function validateReleasePackageVersions(input: { rootManifest: unknown; c
   const rootManifest = identity(input.rootManifest, "root package manifest");
   const cliManifest = identity(input.cliManifest, "CLI package manifest");
   const coreManifest = identity(input.coreManifest, "Core package manifest");
+  const serverManifest = identity(input.serverManifest, "Console Server package manifest");
+  const serverManifestRecord = record(input.serverManifest, "Console Server package manifest");
+  if (serverManifestRecord.private !== true) throw new Error("Console Server package manifest must be private");
+  if ("publishConfig" in serverManifestRecord) throw new Error("Console Server package manifest must not declare publishConfig");
   const exactCoreEdge = (value: unknown, label: string): string => {
     const dependency = record(record(value, label).dependencies, `${label} dependencies`)["@kontourai/console-core"];
     if (typeof dependency !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(dependency)) throw new Error(`${label} Core dependency must be an exact semver version`);
@@ -35,7 +39,8 @@ export function validateReleasePackageVersions(input: { rootManifest: unknown; c
   const rootLock = identity(lockPackages[""], "root package lock workspace");
   const cliLock = identity(lockPackages.cli, "CLI package lock workspace");
   const coreLock = identity(lockPackages["console-core"], "Core package lock workspace");
-  const serverLock = record(lockPackages["console-server"], "Console Server package lock workspace");
+  const serverLockWorkspace = record(lockPackages["console-server"], "Console Server package lock workspace");
+  const serverLock = identity(serverLockWorkspace, "Console Server package lock workspace");
 
   if (rootLockIdentity.name !== rootManifest.name) throw new Error(`root package lock top-level name ${rootLockIdentity.name} does not match manifest ${rootManifest.name}`);
   if (rootLockIdentity.version !== rootManifest.version) throw new Error(`root package lock top-level version ${rootLockIdentity.version} does not match manifest ${rootManifest.version}`);
@@ -44,15 +49,19 @@ export function validateReleasePackageVersions(input: { rootManifest: unknown; c
   if (cliLock.name !== cliManifest.name) throw new Error(`CLI package lock name ${cliLock.name} does not match manifest ${cliManifest.name}`);
   if (cliLock.version !== cliManifest.version) throw new Error(`CLI package lock version ${cliLock.version} does not match manifest ${cliManifest.version}`);
   if (coreLock.name !== coreManifest.name || coreLock.version !== coreManifest.version) throw new Error(`Core package lock identity ${coreLock.name}@${coreLock.version} does not match manifest ${coreManifest.name}@${coreManifest.version}`);
+  if (serverLock.name !== serverManifest.name || serverLock.version !== serverManifest.version) throw new Error(`Console Server package lock identity ${serverLock.name}@${serverLock.version} does not match manifest ${serverManifest.name}@${serverManifest.version}`);
   const rootLockDependencies = record(record(lockPackages[""], "root package lock workspace").dependencies, "root package lock dependencies");
   const cliLockDependencies = record(record(lockPackages.cli, "CLI package lock workspace").dependencies, "CLI package lock dependencies");
-  const serverLockDependencies = record(serverLock.dependencies, "Console Server package lock dependencies");
+  const serverLockDependencies = record(serverLockWorkspace.dependencies, "Console Server package lock dependencies");
   if (rootLockDependencies["@kontourai/console-core"] !== rootCoreDependency) throw new Error("root Core dependency does not match package lock workspace edge");
   if (cliLockDependencies["@kontourai/console-core"] !== cliCoreDependency) throw new Error("CLI Core dependency does not match package lock workspace edge");
   if (serverLockDependencies["@kontourai/console-core"] !== serverCoreDependency) throw new Error("Console Server Core dependency does not match package lock workspace edge");
 
   const releaseConfig = record(input.releaseConfig, "Release Please config");
   const releasePackages = record(releaseConfig.packages, "Release Please packages");
+  const rootRelease = record(releasePackages["."], "Release Please root package");
+  const rootExclusions = rootRelease["exclude-paths"];
+  if (!Array.isArray(rootExclusions) || !rootExclusions.includes("console-server")) throw new Error("Release Please root package must exclude console-server ownership");
   const cliRelease = record(releasePackages.cli, "Release Please CLI package");
   if (!Array.isArray(cliRelease["extra-files"])) throw new Error("Release Please CLI package must declare extra-files");
   const lockUpdaters = cliRelease["extra-files"].filter((value): value is JsonRecord => {

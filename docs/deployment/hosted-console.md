@@ -84,7 +84,7 @@ hosts with embedded credentials, or provider-specific secret payloads.
 2. Provision or verify the hosted Postgres database.
 3. Inject the hosted env file from non-secret config plus secret manager values.
 4. Run versioned Console database migrations against the target database:
-   `npm --workspace @kontourai/console run db:migrate`.
+   `npm --workspace @kontourai/console-server run db:migrate`.
 5. Start the hosted Console process with `CONSOLE_RUNTIME_MODE=hosted`.
 6. Verify `/healthz` for process health.
 7. Verify `/readyz` for dependency readiness, including database and migration
@@ -94,7 +94,7 @@ hosts with embedded credentials, or provider-specific secret payloads.
    enabling wider producer traffic.
 
 Migration execution must happen before new code handles production writes. Use
-`npm --workspace @kontourai/console run db:migrate -- --dry-run` to inspect
+`npm --workspace @kontourai/console-server run db:migrate -- --dry-run` to inspect
 the migration set without connecting to a database.
 
 ## Health And Readiness
@@ -122,7 +122,7 @@ causes data loss on redeploy.
 | `console_telemetry_events` | Agent and runtime telemetry records | Yes — Postgres |
 | `console_core_records` | Core console event records (gates, claims, processes, learnings, actions) | Yes — Postgres |
 
-A single `npm --workspace @kontourai/console run db:migrate` run covers all
+A single `npm --workspace @kontourai/console-server run db:migrate` run covers all
 tables.  Re-running it on upgrade is safe and idempotent — already-applied
 migrations are skipped.
 
