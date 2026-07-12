@@ -22,6 +22,7 @@
   "scripts": {
     "test": "node --import tsx --test test/*.ts",
     "check:descriptor-boundary": "node --import tsx --test --test-name-pattern='descriptor import boundary|descriptor package' test/product-capability-descriptor-boundary.test.ts",
+    "test:package-surface": "node --import tsx scripts/test-package-surface.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",

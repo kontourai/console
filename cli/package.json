@@ -38,13 +38,14 @@
     "test": "node --import tsx --test test/*.test.ts",
     "check:import-boundary": "npm run build && node --import tsx scripts/check-import-boundary.ts && node --import tsx scripts/check-import-boundary.ts --compiled && node --import tsx scripts/check-import-boundary.ts --negative",
     "test:tarball": "node --import tsx scripts/test-tarball.ts",
+    "test:registry-regression": "node --import tsx scripts/test-public-registry-regression.ts",
     "test:init-e2e": "npm run build && node --import tsx scripts/test-init-tarball.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@kontourai/console-core": "^0.1.0"
+    "@kontourai/console-core": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

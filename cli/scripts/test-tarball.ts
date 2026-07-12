@@ -60,11 +60,25 @@ function assertPackedCli(project: string): string {
   return executable;
 }
 
+function assertPackedCore(project: string): void {
+  const installed = join(project, "node_modules/@kontourai/console-core");
+  const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8")) as { exports?: Record<string, unknown> };
+  for (const subpath of ["./product-capability-descriptor", "./product-capability-descriptor/node"])
+    assert.ok(manifest.exports?.[subpath], `packed Core is missing export ${subpath}`);
+  for (const file of [
+    "dist/product-capability-descriptor.js", "dist/product-capability-descriptor.d.ts",
+    "dist/product-capability-descriptor-node.js", "dist/product-capability-descriptor-node.d.ts",
+    "schemas/product-capability-descriptor.schema.json",
+  ]) assert.ok(existsSync(join(installed, file)), `packed Core is missing ${file}`);
+  run("node", ["-e", "require('@kontourai/console-core/product-capability-descriptor'); require('@kontourai/console-core/product-capability-descriptor/node')"], project, { NODE_PATH: "" });
+}
+
 function cliSmoke(root: string, tarballs: string[]): void {
   const project = join(root, "cli-project");
   const cache = join(root, "offline-cache-cli");
   run("npm", ["init", "-y"], project);
   installOffline(project, tarballs, cache);
+  assertPackedCore(project);
   const kontour = assertPackedCli(project);
   const packageRoot = (product: string) => join(project, "node_modules/@kontourai", product);
   const roots = [

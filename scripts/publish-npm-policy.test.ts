@@ -23,3 +23,11 @@ test("primary npm publish path fails closed and confirms the released version", 
   assert.doesNotMatch(primary, /::warning::Could not publish/);
   assert.doesNotMatch(primary, /npm bootstrap required/);
 });
+
+test("Core is a first-class release and CLI publication waits for its exact public dependency", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  assert.match(workflow, /- 'console-core-v\*'/);
+  assert.match(workflow, /npm-release-policy\.ts select/);
+  assert.match(workflow, /Verify CLI Core Dependency Is Public/);
+  assert.match(workflow, /node --import tsx scripts\/verify-cli-core-release\.ts/);
+});
