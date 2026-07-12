@@ -15,28 +15,33 @@ const UNKNOWN_VERSION = "0.0.0-unknown";
 
 export function resolveConsoleVersion(moduleDir: string = __dirname): string {
   // NOTE: console-server/package.json is ALSO named @kontourai/console with a stale
-  // 0.1.0, so the FIRST (innermost) match is wrong. The published package root — in
-  // the workspace (repo-root package.json) and under node_modules/@kontourai/console —
-  // is the OUTERMOST @kontourai/console, so keep walking and take the last match.
-  let dir = moduleDir;
-  let found: string | undefined;
-  for (let depth = 0; depth < 12; depth += 1) {
-    const pkgPath = path.join(dir, "package.json");
-    try {
-      if (fs.existsSync(pkgPath)) {
-        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
-        if (pkg && pkg.name === PACKAGE_NAME && typeof pkg.version === "string") {
-          found = pkg.version;
+  // 0.1.0, so the FIRST (innermost) match is wrong in the dev workspace. Take the
+  // OUTERMOST @kontourai/console (the published package root). In the published tarball
+  // console-server/package.json isn't shipped, so exactly one match exists there anyway.
+  // Wrapped end-to-end so a version surface can NEVER crash `serve`.
+  try {
+    let dir = moduleDir;
+    let found: string | undefined;
+    for (let depth = 0; depth < 12; depth += 1) {
+      const pkgPath = path.join(dir, "package.json");
+      try {
+        if (fs.existsSync(pkgPath)) {
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+          if (pkg && pkg.name === PACKAGE_NAME && typeof pkg.version === "string") {
+            found = pkg.version;
+          }
         }
+      } catch {
+        // ignore a malformed/unreadable package.json and keep walking up
       }
-    } catch {
-      // ignore a malformed/unreadable package.json and keep walking up
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
     }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+    return found ?? UNKNOWN_VERSION;
+  } catch {
+    return UNKNOWN_VERSION;
   }
-  return found ?? UNKNOWN_VERSION;
 }
 
 // Build/deploy provenance for the /version probe. gitSha/builtAt are stamped into
