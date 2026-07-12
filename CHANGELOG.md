@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.6.1](https://github.com/kontourai/console/compare/v2.6.0...v2.6.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* **console:** guard operating-state projections against undefined state ([#182](https://github.com/kontourai/console/issues/182)) ([#185](https://github.com/kontourai/console/issues/185)) ([e667cd3](https://github.com/kontourai/console/commit/e667cd3dfd611e32d20c94f3bb2076c1205e0325))
+
+## [2.6.0](https://github.com/kontourai/console/compare/v2.5.0...v2.6.0) (2026-07-12)
+
+
+### Features
+
+* **cli:** compose repository onboarding ([#170](https://github.com/kontourai/console/issues/170)) ([621b307](https://github.com/kontourai/console/commit/621b30775933b1c379e52b9ffa9ebe5582837efe))
+
+
+### Bug Fixes
+
+* **cli:** derive init version from package ([#172](https://github.com/kontourai/console/issues/172)) ([ba15178](https://github.com/kontourai/console/commit/ba15178e5cfc90a60e89d186b7f58577aaa0da20))
+* **release:** keep CLI lock identity current ([#173](https://github.com/kontourai/console/issues/173)) ([863886b](https://github.com/kontourai/console/commit/863886b52de527ca2494c9b1b714a55899486c7d))
+
+## [2.5.0](https://github.com/kontourai/console/compare/v2.4.0...v2.5.0) (2026-07-12)
+
+
+### Features
+
+* add Kontour suite CLI router ([#167](https://github.com/kontourai/console/issues/167)) ([26fe1c2](https://github.com/kontourai/console/commit/26fe1c27d61f1e8b480206204cedc1f79bea39b6))
+
 ## [2.4.0](https://github.com/kontourai/console/compare/v2.3.0...v2.4.0) (2026-07-12)
 
 

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontour.ai/schemas/init-plan/1.0.0",
+  "title": "Kontour init plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "mode", "repository", "pins", "interpreter", "products", "desired", "actions", "gaps", "plan_id"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "mode": { "const": "plan" },
+    "plan_id": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "repository": { "type": "object", "additionalProperties": false, "required": ["root", "realpath", "dev", "ino"], "properties": { "root": { "type": "string", "minLength": 1 }, "realpath": { "type": "string", "minLength": 1 }, "dev": { "type": "integer" }, "ino": { "type": "integer" } } },
+    "pins": { "type": "object" },
+    "interpreter": { "type": "object" },
+    "products": { "type": "object" },
+    "desired": { "type": "object", "additionalProperties": false, "required": ["runtime", "kits"], "properties": { "runtime": { "type": "string", "minLength": 1 }, "kits": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true } } },
+    "actions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/action" } },
+    "gaps": { "type": "array", "items": { "type": "object" } }
+  },
+  "$defs": {
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "owner", "executableId", "argv", "sideEffect", "confirmation", "expectedPaths", "postcondition", "rollback"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "owner": { "const": "flow-agents" },
+        "executableId": { "const": "flow-agents-cli" },
+        "argv": { "type": "array", "items": { "type": "string", "maxLength": 4096 }, "minItems": 1 },
+        "sideEffect": { "enum": ["read-local", "write-local"] },
+        "confirmation": { "enum": ["never", "user-request"] },
+        "expectedPaths": { "type": "array", "items": { "type": "string" } },
+        "postcondition": { "type": "string", "minLength": 1 },
+        "rollback": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

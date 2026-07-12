@@ -1117,7 +1117,7 @@ async function handleRecords(
         entry.store.append(economicsRecord);
         entry.projection.apply(economicsRecord);
       }
-      events.broadcast("record.accepted", { delivery: persisted });
+      events.broadcast("record.accepted", { delivery: persisted, state: hub.currentOperatingState() });
       writeJson(response, 202, persisted);
       return;
     }
@@ -1125,7 +1125,7 @@ async function handleRecords(
     // Local in-memory v1 path — unchanged (#117 behaviour).
     entry.store.append(economicsRecord);
     entry.projection.apply(economicsRecord);
-    events.broadcast("record.accepted", { delivery: { recordKind: "economics", recordId: economicsRecord.run_id, outcome: "accepted" } });
+    events.broadcast("record.accepted", { delivery: { recordKind: "economics", recordId: economicsRecord.run_id, outcome: "accepted" }, state: hub.currentOperatingState() });
     writeJson(response, 202, { recordKind: "economics", recordId: economicsRecord.run_id, outcome: "accepted" });
     return;
   }

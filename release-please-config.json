@@ -3,6 +3,22 @@
   "release-type": "node",
   "include-component-in-tag": false,
   "packages": {
-    ".": {}
+    ".": {
+      "exclude-paths": [
+        "cli"
+      ]
+    },
+    "cli": {
+      "component": "cli",
+      "package-name": "@kontourai/cli",
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/package-lock.json",
+          "jsonpath": "$.packages.cli.version"
+        }
+      ]
+    }
   }
 }

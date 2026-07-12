@@ -107,6 +107,34 @@ test("local hub server streams accepted record updates over SSE", async () => {
   }
 });
 
+test("record.accepted for an economics record still carries operating state (console#182 regression)", async () => {
+  // Regression: economics `record.accepted` broadcasts omitted `state`, so the UI
+  // client (hubClient) forwarded `undefined` into setState and overwrote the
+  // operating state — white-screening Operate/Overview once economics telemetry
+  // started flowing. Every record.accepted must carry a defined state.
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  const streamClient: SseHolder = {};
+  try {
+    const baseUrl = serverUrl(app);
+    const eventStream = connectSse(`${baseUrl}/stream`, streamClient);
+    await eventStream.nextEvent(); // ready
+    await eventStream.nextEvent(); // initial state
+    const posted = await requestJson("POST", `${baseUrl}/records`, economicsRecord());
+    const update = await eventStream.nextEvent();
+    assert.equal(posted.statusCode, 202);
+    assert.equal(update.event, "record.accepted");
+    assert.equal(update.data.delivery.recordKind, "economics");
+    assert.notEqual(update.data.state, undefined);
+    assert.equal(typeof update.data.state, "object");
+    assert.ok(update.data.state.source, "operating state must be present, not undefined");
+  } finally {
+    if (streamClient.request) streamClient.request.destroy();
+    await close(app);
+  }
+});
+
 test("local hub server keeps /events as an SSE compatibility alias", async () => {
   const rootDir = tempRoot();
   const app = createConsoleHubServer({ rootDir, port: 0 });

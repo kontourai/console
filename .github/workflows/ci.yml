@@ -50,3 +50,7 @@ jobs:
       - name: Run tests
         run: npm test
         working-directory: console
+
+      - name: Pack CLI dry run
+        run: npm --workspace @kontourai/cli pack --dry-run
+        working-directory: console

@@ -2,6 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildProcessFlow, type OperatingState } from "../src/index";
 
+// Regression (console#182): the Operate tab white-screened with
+// "Cannot read properties of undefined (reading 'processes')" when no operating
+// state had arrived yet. buildProcessFlow must return an empty flow, not throw.
+test("buildProcessFlow tolerates undefined/null/empty state", () => {
+  for (const input of [undefined, null, {}]) {
+    const flow = buildProcessFlow(input as OperatingState | null | undefined);
+    // A stage node is always synthesized; no processes/gates/etc. means no more.
+    assert.deepEqual(flow.nodes.map((n) => n.id), ["stage"]);
+    assert.deepEqual(flow.edges, []);
+  }
+});
+
 test("buildProcessFlow keeps unreferenced lane items visible without invented edges", () => {
   const flow = buildProcessFlow({
     currentStage: "Checking gate",

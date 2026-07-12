@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kontour.ai/schemas/router-output/1.0.0",
+  "title": "Kontour router output",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "command", "products", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "command": { "enum": ["products", "capabilities", "doctor"] },
+    "products": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/product" }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/diagnostic" }
+    }
+  },
+  "$defs": {
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "severity", "message"],
+      "properties": {
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]+$" },
+        "severity": { "enum": ["error", "warning"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "productId": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" }
+      }
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "productId", "confirmation"],
+      "properties": {
+        "kind": { "const": "product" },
+        "productId": { "type": "string" },
+        "confirmation": { "enum": ["never", "user-request", "operator-request"] }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "summary", "executableId", "argv", "sideEffect", "authority"],
+      "properties": {
+        "path": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "summary": { "type": "string" },
+        "executableId": { "type": "string" },
+        "argv": { "type": "array", "items": { "type": "string" } },
+        "sideEffect": { "enum": ["none", "read-local", "write-local", "write-external"] },
+        "authority": { "$ref": "#/$defs/authority" }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "direction", "mediaType", "description"],
+      "properties": {
+        "id": { "type": "string" },
+        "direction": { "enum": ["input", "output", "input-output"] },
+        "mediaType": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "projection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "schemaRef", "description"],
+      "properties": {
+        "id": { "type": "string" },
+        "schemaRef": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "displayName", "owner", "package", "protocolVersion", "compatible", "availability", "descriptorSource", "executableSource", "commands", "artifacts", "projections", "diagnostics", "remediation"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "displayName": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "package": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "version": { "type": ["string", "null"] }
+          }
+        },
+        "protocolVersion": { "type": "string" },
+        "compatible": { "type": "boolean" },
+        "availability": { "enum": ["available", "missing", "incompatible"] },
+        "descriptorSource": { "enum": ["product-package", "compatibility-catalog"] },
+        "executableSource": { "enum": ["explicit-product-root", "unresolved"] },
+        "commands": { "type": "array", "items": { "$ref": "#/$defs/command" } },
+        "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+        "projections": { "type": "array", "items": { "$ref": "#/$defs/projection" } },
+        "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+        "remediation": { "type": "array", "items": { "type": "string", "minLength": 1, "maxLength": 512 } }
+      }
+    }
+  }
+}

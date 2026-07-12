@@ -17,7 +17,7 @@ Each product authors and versions its own descriptor alongside its package and C
 
 A product release should validate its descriptor against both the checked-in schema and the runtime validator. A changed descriptor is reviewed like any other public API change. Consumers must reject unknown schema versions rather than guessing or falling back to legacy behavior.
 
-Console issue [#145](https://github.com/kontourai/console/issues/145) is the first planned router consumer. That router may discover, validate, negotiate, display, and delegate declared commands. It must still invoke the product-owned executable with an argv vector and must not recreate product semantics inside Console.
+The [Kontour CLI Router](kontour-cli-router.md) is the first consumer. It discovers, validates, negotiates, displays, and delegates declared commands, while invoking the product-owned executable with an argv vector and never recreating product semantics inside Console.
 
 ## Descriptor fields
 
@@ -48,7 +48,7 @@ Candidate order is precedence order:
 3. Diagnose later occurrences as `DESCRIPTOR_DUPLICATE_IDENTITY`; they never replace the first descriptor.
 4. When resolving an executable, inspect only supplied roots whose parsed package name exactly matches the descriptor, in order, and return the first contained regular file matching the declared package bin.
 
-The caller is responsible for defining where its explicit candidate list comes from. There is no implicit global npm scan, `$PATH` search, home-directory crawl, workspace crawl, package-manager invocation, registry request, download, or remote fallback. A future consumer may define documented sources, but it must convert them into an explicit ordered candidate list before calling this protocol.
+The caller is responsible for defining where its explicit candidate list comes from. There is no implicit global npm scan, `$PATH` search, home-directory crawl, workspace crawl, package-manager invocation, registry request, download, or remote fallback. The router accepts explicit `--product-root=<flow|flow-agents|console>=<absolute-package-root>` mappings and converts them into an ordered candidate list before calling this protocol. Its source-attributed compatibility catalog is a temporary accepted gap: a catalog entry is removed per product once that product ships a validated descriptor and conformance proves equivalent routing; a product-owned descriptor takes precedence immediately.
 
 ## Version negotiation
 

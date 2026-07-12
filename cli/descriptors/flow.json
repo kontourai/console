@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0.0",
+  "protocolVersion": "1.0.0",
+  "product": { "id": "flow", "displayName": "Flow", "packageName": "@kontourai/flow" },
+  "executables": [{ "id": "flow-cli", "packageBin": "flow" }],
+  "commands": [
+    { "path": ["status"], "summary": "Read a product-owned Flow run.", "executableId": "flow-cli", "argv": ["status"], "sideEffect": "read-local", "authority": { "kind": "product", "productId": "flow", "confirmation": "never" } },
+    { "path": ["start"], "summary": "Start a product-owned Flow run.", "executableId": "flow-cli", "argv": ["start"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow", "confirmation": "user-request" } },
+    { "path": ["cancel"], "summary": "Request cancellation of a product-owned Flow run.", "executableId": "flow-cli", "argv": ["cancel"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow", "confirmation": "user-request" } },
+    { "path": ["kit", "validate"], "summary": "Validate a Flow kit.", "executableId": "flow-cli", "argv": ["kit", "validate"], "sideEffect": "read-local", "authority": { "kind": "product", "productId": "flow", "confirmation": "never" } },
+    { "path": ["kit", "install"], "summary": "Install a Flow kit.", "executableId": "flow-cli", "argv": ["kit", "install"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow", "confirmation": "user-request" } },
+    { "path": ["kit", "inspect"], "summary": "Inspect a Flow kit.", "executableId": "flow-cli", "argv": ["kit", "inspect"], "sideEffect": "read-local", "authority": { "kind": "product", "productId": "flow", "confirmation": "never" } }
+  ],
+  "artifacts": [{ "id": "flow-run", "direction": "input-output", "mediaType": "application/vnd.kontour.flow-run+json", "description": "Product-owned Flow run manifest and evidence references." }],
+  "projections": [{ "id": "flow-run-status", "schemaRef": "@kontourai/flow/schemas/flow-run.schema.json", "description": "Read-only projection of the current Flow run state." }]
+}

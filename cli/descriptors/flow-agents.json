@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1.0.0",
+  "protocolVersion": "1.0.0",
+  "product": { "id": "flow-agents", "displayName": "Flow Agents", "packageName": "@kontourai/flow-agents" },
+  "executables": [{ "id": "flow-agents-cli", "packageBin": "flow-agents" }],
+  "commands": [
+    { "path": ["init"], "summary": "Install and configure Flow Agents-owned runtime assets.", "executableId": "flow-agents-cli", "argv": ["init"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "user-request" } },
+    { "path": ["telemetry-doctor"], "summary": "Run Flow Agents-owned installation diagnostics.", "executableId": "flow-agents-cli", "argv": ["telemetry-doctor"], "sideEffect": "read-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "never" } },
+    { "path": ["workflow", "status"], "summary": "Read the current Builder workflow state.", "executableId": "flow-agents-cli", "argv": ["workflow", "status"], "sideEffect": "read-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "never" } },
+    { "path": ["workflow", "start"], "summary": "Start a product-owned Builder workflow.", "executableId": "flow-agents-cli", "argv": ["workflow", "start"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "user-request" } },
+    { "path": ["workflow", "cancel"], "summary": "Request cancellation of a product-owned Builder workflow.", "executableId": "flow-agents-cli", "argv": ["workflow", "cancel"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "user-request" } },
+    { "path": ["kit", "install"], "summary": "Install the Flow Agents kit.", "executableId": "flow-agents-cli", "argv": ["kit", "install"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "user-request" } },
+    { "path": ["kit", "activate"], "summary": "Activate the Flow Agents kit.", "executableId": "flow-agents-cli", "argv": ["kit", "activate"], "sideEffect": "write-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "user-request" } },
+    { "path": ["kit", "status"], "summary": "Read Flow Agents kit status.", "executableId": "flow-agents-cli", "argv": ["kit", "status"], "sideEffect": "read-local", "authority": { "kind": "product", "productId": "flow-agents", "confirmation": "never" } }
+  ],
+  "artifacts": [{ "id": "workflow-sidecar", "direction": "input-output", "mediaType": "application/vnd.kontour.flow-agents-workflow+json", "description": "Product-owned workflow plans, evidence, and handoff records." }],
+  "projections": [{ "id": "builder-workflow-status", "schemaRef": "@kontourai/flow-agents/schemas/workflow-status.schema.json", "description": "Read-only Builder workflow status projection." }]
+}

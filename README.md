@@ -21,6 +21,19 @@ This repo ships local-first Console foundation code alongside the product contex
 
 Requires Node.js 22 or newer.
 
+For suite navigation, install the dedicated router and opt into product packages separately:
+
+```sh
+npm install --global @kontourai/cli @kontourai/console
+kontour console serve
+
+npx --yes --package @kontourai/cli@<exact-version> \
+  --package @kontourai/console@<exact-version> \
+  kontour console serve
+```
+
+The router is offline and never installs missing products itself. Use exact versions and explicit `--product-root=<flow|flow-agents|console>=<absolute-package-root>` mappings for reproducible or offline operation. See the [Kontour CLI Router specification](docs/specs/kontour-cli-router.md) for Flow/Flow Agents kit ownership, direct-bin compatibility, confirmation boundaries, and compatibility-catalog provenance.
+
 Run the inspector against any directory without installing anything:
 
 ```sh
@@ -35,6 +48,8 @@ console-inspect            # inspect the current directory
 kontour serve              # start the local hub on 127.0.0.1:3737
 kontour-flow-bridge --help # bridge local Flow runs into the hub
 ```
+
+The `@kontourai/console` package's `kontour serve` entry point remains behaviorally compatible but is deprecated in favor of `@kontourai/cli` and `kontour console serve`. It will not be removed before Console 3.0; it remains a direct Console bin and does not proxy through the router.
 
 `console-inspect` reads `.kontourai/console/events/**/*.jsonl` and `.kontourai/console/projections/**/*.json` in the current directory, validates the records, and prints event counts plus current claim, process, gate, review, action, and link summaries. It exits 0 on success and 1 if validation errors are found. No network access; no mutations.
 

@@ -51,6 +51,29 @@ function lineNumberFor(content: string, index: number): number {
 
 const findings: Finding[] = [];
 
+const initRouterSpec = readFileSync("docs/specs/kontour-cli-router.md", "utf8");
+const initPlanSource = readFileSync("cli/src/init-plan.ts", "utf8");
+const initSpec = readFileSync("docs/specs/kontour-init.md", "utf8");
+const hardcodedCliPin = /cli:\s*["']\d+\.\d+\.\d+/g.exec(initPlanSource);
+if (hardcodedCliPin) findings.push({ filePath: "cli/src/init-plan.ts", line: lineNumberFor(initPlanSource, hardcodedCliPin.index), label: "Kontour init must derive its CLI pin from the executing package manifest" });
+const historicalCliContract = /@kontourai\/cli@\d+\.\d+\.\d+/g.exec(initSpec);
+if (historicalCliContract) findings.push({ filePath: "docs/specs/kontour-init.md", line: lineNumberFor(initSpec, historicalCliContract.index), label: "Kontour init docs must not freeze the executing CLI to a historical version" });
+for (const staleClaim of ["plan output file", "requires a saved plan"]) {
+  const index = initRouterSpec.indexOf(staleClaim);
+  if (index >= 0) findings.push({
+    filePath: "docs/specs/kontour-cli-router.md",
+    line: lineNumberFor(initRouterSpec, index),
+    label: `stale kontour init filesystem contract: ${staleClaim}`,
+  });
+}
+for (const requiredClaim of ["stdout", "`--plan-id`", "`--plan-file`", "`--output`"]) {
+  if (!initRouterSpec.includes(requiredClaim)) findings.push({
+    filePath: "docs/specs/kontour-cli-router.md",
+    line: 1,
+    label: `kontour init router contract must document ${requiredClaim}`,
+  });
+}
+
 for (const filePath of trackedFiles()) {
   if (filePath.startsWith(".flow-agents/")) {
     findings.push({
