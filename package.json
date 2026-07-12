@@ -45,6 +45,7 @@
     "test:dev-local": "node --import tsx --test scripts/dev-local.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontourai/console-core run typecheck && npm --workspace @kontourai/console run typecheck && npm --workspace @kontourai/console-ui run typecheck",
     "check:content-boundary": "node --import tsx scripts/check-content-boundary.ts",
+    "check:descriptor-boundary": "npm --workspace @kontourai/console-core run check:descriptor-boundary",
     "setup:repo-hooks": "node --import tsx scripts/setup-repo-hooks.ts",
     "validate:repo-hooks": "node --import tsx scripts/validate-repo-hooks.ts",
     "demo:grounded": "node --import tsx demo/grounded-answer/run.ts",

@@ -20,6 +20,10 @@ description: Suite-level operating plane for Kontour. Claim status, process stat
     <strong>Emitter &amp; Sink Contract</strong>
     <span>Control-plane versus telemetry-plane records, local file output, multi-sink fanout, and inert action descriptors.</span>
   </a>
+  <a class="doc-card" href="specs/product-capability-descriptor.html">
+    <strong>Product Capability Descriptor</strong>
+    <span>The versioned, offline discovery contract for safely routing to product-owned CLI capabilities without importing product kernels.</span>
+  </a>
   <a class="doc-card" href="deployment/hosted-console.html">
     <strong>Hosted Console</strong>
     <span>How a hosted deployment composes the base Console with deployment-owned infrastructure and environment mapping.</span>
