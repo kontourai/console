@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.6.1](https://github.com/kontourai/console/compare/v2.6.0...v2.6.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* **console:** guard operating-state projections against undefined state ([#182](https://github.com/kontourai/console/issues/182)) ([#185](https://github.com/kontourai/console/issues/185)) ([e667cd3](https://github.com/kontourai/console/commit/e667cd3dfd611e32d20c94f3bb2076c1205e0325))
+
 ## [2.6.0](https://github.com/kontourai/console/compare/v2.5.0...v2.6.0) (2026-07-12)
 
 
