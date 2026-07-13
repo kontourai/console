@@ -39,11 +39,11 @@ test("missing-product remediation is inert and requires an exact-version placeho
   const priorPath = process.env.PATH;
   process.env.PATH = `${root}${path.delimiter}${priorPath ?? ""}`;
   try {
-    const routed = await routeCommand(["flow", "status"]);
+    const routed = await routeCommand(["flow", "agents", "workflow", "status"]);
     assert.equal(routed.ok, false);
     if (!routed.ok) {
       assert.equal(routed.diagnostics[0].code, "DESCRIPTOR_EXECUTABLE_MISSING");
-      assert.match(routed.diagnostics[0].message, /@kontourai\/flow@<exact-semver>/);
+      assert.match(routed.diagnostics[0].message, /@kontourai\/flow-agents@3\.8\.0/);
       assert.doesNotMatch(routed.diagnostics[0].message, new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
     }
     await assert.rejects(readFile(marker), { code: "ENOENT" });

@@ -31,16 +31,21 @@ function normalizedProduct(product: DiscoveredProduct): RouterProductResult {
       code: "ROUTER_PRODUCT_MISSING",
       severity: "warning",
       productId: product.productId,
-      message: "No explicit local product package root was supplied.",
+      message: "No compatible installed product package was discovered.",
     });
     const packageBin = product.descriptor.executables[0]?.packageBin;
-    remediation.push(`Provide an explicit local root with --product-root=${product.productId}=<root>.`);
+    remediation.push(`Optionally override discovery with --product-root=${product.productId}=<absolute-package-root>.`);
     if (packageBin) {
-      const install = missingProductRemediation(product.productId, product.descriptor.product.packageName, packageBin);
+      const install = missingProductRemediation(product.productId, product.descriptor.product.packageName, packageBin, product.compatiblePackageVersion);
       remediation.push(install.localInstall, install.oneShot);
     }
   } else if (availability === "incompatible") {
-    remediation.push(`Repair or replace the explicit ${product.descriptor.product.packageName} package root, then run doctor again.`);
+    const packageBin = product.descriptor.executables[0]?.packageBin;
+    if (packageBin) {
+      const install = missingProductRemediation(product.productId, product.descriptor.product.packageName, packageBin, product.compatiblePackageVersion);
+      remediation.push(install.localInstall, install.oneShot);
+    }
+    remediation.push(`Repair or replace the incompatible ${product.descriptor.product.packageName} package, then run doctor again.`);
   }
 
   return {
@@ -52,6 +57,8 @@ function normalizedProduct(product: DiscoveredProduct): RouterProductResult {
     compatible: errors.length === 0,
     availability,
     descriptorSource: product.descriptorSource,
+    // Router output 1.0 has no installed-package enum. Preserve its published
+    // shape; detailed installed provenance remains internal until a versioned contract exists.
     executableSource: product.candidate ? "explicit-product-root" : "unresolved",
     commands: [...product.descriptor.commands].sort((a, b) => a.path.join("\u0000").localeCompare(b.path.join("\u0000"))),
     artifacts: [...product.descriptor.artifacts].sort((a, b) => a.id.localeCompare(b.id)),

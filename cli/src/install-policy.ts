@@ -80,11 +80,15 @@ export function missingProductRemediation(
   productId: CatalogProductId,
   packageName: string,
   packageBin: string,
+  exactVersion: string = EXACT_VERSION_PLACEHOLDER,
 ): MissingProductRemediation {
   if (!PACKAGE_NAME.test(packageName) || !PACKAGE_NAME.test(packageBin)) {
     throw new TypeError("Product package metadata is not safe for remediation guidance.");
   }
-  const spec = `${packageName}@${EXACT_VERSION_PLACEHOLDER}`;
+  if (exactVersion !== EXACT_VERSION_PLACEHOLDER && !EXACT_SEMVER.test(exactVersion)) {
+    throw new TypeError("Product package version is not safe for remediation guidance.");
+  }
+  const spec = `${packageName}@${exactVersion}`;
   return Object.freeze({
     productId,
     packageName,

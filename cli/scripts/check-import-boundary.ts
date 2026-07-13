@@ -42,7 +42,7 @@ function imports(source: string): Array<{ specifier: string; dynamic: boolean }>
 function resolveRelative(importer: string, specifier: string): string | undefined {
   const candidate = resolve(dirname(importer), specifier);
   const candidates = extname(candidate)
-    ? [candidate]
+    ? [candidate, ...(candidate.endsWith(".js") ? [`${candidate.slice(0, -3)}.ts`] : [])]
     : [candidate, `${candidate}.ts`, `${candidate}.tsx`, `${candidate}.js`, `${candidate}.mjs`,
       join(candidate, "index.ts"), join(candidate, "index.js")];
   return candidates.find((item) => existsSync(item) && statSync(item).isFile());

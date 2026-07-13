@@ -18,22 +18,26 @@ export interface CompatibilityCatalogEntry {
   readonly derivedFrom: string;
   readonly removalTrigger: string;
   readonly suitePrefix: readonly string[];
+  readonly packageVersion: string;
   readonly descriptor: ProductCapabilityDescriptor;
 }
 
 const rawEntries = [
   {
     descriptor: flowAgentsDescriptor,
+    packageVersion: "3.8.0",
     suitePrefix: ["flow", "agents"],
     derivedFrom: "Console #144 Flow Agents conformance fixture",
   },
   {
     descriptor: flowDescriptor,
+    packageVersion: "3.1.4",
     suitePrefix: ["flow"],
     derivedFrom: "Console #144 Flow conformance fixture",
   },
   {
     descriptor: consoleDescriptor,
+    packageVersion: "2.6.2",
     suitePrefix: ["console"],
     derivedFrom: "Console #144 Console conformance fixture",
   },
@@ -62,6 +66,7 @@ export const compatibilityCatalog: readonly CompatibilityCatalogEntry[] =
       derivedFrom: entry.derivedFrom,
       removalTrigger: `Remove when ${descriptor.product.packageName} ships and tests a product-owned descriptor.`,
       suitePrefix: Object.freeze([...entry.suitePrefix]),
+      packageVersion: entry.packageVersion,
       descriptor,
     });
   }));

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -7,10 +7,11 @@ import { spawnSync } from "node:child_process";
 const repo = resolve(import.meta.dirname, "../..");
 const root = mkdtempSync(join(tmpdir(), "kontour-init-real-e2e-"));
 const project = join(root, "repo");
+const emptyHelpProject = join(root, "empty-help");
 const home = join(root, "home");
 const packages = join(root, "packages");
 const install = join(root, "install");
-for (const dir of [project, home, packages, install]) mkdirSync(dir);
+for (const dir of [project, emptyHelpProject, home, packages, install]) mkdirSync(dir);
 writeFileSync(join(project, ".gitignore"), "# scratch sentinel\n");
 
 const env = { ...process.env, HOME: home, CODEX_HOME: join(home, ".codex"), npm_config_cache: join(root, "npm-cache"), NODE_PATH: "", NO_COLOR: "1", FORCE_COLOR: "0" };
@@ -27,12 +28,25 @@ command("npm", ["init", "-y"], install);
 command("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...["kontourai-flow-agents-3.8.0.tgz", "kontourai-flow-3.1.4.tgz", cliTarball, coreTarball].map((name) => join(packages, name))], install);
 const agents = join(install, "node_modules/@kontourai/flow-agents");
 const installedCli = join(install, "node_modules/@kontourai/cli");
+assert.equal(lstatSync(agents).isSymbolicLink(), false, "Flow Agents must be installed from its packed artifact");
+assert.equal(lstatSync(installedCli).isSymbolicLink(), false, "CLI must be installed from its packed artifact");
 
-function kontour(args: string[]) {
-  return command(process.execPath, [join(installedCli, "dist/bin/kontour.js"), `--product-root=flow-agents=${agents}`, ...args], project);
+function kontour(args: string[], cwd = project) {
+  return command(process.execPath, [join(installedCli, "dist/bin/kontour.js"), ...args], cwd);
 }
 
 const before = readFileSync(join(project, ".gitignore"), "utf8");
+const entriesBeforeHelp = readdirSync(emptyHelpProject);
+const installedCore = join(install, "node_modules", "@kontourai", "console-core");
+const hiddenCore = `${installedCore}-hidden`;
+renameSync(installedCore, hiddenCore);
+try {
+  assert.match(kontour(["--help"], emptyHelpProject), /^Usage: kontour/);
+  assert.match(kontour(["init", "--help"], emptyHelpProject), /^Usage: kontour init/);
+  assert.deepEqual(readdirSync(emptyHelpProject), entriesBeforeHelp);
+} finally {
+  renameSync(hiddenCore, installedCore);
+}
 const inspected = JSON.parse(kontour(["init", "--inspect", "--json"]));
 assert.deepEqual(inspected.mutations, []);
 assert.equal(typeof inspected.diagnostics.doctor.exitCode, "number");

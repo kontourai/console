@@ -9,6 +9,7 @@ import { delegateProduct, delegateProductCaptured } from "./delegate";
 import { discoverProducts, resolveDiscoveredExecutable } from "./discovery";
 import { buildInitPlan, type InitPlan } from "./init-plan";
 import { INIT_PINS } from "./init-plan";
+import { missingProductRemediation } from "./install-policy";
 
 type Mode = "inspect" | "plan" | "apply";
 interface ParsedInit { mode: Mode; json: boolean; yes: boolean; runtime: string; kits: string[]; planId?: string }
@@ -180,7 +181,14 @@ export async function runInit(argv: readonly string[], roots: readonly ProductRo
     const repositoryRealpath = await realpath(cwd);
     const products = await discoverProducts(roots);
     const flowAgents = products.find((product) => product.productId === "flow-agents")!;
-    if (flowAgents.diagnostics.length > 0 || !flowAgents.candidate) return fail(io, "KONTOUR_INIT_FLOW_AGENTS_REQUIRED", "Provide an explicit local @kontourai/flow-agents product root.");
+    if (flowAgents.packageVersion !== null && flowAgents.packageVersion !== INIT_PINS.flowAgents) {
+      return fail(io, "KONTOUR_INIT_EXACT_VERSION_REQUIRED", `Expected @kontourai/flow-agents@${INIT_PINS.flowAgents}.`);
+    }
+    if (flowAgents.diagnostics.length > 0) return fail(io, "KONTOUR_INIT_FLOW_AGENTS_REQUIRED", flowAgents.diagnostics[0]?.message ?? "Flow Agents package is incompatible.");
+    if (!flowAgents.candidate) {
+      const remediation = missingProductRemediation("flow-agents", "@kontourai/flow-agents", "flow-agents", INIT_PINS.flowAgents);
+      return fail(io, "KONTOUR_INIT_FLOW_AGENTS_REQUIRED", `Install the required public package with '${remediation.localInstall}' or run '${remediation.oneShot} init …'.`);
+    }
     const executableResult = await resolveDiscoveredExecutable(flowAgents, "flow-agents-cli");
     if (!executableResult.ok) return fail(io, "KONTOUR_INIT_FLOW_AGENTS_REQUIRED", executableResult.diagnostics[0]?.message ?? "Flow Agents executable is unavailable.");
     const executableRealpath = await realpath(executableResult.value.executablePath);

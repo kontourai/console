@@ -1,4 +1,5 @@
 import type { CatalogProductId } from "./catalog";
+import { isAbsolute } from "node:path";
 
 export const MAX_ROUTER_ARGV = 256;
 export const MAX_ROUTER_TOKEN_LENGTH = 4096;
@@ -26,8 +27,8 @@ export function parseCommandLine(input: readonly string[]): ParsedCommandLine {
     const separator = value.indexOf("=");
     const productId = value.slice(0, separator) as CatalogProductId;
     const root = value.slice(separator + 1);
-    if (separator < 1 || !PRODUCTS.has(productId) || root.length === 0) {
-      return { ok: false, code: "ROUTER_ARGUMENT_INVALID", message: "Use --product-root=<flow|flow-agents|console>=<root>." };
+    if (separator < 1 || !PRODUCTS.has(productId) || root.length === 0 || !isAbsolute(root)) {
+      return { ok: false, code: "ROUTER_ARGUMENT_INVALID", message: "Use --product-root=<flow|flow-agents|console>=<absolute-root>." };
     }
     if (roots.some((candidate) => candidate.productId === productId)) {
       return { ok: false, code: "ROUTER_ARGUMENT_INVALID", message: "Supply at most one explicit root for each product." };

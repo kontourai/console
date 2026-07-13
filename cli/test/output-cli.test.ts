@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmod, cp, mkdtemp, readFile } from "node:fs/promises";
+import { chmod, cp, mkdtemp, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,8 +60,10 @@ test("doctor is read-only, reports stable remediation, and rejects reserved onli
   assert.equal(await runCli(["doctor", "--json"], first.io), 0);
   const parsed = JSON.parse(first.read().stdout) as { command: string; products: Array<{ availability: string; remediation: string[] }> };
   assert.equal(parsed.command, "doctor");
-  assert.ok(parsed.products.every((product) => product.availability === "missing" && product.remediation.length === 3));
-  assert.ok(parsed.products.every((product) => product.remediation[1].includes("@<exact-semver>") && product.remediation[2].startsWith("npm exec --yes --package=")));
+  const unavailable = parsed.products.filter((product) => product.availability !== "available");
+  assert.ok(unavailable.length > 0);
+  assert.ok(unavailable.every((product) => product.remediation.some((item) => /npm install --save-exact @kontourai\/.+@\d+\.\d+\.\d+/.test(item))));
+  assert.ok(unavailable.every((product) => product.remediation.some((item) => item.startsWith("npm exec --yes --package="))));
 
   const online = capture();
   assert.equal(await runCli(["doctor", "--online"], online.io), 2);
@@ -86,6 +88,18 @@ test("thin cli delegates product routes and maps stable argument errors", async 
   assert.match(unknown.read().stderr, /^ROUTER_PRODUCT_UNKNOWN:/);
 });
 
+test("top-level and init help are inert in an empty directory", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "kontour-help-empty-"));
+  const before = await readdir(cwd);
+  for (const argv of [["--help"], ["init", "--help"]]) {
+    const output = capture();
+    assert.equal(await runCli(argv, output.io, { cwd }), 0);
+    assert.match(output.read().stdout, /^Usage: kontour/);
+    assert.equal(output.read().stderr, "");
+    assert.deepEqual(await readdir(cwd), before);
+  }
+});
+
 test("human products and doctor render from the same normalized records", async () => {
   const discovered = await discoverProducts([]);
   const products = renderRouterOutput(buildRouterOutput("products", discovered));
@@ -95,5 +109,5 @@ test("human products and doctor render from the same normalized records", async 
     assert.match(doctor, new RegExp(`\\[${id}\\]`));
   }
   assert.doesNotMatch(products, /remediation:/);
-  assert.match(doctor, /remediation: Provide an explicit local root/);
+  assert.match(doctor, /remediation: (?:Optionally override discovery|npm install --save-exact)/);
 });
