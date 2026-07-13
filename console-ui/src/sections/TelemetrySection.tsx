@@ -49,7 +49,7 @@ export function TelemetrySection({ telemetry, error, query, drilldown, onQueryCh
       <TelemetrySavedPresets query={query} onQueryChange={onQueryChange} />
       {drilldown ? <TelemetryDrilldownHeader drilldown={drilldown} onOpenRoute={onOpenRoute} query={query} /> : null}
       <TelemetryTotals telemetry={telemetry} />
-      <TelemetryFocus focus={focus} onToggleFilter={actions.toggleFilter} />
+      <TelemetryFocus focus={focus} filters={filters} onToggleFilter={actions.toggleFilter} />
       <TelemetryFilterBar
         filters={filters}
         shownCount={returnedCount}

@@ -2878,8 +2878,18 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
 }
 
 .focus-card:hover,
-.focus-card:focus-visible {
+.focus-card:focus-visible,
+.focus-card.active {
   border-color: var(--accent);
+}
+
+.focus-card--static {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.focus-card--static:hover {
+  border-color: var(--line);
 }
 
 .focus-project {
