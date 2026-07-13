@@ -22,7 +22,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",
-    "generate:openapi": "node scripts/generate-openapi-schemas.mjs"
+    "generate:openapi": "node scripts/generate-openapi-schemas.mjs",
+    "check:economics-schema-parity": "node scripts/check-economics-schema-parity.mjs"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

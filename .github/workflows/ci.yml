@@ -43,6 +43,10 @@ jobs:
         run: npm ci
         working-directory: console
 
+      - name: Check economics schema parity (cross-repo, #175)
+        run: node console-server/scripts/check-economics-schema-parity.mjs
+        working-directory: console
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
         working-directory: console
