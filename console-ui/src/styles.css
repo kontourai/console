@@ -2839,3 +2839,79 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
   color: inherit;
   opacity: 0.92;
 }
+
+/* Telemetry Focus — "what you're working on", leads the page before the raw grid (console#180/#183). */
+.telemetry-focus {
+  border: 1px solid var(--line);
+  background: var(--panel-shell);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.telemetry-focus-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.focus-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.focus-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--text);
+  background: var(--dark-row);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+
+.focus-card:hover,
+.focus-card:focus-visible {
+  border-color: var(--accent);
+}
+
+.focus-project {
+  font-weight: 600;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.focus-metrics {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--dim);
+  font-size: 0.74rem;
+  font-family: var(--k-font-mono);
+}
+
+.focus-metrics strong {
+  color: var(--text);
+}
+
+.focus-tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.focus-tool {
+  font-family: var(--k-font-mono);
+  font-size: 0.66rem;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1px 6px;
+}
