@@ -17,7 +17,8 @@ export {
   type RouterProductResult,
 } from "./router-output";
 export { parseCommandLine, selectNamespace, type NamespaceSelection, type ParsedCommandLine, type ProductRootOption } from "./command-line";
-export { PRODUCT_DESCRIPTOR_ASSET, discoverProducts, resolveDiscoveredExecutable, type DiscoveredProduct } from "./discovery";
+export { PRODUCT_DESCRIPTOR_ASSET, discoverProducts, resolveDiscoveredExecutable, type DiscoveredProduct, type ProductDiscoveryOptions } from "./discovery";
+export { helpScope, renderHelp, type HelpScope } from "./help";
 export { discoverFromOptions, routeCommand, type RouteDiagnostic, type RouteResult } from "./router";
 export {
   EXACT_VERSION_PLACEHOLDER,

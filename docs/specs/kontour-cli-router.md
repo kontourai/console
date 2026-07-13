@@ -28,9 +28,9 @@ npx --yes \
   kontour console serve
 ```
 
-`npx` package flags are installation consent. The router itself never invokes npm, searches a registry, downloads a missing package, or silently changes a version. For reproducible and offline work, preinstall exact package versions, retain the npm cache or a lockfile-backed installation, and pass product roots explicitly. A missing local product produces a stable diagnostic rather than a network fallback.
+`npx` package flags are installation consent. The router itself never invokes npm, searches a registry, downloads a missing package, or silently changes a version. It resolves sibling product packages from the installed CLI's normal Node package graph. For reproducible and offline work, preinstall exact package versions and retain the npm cache or a lockfile-backed installation. A missing local product produces exact package-level install and one-shot commands rather than a network fallback.
 
-## Explicit product roots
+## Installed discovery and explicit product roots
 
 Product roots use an explicit, repeatable mapping:
 
@@ -41,7 +41,9 @@ kontour --product-root=flow=/absolute/path/to/flow-package \
         products
 ```
 
-Each key selects one exact catalog product/package and each value supplies its local package root. The router reads only those caller-supplied roots and its packaged compatibility catalog. It does not scan `$PATH`, global npm directories, parent workspaces, home directories, or the network. Product-shipped, validated descriptors take precedence over compatibility entries.
+Each key selects one exact catalog product/package and each value supplies its local package root. An explicit mapping always wins over installed-package discovery. Without a mapping, the router uses Node package resolution anchored at the installed `@kontourai/cli` package; it does not scan `$PATH`, global npm directories, arbitrary ancestors, home directories, or the network. Resolved manifests and bins pass the same identity, containment, and symlink checks as explicit roots. Product-shipped, validated descriptors take precedence over compatibility entries.
+
+`kontour --help` and `kontour init --help` render before product discovery or repository/setup validation. Both exit zero and write no setup artifacts.
 
 ## Namespace and ownership
 
@@ -83,4 +85,4 @@ The legacy alias is deprecated but will not be removed before Console 3.0. Remov
 
 ## Safety and non-goals
 
-Delegation uses a validated descriptor, an explicitly resolved contained package bin, an argv array, and no shell. Discovery and diagnostic commands are offline. The router does not merge packages, host Station, implement server behavior, authorize side effects, manage product upgrades, or replace the independently usable Flow, Flow Agents, and Console CLIs.
+Delegation uses a validated descriptor, a Node-resolved or explicitly supplied contained package bin, an argv array, and no shell. Discovery and diagnostic commands are offline. The router does not merge packages, host Station, implement server behavior, authorize side effects, manage product upgrades, or replace the independently usable Flow, Flow Agents, and Console CLIs.

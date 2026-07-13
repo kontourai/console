@@ -32,7 +32,7 @@ npx --yes --package @kontourai/cli@<exact-version> \
   kontour console serve
 ```
 
-The router is offline and never installs missing products itself. Use exact versions and explicit `--product-root=<flow|flow-agents|console>=<absolute-package-root>` mappings for reproducible or offline operation. See the [Kontour CLI Router specification](docs/specs/kontour-cli-router.md) for Flow/Flow Agents kit ownership, direct-bin compatibility, confirmation boundaries, and compatibility-catalog provenance.
+The router is offline and never installs missing products itself. It discovers compatible product packages installed beside `@kontourai/cli` through normal Node package resolution. Explicit `--product-root=<flow|flow-agents|console>=<absolute-package-root>` mappings take precedence for reproducible or offline overrides. `kontour --help` and `kontour init --help` are inert and do not require repository setup. See the [Kontour CLI Router specification](docs/specs/kontour-cli-router.md) for Flow/Flow Agents kit ownership, direct-bin compatibility, confirmation boundaries, and compatibility-catalog provenance.
 
 Run the inspector against any directory without installing anything:
 

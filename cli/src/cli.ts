@@ -6,6 +6,7 @@ import { buildRouterOutput, renderRouterOutput } from "./output";
 import { routeCommand } from "./router";
 import type { RouterCommand } from "./router-output";
 import { runInit } from "./init";
+import { helpScope, renderHelp } from "./help";
 
 const PRODUCT_IDS = new Set<CatalogProductId>(["console", "flow", "flow-agents"]);
 const BUILT_INS = new Set<RouterCommand>(["products", "capabilities", "doctor"]);
@@ -31,6 +32,11 @@ export async function runCli(
   io: CliIo = { stdout: process.stdout, stderr: process.stderr },
   dependencies: CliDependencies = {},
 ): Promise<number> {
+  const requestedHelp = helpScope(argv);
+  if (requestedHelp) {
+    io.stdout.write(renderHelp(requestedHelp));
+    return 0;
+  }
   const parsed = parseCommandLine(argv);
   if (!parsed.ok) return error(io, parsed.code, parsed.message);
   const [name, ...rest] = parsed.argv;
