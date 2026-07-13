@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.7.0](https://github.com/kontourai/console/compare/v2.6.2...v2.7.0) (2026-07-13)
+
+
+### Features
+
+* **cli:** discover installed products and make help inert ([#203](https://github.com/kontourai/console/issues/203)) ([39aeb7f](https://github.com/kontourai/console/commit/39aeb7f2e036e956de30183a0b589144e83a23a9))
+* **console-ui:** Telemetry Focus — what you're working on, by project ([#180](https://github.com/kontourai/console/issues/180)/[#183](https://github.com/kontourai/console/issues/183)) ([#199](https://github.com/kontourai/console/issues/199)) ([d8c836d](https://github.com/kontourai/console/commit/d8c836d2cad5d338ce30c4d122886ede39c4207a))
+
+
+### Bug Fixes
+
+* **release:** orchestrate immutable package targets ([46bbc05](https://github.com/kontourai/console/commit/46bbc05832327eeb64988cba12fb4f3bdd386840))
+* **release:** orchestrate immutable package targets ([43fdaf5](https://github.com/kontourai/console/commit/43fdaf52644b20f29373fea01bda7cc02f6c566f))
+* **release:** verify tag ancestry with complete main history ([081483f](https://github.com/kontourai/console/commit/081483ff375f505ae65150f9d2d7517482a262b5))
+* **release:** verify tag ancestry with complete main history ([d03fdd8](https://github.com/kontourai/console/commit/d03fdd874cc725abba6e40ce7f05b42c52f7d81d))
+
 ## [2.6.2](https://github.com/kontourai/console/compare/v2.6.1...v2.6.2) (2026-07-12)
 
 

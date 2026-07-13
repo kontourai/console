@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/kontourai/console/compare/cli-v0.3.1...cli-v0.4.0) (2026-07-13)
+
+
+### Features
+
+* **cli:** discover installed products and make help inert ([#203](https://github.com/kontourai/console/issues/203)) ([39aeb7f](https://github.com/kontourai/console/commit/39aeb7f2e036e956de30183a0b589144e83a23a9))
+
 ## [0.3.1](https://github.com/kontourai/console/compare/cli-v0.3.0...cli-v0.3.1) (2026-07-12)
 
 

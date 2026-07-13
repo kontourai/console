@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/cli",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Offline-first suite router for Kontour products.",
   "license": "Apache-2.0",
   "repository": {
