@@ -3,6 +3,8 @@ import { formatTime } from "../utils/format";
 import { TelemetryDrilldownHeader } from "./telemetry/DrilldownHeader";
 import { TelemetryFilterBar } from "./telemetry/FilterBar";
 import { telemetryFacets } from "./telemetry/facets";
+import { deriveFocusMap } from "./telemetry/focus";
+import { TelemetryFocus } from "./telemetry/FocusPanel";
 import { TelemetryGrid } from "./telemetry/Grid";
 import { labelFilters } from "./telemetry/queryModel";
 import { TelemetryQueryControls } from "./telemetry/QueryControls";
@@ -17,6 +19,7 @@ export function TelemetrySection({ telemetry, error, query, drilldown, onQueryCh
   const allEvents = telemetry?.records || [];
   const filters = useMemo(() => labelFilters(query.filters || [], telemetry), [query.filters, telemetry]);
   const facets = useMemo(() => telemetryFacets(telemetry, allEvents), [telemetry, allEvents]);
+  const focus = useMemo(() => deriveFocusMap(allEvents), [allEvents]);
   const pagination = telemetry?.pagination;
   const matchedCount = pagination?.matchedCount ?? pagination?.totalMatchedCount ?? pagination?.totalCount ?? allEvents.length;
   const returnedCount = pagination?.returnedCount ?? allEvents.length;
@@ -46,6 +49,7 @@ export function TelemetrySection({ telemetry, error, query, drilldown, onQueryCh
       <TelemetrySavedPresets query={query} onQueryChange={onQueryChange} />
       {drilldown ? <TelemetryDrilldownHeader drilldown={drilldown} onOpenRoute={onOpenRoute} query={query} /> : null}
       <TelemetryTotals telemetry={telemetry} />
+      <TelemetryFocus focus={focus} filters={filters} onToggleFilter={actions.toggleFilter} />
       <TelemetryFilterBar
         filters={filters}
         shownCount={returnedCount}
