@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-const workflowPath = path.join(__dirname, "..", ".github", "workflows", "publish-npm.yml");
+const workflowDirectory = path.join(__dirname, "..", ".github", "workflows");
+const workflowPath = path.join(workflowDirectory, "publish-npm.yml");
+const releaseWorkflowPath = path.join(__dirname, "..", ".github", "workflows", "release-please.yml");
 const resolverPath = path.join(__dirname, "resolve-release-target.sh");
 
 test("primary npm publish path fails closed and confirms the released version", async () => {
@@ -56,12 +58,39 @@ test("current workflow definition requires an explicit immutable target tag", as
   const invocation = workflow.slice(workflow.indexOf("on:"), workflow.indexOf("permissions:"));
 
   assert.match(invocation, /workflow_call:[\s\S]*target_tag:[\s\S]*required: true/);
-  assert.match(invocation, /workflow_dispatch:[\s\S]*target_tag:[\s\S]*required: true/);
+  assert.doesNotMatch(invocation, /workflow_dispatch:/);
   assert.doesNotMatch(invocation, /push:/);
   assert.match(workflow, /Verify Current Main Workflow Definition/);
   assert.match(workflow, /if \[ "\$\{GITHUB_REF\}" != "refs\/heads\/main" \]/);
   assert.match(workflow, /ref: \$\{\{ needs\.gate\.outputs\.target_sha \}\}/);
   assert.doesNotMatch(workflow, /ref: \$\{\{ inputs\.target_tag \}\}/);
+});
+
+test("automatic releases and retries share one trusted-publisher workflow identity", async () => {
+  const [publisher, release] = await Promise.all([
+    readFile(workflowPath, "utf8"),
+    readFile(releaseWorkflowPath, "utf8"),
+  ]);
+  const publisherInvocation = publisher.slice(publisher.indexOf("on:"), publisher.indexOf("permissions:"));
+  const releaseInvocation = release.slice(release.indexOf("on:"), release.indexOf("permissions:"));
+  const retry = release.slice(release.indexOf("  retry-publish:"), release.indexOf("  publish-core:"));
+
+  assert.doesNotMatch(publisherInvocation, /workflow_dispatch:/);
+  assert.match(releaseInvocation, /workflow_dispatch:[\s\S]*target_tag:[\s\S]*required: false/);
+  assert.match(release, /release-please:\n    if: github\.event_name == 'push' \|\| inputs\.target_tag == ''/);
+  assert.match(retry, /if: github\.event_name == 'workflow_dispatch' && inputs\.target_tag != ''/);
+  assert.match(retry, /uses: \.\/\.github\/workflows\/publish-npm\.yml/);
+  assert.match(retry, /target_tag: \$\{\{ inputs\.target_tag \}\}/);
+  assert.match(retry, /permissions:\n      contents: read\n      id-token: write/);
+  assert.match(publisher, /publish:\n    needs: \[gate, verify\][\s\S]*permissions:\n      contents: read\n      id-token: write/);
+
+  const callers: string[] = [];
+  for (const name of await readdir(workflowDirectory)) {
+    if (!/\.ya?ml$/.test(name) || name === "publish-npm.yml") continue;
+    const candidate = await readFile(path.join(workflowDirectory, name), "utf8");
+    if (candidate.includes("uses: ./.github/workflows/publish-npm.yml")) callers.push(name);
+  }
+  assert.deepEqual(callers, ["release-please.yml"], "release-please.yml must be the only caller identity for npm publishing");
 });
 
 test("exact tag fixture sanitizes inherited Git state and rejects a branch replacing a removed tag", () => {

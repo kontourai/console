@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      target_tag:
+        description: Optional immutable package tag to retry instead of running Release Please
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -13,6 +19,7 @@ permissions:
 
 jobs:
   release-please:
+    if: github.event_name == 'push' || inputs.target_tag == ''
     runs-on: ubuntu-latest
     outputs:
       console_release_created: ${{ steps.release.outputs.release_created }}
@@ -40,6 +47,17 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # npm trusted publishing validates the calling workflow for workflow_call.
+  # Keep retries under this same top-level identity as automatic releases.
+  retry-publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.target_tag != ''
+    uses: ./.github/workflows/publish-npm.yml
+    with:
+      target_tag: ${{ inputs.target_tag }}
+    permissions:
+      contents: read
+      id-token: write
 
 
   # Call the workflow definition from this main revision while package contents

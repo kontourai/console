@@ -20,7 +20,7 @@ Console is the suite operating plane over the primitives — it renders and corr
 - Any code change: `npm test` (typecheck, content boundary, all workspace suites, dev-local, browser tests).
 - Public-facing copy: `npm run check:content-boundary` — this repo must not leak private deployment or vertical terms.
 - Package metadata/exports/bins: `npm pack --dry-run` per workspace; node:sqlite requires Node >= 22.
-- Releases: tag `v*` publishes `@kontourai/console-core` then `@kontourai/console` via OIDC.
+- Releases: `release-please.yml` is the single npm trusted-publisher identity; it publishes exact component tags via OIDC and owns immutable-tag retries. See [docs/deployment/npm-package-releases.md](docs/deployment/npm-package-releases.md).
 
 ## Useful Commands
 
