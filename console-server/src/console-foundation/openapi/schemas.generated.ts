@@ -72,6 +72,44 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "economics"
     ]
   },
+  "TelemetryActionClass": {
+    "type": "string",
+    "enum": [
+      "edit",
+      "read",
+      "search",
+      "execute",
+      "web",
+      "delegate",
+      "other"
+    ]
+  },
+  "TelemetryActionClassSummary": {
+    "type": "object",
+    "properties": {
+      "actionClass": {
+        "$ref": "#/definitions/TelemetryActionClass"
+      },
+      "label": {
+        "type": "string"
+      },
+      "count": {
+        "type": "number",
+        "description": "Distinct tool *actions* (tool.invoke events; tool.result is the paired completion of the same action and is not counted again)."
+      },
+      "sessionCount": {
+        "type": "number",
+        "description": "Distinct sessions that performed at least one action in this class."
+      }
+    },
+    "required": [
+      "actionClass",
+      "label",
+      "count",
+      "sessionCount"
+    ],
+    "additionalProperties": false
+  },
   "TelemetryAnalyticsSummary": {
     "type": "object",
     "properties": {
@@ -110,6 +148,15 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
         "items": {
           "$ref": "#/definitions/TelemetryUsageBreakdown"
         }
+      },
+      "actionClasses": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryActionClassSummary"
+        }
+      },
+      "costPerTurn": {
+        "$ref": "#/definitions/TelemetryTurnCostSummary"
       }
     },
     "required": [
@@ -118,7 +165,9 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "usageByModel",
       "usageByProject",
       "usageByAgent",
-      "usageByRuntime"
+      "usageByRuntime",
+      "actionClasses",
+      "costPerTurn"
     ],
     "additionalProperties": false
   },
@@ -575,6 +624,82 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "analytics",
       "records",
       "warnings"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryTurnCost": {
+    "type": "object",
+    "properties": {
+      "inputTokens": {
+        "type": "number"
+      },
+      "outputTokens": {
+        "type": "number"
+      },
+      "cacheCreationInputTokens": {
+        "type": "number"
+      },
+      "cacheReadInputTokens": {
+        "type": "number"
+      },
+      "totalTokens": {
+        "type": "number"
+      },
+      "estimatedCostUsd": {
+        "type": "number"
+      },
+      "turnId": {
+        "type": "string"
+      },
+      "sessionId": {
+        "type": "string"
+      },
+      "model": {
+        "type": "string"
+      },
+      "toolCount": {
+        "type": "number",
+        "description": "tool.invoke events observed in this turn."
+      },
+      "startedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "cacheCreationInputTokens",
+      "cacheReadInputTokens",
+      "estimatedCostUsd",
+      "inputTokens",
+      "outputTokens",
+      "sessionId",
+      "toolCount",
+      "totalTokens",
+      "turnId"
+    ],
+    "additionalProperties": false,
+    "description": "One turn's cost, de-duplicated from the per-event usage snapshot that every tool event of the turn carries (flow-agents emitter slice #568). The snapshot is identical across a turn's events, so the turn is attributed its cost once — NOT once per tool call. This is the correct per-turn cost basis."
+  },
+  "TelemetryTurnCostSummary": {
+    "type": "object",
+    "properties": {
+      "turns": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryTurnCost"
+        }
+      },
+      "turnCount": {
+        "type": "number"
+      },
+      "totalEstimatedCostUsd": {
+        "type": "number",
+        "description": "Sum of each distinct turn's cost — every turn counted once."
+      }
+    },
+    "required": [
+      "turns",
+      "turnCount",
+      "totalEstimatedCostUsd"
     ],
     "additionalProperties": false
   },

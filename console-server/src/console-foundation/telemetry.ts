@@ -8,6 +8,10 @@ import type {
   OpenRecord,
   TelemetryDeliveryResult,
   TelemetryAnalyticsSummary,
+  TelemetryActionClass,
+  TelemetryActionClassSummary,
+  TelemetryTurnCost,
+  TelemetryTurnCostSummary,
   TelemetryStorageAdapterName,
   TelemetryFlowItem,
   TelemetryFlowSummary,
@@ -855,7 +859,9 @@ function buildAnalytics(records: TelemetryRecordSummary[], descriptor: Telemetry
     usageByModel: usageByModelBreakdown(records),
     usageByProject: usageByDimensionBreakdown(records, (r) => r.project),
     usageByAgent: usageByDimensionBreakdown(records, (r) => r.agentName),
-    usageByRuntime: usageByDimensionBreakdown(records, (r) => r.runtime)
+    usageByRuntime: usageByDimensionBreakdown(records, (r) => r.runtime),
+    actionClasses: actionTaxonomy(records),
+    costPerTurn: costPerTurn(records)
   };
 }
 
@@ -1574,6 +1580,186 @@ function usageByDimensionBreakdown(
       estimatedCostUsd: round6(entry.estimatedCostUsd)
     }))
     .sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd);
+}
+
+// #180 read-model projections ------------------------------------------------
+
+// Cap on the per-turn detail list returned in an analytics summary. Aggregates
+// (turnCount, totalEstimatedCostUsd) are always exact over every turn.
+const MAX_COST_PER_TURN_ROWS = 200;
+
+const ACTION_CLASS_LABELS: Record<TelemetryActionClass, string> = {
+  edit: "Edit",
+  read: "Read",
+  search: "Search",
+  execute: "Execute",
+  web: "Web",
+  delegate: "Delegate",
+  other: "Other"
+};
+
+// Integration-agnostic tool-name → action-class map. Keys are lowercased tool
+// names as they arrive from any runtime: the emitter normalizes some (fs_write,
+// fs_read, execute_bash, use_subagent) and passes others through verbatim
+// (Grep, Glob, WebFetch, Task, …), so both the normalized and raw spellings are
+// listed. Anything unmatched falls through to "other" rather than being guessed.
+//
+// A Map — NOT a plain object — because the lookup key is the untrusted,
+// tenant-supplied tool name from an ingested record. Indexing a plain object
+// with `"constructor"` / `"__proto__"` would return an inherited built-in
+// instead of undefined and defeat the `?? "other"` fallback.
+const ACTION_CLASS_BY_TOOL: ReadonlyMap<string, TelemetryActionClass> = new Map(
+  Object.entries<TelemetryActionClass>({
+    // edit — mutating a file
+    fs_write: "edit", edit: "edit", multiedit: "edit", write: "edit", apply_patch: "edit",
+    code: "edit", str_replace: "edit", str_replace_editor: "edit", create: "edit", notebookedit: "edit",
+    // read — reading a file's contents
+    fs_read: "read", read: "read", view: "read", open: "read", cat: "read",
+    // search — locating without reading full contents
+    grep: "search", glob: "search", search: "search", fs_search: "search",
+    ripgrep: "search", rg: "search", find: "search", ls: "search", list_dir: "search",
+    // web — reaching the network
+    webfetch: "web", websearch: "web", fetch: "web", web_search: "web",
+    browser: "web", navigate: "web", open_url: "web",
+    // delegate — handing work to a sub-agent
+    use_subagent: "delegate", task: "delegate", agent: "delegate",
+    spawn_agent: "delegate", invokesubagents: "delegate",
+    // execute — running a shell command (test/git/build stay folded in here until
+    // the emitter sends an explicit action class; see TelemetryActionClass note)
+    execute_bash: "execute", bash: "execute", shell: "execute", run: "execute",
+    exec: "execute", command: "execute", terminal: "execute"
+  })
+);
+
+/** Classify a tool call into a coarse, integration-agnostic action class. Pure.
+ *  `toolName` is untrusted, tenant-supplied text; the Map lookup + explicit
+ *  string guard keep any value (including `constructor`/`__proto__`) mapping to
+ *  a valid class or "other", never to an inherited built-in. */
+export function classifyActionClass(toolName: string | undefined): TelemetryActionClass {
+  if (typeof toolName !== "string") return "other";
+  const name = toolName.trim().toLowerCase();
+  if (!name) return "other";
+  return ACTION_CLASS_BY_TOOL.get(name) ?? "other";
+}
+
+/** A tool.invoke marks one action; its paired tool.result is the same action
+ *  completing, so counting invokes avoids double-counting every tool call. */
+function isToolInvokeRecord(record: TelemetryRecordSummary): boolean {
+  return record.eventType === "tool.invoke";
+}
+
+/** Activity by action class over the tool.invoke stream. Pure. */
+function actionTaxonomy(records: TelemetryRecordSummary[]): TelemetryActionClassSummary[] {
+  const counts = new Map<TelemetryActionClass, { count: number; sessions: Set<string> }>();
+  for (const record of records) {
+    if (!isToolInvokeRecord(record)) continue;
+    const actionClass = classifyActionClass(record.toolName);
+    const entry = counts.get(actionClass) || { count: 0, sessions: new Set<string>() };
+    entry.count += 1;
+    if (record.sessionId) entry.sessions.add(record.sessionId);
+    counts.set(actionClass, entry);
+  }
+  return Array.from(counts.entries())
+    .map(([actionClass, entry]) => ({
+      actionClass,
+      label: ACTION_CLASS_LABELS[actionClass],
+      count: entry.count,
+      sessionCount: entry.sessions.size
+    }))
+    .sort((a, b) => b.count - a.count || a.actionClass.localeCompare(b.actionClass));
+}
+
+/** Per-turn cost, de-duplicating the identical usage snapshot that every tool
+ *  event of a turn carries (#568). Each turn is attributed its cost once — the
+ *  correct basis, unlike a naive per-event sum. Pure. */
+function totalRecordTokens(record: TelemetryRecordSummary): number {
+  return (
+    num(record.inputTokens) +
+    num(record.outputTokens) +
+    num(record.cacheCreationInputTokens) +
+    num(record.cacheReadInputTokens)
+  );
+}
+
+/** Is `candidate` the more complete usage snapshot for a turn than `incumbent`?
+ *  A turn's tool events normally carry an identical snapshot, but a snapshot can
+ *  legitimately grow (or the model switch) mid-turn; the most complete snapshot
+ *  is the largest by total tokens. Ties break deterministically (higher cost,
+ *  then lexicographically smaller eventId) so selection is independent of the
+ *  order records arrive in — the projection stays pure. */
+function isMoreCompleteSnapshot(candidate: TelemetryRecordSummary, incumbent: TelemetryRecordSummary): boolean {
+  const ct = totalRecordTokens(candidate);
+  const it = totalRecordTokens(incumbent);
+  if (ct !== it) return ct > it;
+  const cc = num(candidate.estimatedCostUsd);
+  const ic = num(incumbent.estimatedCostUsd);
+  if (cc !== ic) return cc > ic;
+  return (candidate.eventId || "") < (incumbent.eventId || "");
+}
+
+export function costPerTurn(records: TelemetryRecordSummary[]): TelemetryTurnCostSummary {
+  interface TurnAccumulator {
+    // The single canonical record whose usage snapshot represents the turn.
+    // Copied atomically into the row so model/tokens/cost are always mutually
+    // consistent — never composited field-by-field across divergent snapshots.
+    canonical: TelemetryRecordSummary;
+    toolCount: number;
+    startedAt?: string;
+  }
+  const byTurn = new Map<string, TurnAccumulator>();
+  for (const record of records) {
+    const turnId = record.turnId;
+    // Turn-scoped by definition: a record without a turnId cannot be attributed
+    // to a turn, so it is excluded from both the per-turn rows and the total.
+    if (!turnId) continue;
+    const current = byTurn.get(turnId);
+    if (!current) {
+      byTurn.set(turnId, {
+        canonical: record,
+        toolCount: isToolInvokeRecord(record) ? 1 : 0,
+        startedAt: record.observedAt
+      });
+      continue;
+    }
+    if (isMoreCompleteSnapshot(record, current.canonical)) current.canonical = record;
+    if (isToolInvokeRecord(record)) current.toolCount += 1;
+    if (record.observedAt && (!current.startedAt || record.observedAt < current.startedAt)) {
+      current.startedAt = record.observedAt;
+    }
+  }
+  const turns: TelemetryTurnCost[] = Array.from(byTurn.entries())
+    .map(([turnId, acc]): TelemetryTurnCost => {
+      const c = acc.canonical;
+      const inputTokens = num(c.inputTokens);
+      const outputTokens = num(c.outputTokens);
+      const cacheCreationInputTokens = num(c.cacheCreationInputTokens);
+      const cacheReadInputTokens = num(c.cacheReadInputTokens);
+      return {
+        turnId,
+        sessionId: c.sessionId,
+        model: c.model,
+        inputTokens,
+        outputTokens,
+        cacheCreationInputTokens,
+        cacheReadInputTokens,
+        totalTokens: inputTokens + outputTokens + cacheCreationInputTokens + cacheReadInputTokens,
+        estimatedCostUsd: round6(num(c.estimatedCostUsd)),
+        toolCount: acc.toolCount,
+        startedAt: acc.startedAt
+      };
+    })
+    .sort((a, b) => {
+      const at = Date.parse(a.startedAt || "");
+      const bt = Date.parse(b.startedAt || "");
+      if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return bt - at;
+      return a.turnId.localeCompare(b.turnId);
+    });
+  // Aggregates are computed over EVERY turn; the detail list is capped so a
+  // no-parameter /api/telemetry response stays bounded (analytics is a summary,
+  // like the facet/flow breakdowns). turnCount + totalEstimatedCostUsd remain
+  // exact; callers wanting more detail narrow the query window.
+  const totalEstimatedCostUsd = round6(turns.reduce((sum, turn) => sum + turn.estimatedCostUsd, 0));
+  return { turns: turns.slice(0, MAX_COST_PER_TURN_ROWS), turnCount: turns.length, totalEstimatedCostUsd };
 }
 
 function projectNameFromCwd(cwd: string | undefined): string | undefined {

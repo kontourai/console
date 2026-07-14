@@ -974,6 +974,55 @@ export interface TelemetryAnalyticsSummary {
   usageByProject: TelemetryUsageBreakdown[];
   usageByAgent: TelemetryUsageBreakdown[];
   usageByRuntime: TelemetryUsageBreakdown[];
+  // #180 read-model projections — turn raw tool events into operator meaning.
+  actionClasses: TelemetryActionClassSummary[];
+  costPerTurn: TelemetryTurnCostSummary;
+}
+
+// A coarse, integration-agnostic classification of what a tool call *did*.
+// Derived from the (normalized or raw) tool name so it works across runtimes
+// (Claude Code `Edit`/`Bash`/`Grep`, Codex `apply_patch`/`shell`, etc.).
+// `execute` stays coarse today: distinguishing test/git/build within a shell
+// call needs the command string, which the telemetry summary deliberately does
+// not carry — the emitter will classify that client-side and send an explicit
+// action class (flow-agents action-class slice) that this projection can adopt.
+export type TelemetryActionClass =
+  | "edit"
+  | "read"
+  | "search"
+  | "execute"
+  | "web"
+  | "delegate"
+  | "other";
+
+export interface TelemetryActionClassSummary {
+  actionClass: TelemetryActionClass;
+  label: string;
+  /** Distinct tool *actions* (tool.invoke events; tool.result is the paired
+   *  completion of the same action and is not counted again). */
+  count: number;
+  /** Distinct sessions that performed at least one action in this class. */
+  sessionCount: number;
+}
+
+/** One turn's cost, de-duplicated from the per-event usage snapshot that every
+ *  tool event of the turn carries (flow-agents emitter slice #568). The snapshot
+ *  is identical across a turn's events, so the turn is attributed its cost once —
+ *  NOT once per tool call. This is the correct per-turn cost basis. */
+export interface TelemetryTurnCost extends TelemetryUsageTotals {
+  turnId: string;
+  sessionId: string;
+  model?: string;
+  /** tool.invoke events observed in this turn. */
+  toolCount: number;
+  startedAt?: string;
+}
+
+export interface TelemetryTurnCostSummary {
+  turns: TelemetryTurnCost[];
+  turnCount: number;
+  /** Sum of each distinct turn's cost — every turn counted once. */
+  totalEstimatedCostUsd: number;
 }
 
 export interface TelemetrySourceSummary {
