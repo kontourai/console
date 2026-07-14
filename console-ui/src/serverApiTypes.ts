@@ -129,6 +129,36 @@ export interface ConsoleTelemetryUsageBreakdown extends ConsoleTelemetryUsageTot
   label: string;
 }
 
+export type ConsoleTelemetryActionClass =
+  | "edit"
+  | "read"
+  | "search"
+  | "execute"
+  | "web"
+  | "delegate"
+  | "other";
+
+export interface ConsoleTelemetryActionClassSummary {
+  actionClass: ConsoleTelemetryActionClass;
+  label: string;
+  count: number;
+  sessionCount: number;
+}
+
+export interface ConsoleTelemetryTurnCost extends ConsoleTelemetryUsageTotals {
+  turnId: string;
+  sessionId: string;
+  model?: string;
+  toolCount: number;
+  startedAt?: string;
+}
+
+export interface ConsoleTelemetryTurnCostSummary {
+  turns: ConsoleTelemetryTurnCost[];
+  turnCount: number;
+  totalEstimatedCostUsd: number;
+}
+
 export interface ConsoleTelemetryAnalyticsSummary {
   facets: ConsoleTelemetryFacetSummary[];
   flows: ConsoleTelemetryFlowSummary[];
@@ -136,6 +166,8 @@ export interface ConsoleTelemetryAnalyticsSummary {
   usageByProject: ConsoleTelemetryUsageBreakdown[];
   usageByAgent: ConsoleTelemetryUsageBreakdown[];
   usageByRuntime: ConsoleTelemetryUsageBreakdown[];
+  actionClasses: ConsoleTelemetryActionClassSummary[];
+  costPerTurn: ConsoleTelemetryTurnCostSummary;
 }
 
 export interface ConsoleTelemetryResponse {
