@@ -1504,6 +1504,7 @@ function emptyUsageTotals(): TelemetryUsageTotals {
 function usageTotals(records: TelemetryRecordSummary[]): TelemetryUsageTotals {
   const totals = emptyUsageTotals();
   for (const record of records) {
+    if (isPerEventUsageSnapshot(record)) continue;
     totals.inputTokens += num(record.inputTokens);
     totals.outputTokens += num(record.outputTokens);
     totals.cacheCreationInputTokens += num(record.cacheCreationInputTokens);
@@ -1553,6 +1554,7 @@ function usageByDimensionBreakdown(
 ): TelemetryUsageBreakdown[] {
   const byKey = new Map<string, TelemetryUsageBreakdown>();
   for (const record of records) {
+    if (isPerEventUsageSnapshot(record)) continue;
     if (record.estimatedCostUsd === undefined && record.inputTokens === undefined) continue;
     const key = (keyOf(record) || "unknown").trim() || "unknown";
     const current = byKey.get(key) || {
@@ -1646,6 +1648,16 @@ export function classifyActionClass(toolName: string | undefined): TelemetryActi
  *  completing, so counting invokes avoids double-counting every tool call. */
 function isToolInvokeRecord(record: TelemetryRecordSummary): boolean {
   return record.eventType === "tool.invoke";
+}
+
+/** A tool event carries the turn's usage SNAPSHOT (flow-agents #568), repeated
+ *  across every tool.invoke/tool.result of the turn. It is a per-turn view of
+ *  cost the authoritative session.usage record already accounts for once — never
+ *  additional cost. Flat cost/token aggregators (usageTotals, dimension
+ *  breakdowns) must skip these to avoid counting a turn's cost once per tool
+ *  call; costPerTurn is the projection that reads them (de-duplicated). */
+function isPerEventUsageSnapshot(record: TelemetryRecordSummary): boolean {
+  return record.eventType === "tool.invoke" || record.eventType === "tool.result";
 }
 
 /** Activity by action class over the tool.invoke stream. Pure. */
