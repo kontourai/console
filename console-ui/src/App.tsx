@@ -254,7 +254,7 @@ export default function App() {
           onOpen={(target: OverviewTarget) => selectView(target)}
         />
       ) : view === "board" ? (
-        <BoardSection state={state} />
+        <BoardSection state={state} fetchProjection={(runId) => getFlowRunProjection(hubUrl, runId, auth)} />
       ) : view === "operate" ? (
         <>
           <StageBand state={state} />

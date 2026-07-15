@@ -1,19 +1,33 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { OperatingState } from "@kontourai/console-core";
 import { Empty } from "@kontourai/ui/react";
 import { formatRelative } from "../utils/format";
 import { deriveBoard, type BoardCard, type BoardColumn } from "./board/board";
+import { BoardDrilldown } from "./board/BoardDrilldown";
 
 /**
  * #177 Board — the high-level front door. A Kanban of work items in flight,
- * grouped by flow stage, with gate health per card. Single-tenant for now: the
- * Me / Team / Everyone-live filter waits on per-user identity (#98/#159), and
- * live agent presence per card waits on a verified liveness↔process id mapping
- * (see board.ts) — both intentionally absent rather than faked. Card →
- * drill-down (#178) is not wired yet.
+ * grouped by flow stage, with gate health per card. Clicking a card opens the
+ * work-item drill-down (#178). Single-tenant for now: the Me / Team /
+ * Everyone-live filter waits on per-user identity (#98/#159), and live agent
+ * presence per card waits on a verified liveness↔process id mapping (see
+ * board.ts) — both intentionally absent rather than faked.
  */
-export function BoardSection({ state }: { state: OperatingState }) {
+export function BoardSection({
+  state,
+  fetchProjection
+}: {
+  state: OperatingState;
+  fetchProjection?: (runId: string) => Promise<unknown | null>;
+}) {
   const board = useMemo(() => deriveBoard(state), [state]);
+  const [selected, setSelected] = useState<BoardCard | null>(null);
+
+  // Keep the selected card in sync with the latest projection (its stage/gates
+  // may change); drop it if the work item leaves the board entirely.
+  const selectedCard = selected
+    ? board.columns.flatMap((column) => column.cards).find((card) => card.id === selected.id) ?? null
+    : null;
 
   return (
     <section className="board-section" aria-label="Board">
@@ -32,15 +46,32 @@ export function BoardSection({ state }: { state: OperatingState }) {
       ) : (
         <div className="board-columns" role="list" aria-label="Flow stages">
           {board.columns.map((column) => (
-            <BoardStageColumn key={column.stage} column={column} />
+            <BoardStageColumn
+              key={column.stage}
+              column={column}
+              selectedId={selectedCard?.id ?? null}
+              onSelect={fetchProjection ? setSelected : undefined}
+            />
           ))}
         </div>
       )}
+
+      {selectedCard && fetchProjection ? (
+        <BoardDrilldown card={selectedCard} fetchProjection={fetchProjection} onClose={() => setSelected(null)} />
+      ) : null}
     </section>
   );
 }
 
-function BoardStageColumn({ column }: { column: BoardColumn }) {
+function BoardStageColumn({
+  column,
+  selectedId,
+  onSelect
+}: {
+  column: BoardColumn;
+  selectedId: string | null;
+  onSelect?: (card: BoardCard) => void;
+}) {
   return (
     <div className={`board-column board-column-${column.stage}`} role="listitem" aria-label={column.label}>
       <div className="board-column-head">
@@ -50,7 +81,7 @@ function BoardStageColumn({ column }: { column: BoardColumn }) {
       {column.cards.length > 0 ? (
         <ul className="board-cards">
           {column.cards.map((card) => (
-            <BoardCardView key={card.id} card={card} />
+            <BoardCardView key={card.id} card={card} selected={card.id === selectedId} onSelect={onSelect} />
           ))}
         </ul>
       ) : (
@@ -60,10 +91,18 @@ function BoardStageColumn({ column }: { column: BoardColumn }) {
   );
 }
 
-function BoardCardView({ card }: { card: BoardCard }) {
+function BoardCardView({
+  card,
+  selected,
+  onSelect
+}: {
+  card: BoardCard;
+  selected: boolean;
+  onSelect?: (card: BoardCard) => void;
+}) {
   const pct = typeof card.percentComplete === "number" ? Math.max(0, Math.min(100, card.percentComplete)) : null;
-  return (
-    <li className="board-card">
+  const meta = (
+    <>
       <p className="board-card-title" title={card.title}>{card.title}</p>
       {card.stepLabel ? <p className="board-card-step">{card.stepLabel}</p> : null}
       {pct != null ? (
@@ -84,6 +123,24 @@ function BoardCardView({ card }: { card: BoardCard }) {
         ) : null}
         {card.updatedAt ? <span className="board-card-time">{formatRelative(card.updatedAt)}</span> : null}
       </div>
+    </>
+  );
+
+  // When drill-down is available the whole card is a button; otherwise it's a
+  // plain, non-interactive card (no fake affordance).
+  if (!onSelect) {
+    return <li className="board-card">{meta}</li>;
+  }
+  return (
+    <li className="board-card">
+      <button
+        type="button"
+        className={`board-card-button${selected ? " selected" : ""}`}
+        aria-pressed={selected}
+        onClick={() => onSelect(card)}
+      >
+        {meta}
+      </button>
     </li>
   );
 }

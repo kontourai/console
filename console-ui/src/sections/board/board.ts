@@ -75,6 +75,9 @@ const PASSED_GATE_STATUSES = new Set(["passed", "approved", "accepted", "complet
 
 export interface BoardCard {
   id: string;
+  /** The flow run id for drill-down (#178): the process id with its `run-`
+   *  prefix stripped, matching the `/ingest/flow/:runId` projection key. */
+  runId: string;
   title: string;
   stage: BoardStage;
   stepLabel?: string;
@@ -82,6 +85,15 @@ export interface BoardCard {
   gatesPassed: number;
   gatesBlocked: number;
   updatedAt?: string;
+}
+
+/**
+ * Recover the flow run id from a process id. flow-bridge and flow-ingest both
+ * build the operating-state subject id as `run-${runId}`, while the projection
+ * read endpoint is keyed by the bare `runId` — so drill-down strips the prefix.
+ */
+export function runIdFromProcessId(processId: string): string {
+  return processId.startsWith("run-") ? processId.slice(4) : processId;
 }
 
 export interface BoardColumn {
@@ -132,6 +144,7 @@ export function deriveBoard(state: OperatingState | null | undefined): BoardMode
     const step = process.currentStep;
     columnByStage.get(stage)!.cards.push({
       id: process.id,
+      runId: runIdFromProcessId(process.id),
       title: process.label || process.id,
       stage,
       stepLabel: typeof step === "string" ? step : step?.label || step?.id,
