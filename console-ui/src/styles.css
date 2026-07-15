@@ -3338,3 +3338,96 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
   margin-inline-start: auto;
   color: var(--dim);
 }
+
+/* ── #178 work-item drill-down: card → flow position, gates, evidence ────── */
+.board-card:has(.board-card-button) {
+  padding: 0;
+}
+
+.board-card-button {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: start;
+  padding: 10px;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.board-card-button:hover {
+  background: color-mix(in oklab, var(--panel-2) 80%, var(--accent) 20%);
+}
+
+.board-card-button.selected {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.board-card-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.board-drilldown {
+  margin-top: 20px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.board-drilldown-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.board-drilldown-title {
+  margin: 2px 0 2px;
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+
+.board-drilldown-run {
+  margin: 0;
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+.board-drilldown-close {
+  flex: none;
+  padding: 5px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.board-drilldown-close:hover {
+  color: var(--text);
+  border-color: var(--line-hot);
+}
+
+.board-drilldown-status {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.board-drilldown-note {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 0.76rem;
+  font-style: italic;
+}

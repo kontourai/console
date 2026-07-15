@@ -735,6 +735,26 @@ test("renders the Board tab: work items grouped by flow stage", async ({ page })
   await expect(verify).toContainText("Survey claim review");
   await expect(page.getByRole("main")).toContainText("1 item");
 
+  // #178 drill-down: clicking the card opens the work item and live-fetches its
+  // flow projection from GET /ingest/flow/:runId (runId = process id, no run-
+  // prefix here). The mock has no projection for it → honest empty state.
+  await verify.locator(".board-card-button").click();
+  await expect(page.locator(".board-drilldown")).toContainText("Survey claim review");
+  await expect(page.locator(".board-drilldown")).toContainText("run process-survey-review");
+  await expect
+    .poll(() => page.evaluate(() => window.__kontourIngestRequests ?? []))
+    .toContain("process-survey-review");
+  await expect(page.locator(".board-drilldown")).toContainText("No flow projection recorded");
+  // The open panel fetches exactly once — a stable (memoized) fetcher must not
+  // refetch on the parent's SSE-driven re-renders.
+  await expect
+    .poll(() => page.evaluate(() => (window.__kontourIngestRequests ?? []).filter((r) => r === "process-survey-review").length))
+    .toBe(1);
+
+  // Closing returns to the board with no drill-down open.
+  await page.locator(".board-drilldown-close").click();
+  await expect(page.locator(".board-drilldown")).toHaveCount(0);
+
   expect(consoleErrors).toEqual([]);
 });
 

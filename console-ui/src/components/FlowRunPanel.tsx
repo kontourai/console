@@ -110,7 +110,7 @@ type ChildFetchState =
  * `unknown` (the read endpoint is Flow-payload-owned, the console validates
  * before mounting). We require the fields <flow-run-panel> reads.
  */
-function asChildProjection(raw: unknown): FlowConsoleProjection | null {
+export function asChildProjection(raw: unknown): FlowConsoleProjection | null {
   if (!raw || typeof raw !== "object") return null;
   const candidate = raw as FlowConsoleProjection;
   if (!candidate.run || typeof candidate.run.run_id !== "string") return null;
