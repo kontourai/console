@@ -3207,3 +3207,148 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
   border-radius: var(--radius);
   padding: 1px 6px;
 }
+
+/* ── #177 Board — Kanban front door: work items in flight, by flow stage ──── */
+.board-section {
+  display: block;
+}
+
+.board-columns {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.board-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+
+.board-column-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.board-column-label {
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.board-column-count {
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stage accent: a hairline top edge encoding progression cool → active → done. */
+.board-column-backlog { border-top: 2px solid var(--dim); }
+.board-column-planning { border-top: 2px solid var(--cyan); }
+.board-column-in-flight { border-top: 2px solid var(--accent); }
+.board-column-verify { border-top: 2px solid var(--k-caution, var(--cyan)); }
+.board-column-done { border-top: 2px solid var(--good); }
+
+.board-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-column-empty {
+  margin: 6px 0 2px;
+  color: var(--dim);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.board-card-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.board-card-step {
+  margin: 0;
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.board-card-progress {
+  block-size: 4px;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.board-card-progress-fill {
+  display: block;
+  block-size: 100%;
+  background: var(--accent);
+}
+
+.board-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  color: var(--dim);
+}
+
+.board-card-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--good);
+}
+
+.board-card-live-dot {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 999px;
+  background: var(--good);
+}
+
+.board-card-gate { font-variant-numeric: tabular-nums; }
+.board-card-gate-passed { color: var(--good); }
+.board-card-gate-blocked { color: var(--bad); }
+
+.board-card-time {
+  margin-inline-start: auto;
+  color: var(--dim);
+}

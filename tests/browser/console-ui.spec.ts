@@ -720,6 +720,24 @@ test("opens and refreshes telemetry dimension drilldown routes", async ({ page }
   expect(consoleErrors).toEqual([]);
 });
 
+test("renders the Board tab: work items grouped by flow stage", async ({ page }) => {
+  const consoleErrors = await loadConsole(page);
+
+  await page.getByRole("navigation", { name: "Console views" }).getByRole("button", { name: "Board", exact: true }).click();
+  await expect(page.getByRole("main")).toContainText("Work in flight");
+
+  // Five stage columns, always rendered.
+  await expect(page.locator(".board-column")).toHaveCount(5);
+
+  // The mocked process (status "running", step "Review submitted claims") is
+  // classified into Verify and rendered as a card there.
+  const verify = page.locator(".board-column-verify");
+  await expect(verify).toContainText("Survey claim review");
+  await expect(page.getByRole("main")).toContainText("1 item");
+
+  expect(consoleErrors).toEqual([]);
+});
+
 test("keeps the primary console sections within the mobile viewport", async ({ page }) => {
   test.skip(test.info().project.name !== "chromium-mobile", "mobile-only layout check");
   const consoleErrors = await loadOperate(page);

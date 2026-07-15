@@ -12,8 +12,9 @@ import { TimelineSection } from "./sections/TimelineSection";
 import { DEFAULT_TELEMETRY_QUERY, parseTelemetryRoute, serializeTelemetryRoute, withDrilldownFilter, type TelemetryRouteState } from "./utils/telemetryQuery";
 import { WorkGrid } from "./sections/WorkGrid";
 import { OverviewSection, type OverviewTarget } from "./sections/OverviewSection";
+import { BoardSection } from "./sections/BoardSection";
 
-type AppView = "overview" | "operate" | "telemetry" | "economics";
+type AppView = "overview" | "board" | "operate" | "telemetry" | "economics";
 
 const CONNECTION_STORAGE_KEY = "kontour.console.connection.v1";
 
@@ -188,11 +189,13 @@ export default function App() {
     setView(nextView);
     const nextPath = nextView === "telemetry"
       ? serializeTelemetryRoute(telemetryQuery, telemetryRoute.drilldown)
-      : nextView === "operate"
-        ? "/operate"
-        : nextView === "economics"
-          ? "/economics"
-          : "/";
+      : nextView === "board"
+        ? "/board"
+        : nextView === "operate"
+          ? "/operate"
+          : nextView === "economics"
+            ? "/economics"
+            : "/";
     if (`${window.location.pathname}${window.location.search}` !== nextPath) {
       window.history.pushState(null, "", nextPath);
     }
@@ -238,6 +241,7 @@ export default function App() {
       />
       <nav className="view-tabs" aria-label="Console views">
         <button type="button" className={view === "overview" ? "active" : ""} onClick={() => selectView("overview")}>Overview</button>
+        <button type="button" className={view === "board" ? "active" : ""} onClick={() => selectView("board")}>Board</button>
         <button type="button" className={view === "operate" ? "active" : ""} onClick={() => selectView("operate")}>Operate</button>
         <button type="button" className={view === "telemetry" ? "active" : ""} onClick={() => selectView("telemetry")}>Telemetry</button>
         <button type="button" className={view === "economics" ? "active" : ""} onClick={() => selectView("economics")}>Economics</button>
@@ -249,6 +253,8 @@ export default function App() {
           liveStatus={status === "connected" ? "live" : `stream ${status}`}
           onOpen={(target: OverviewTarget) => selectView(target)}
         />
+      ) : view === "board" ? (
+        <BoardSection state={state} />
       ) : view === "operate" ? (
         <>
           <StageBand state={state} />
@@ -289,6 +295,7 @@ export default function App() {
 function viewFromPath(pathname: string): AppView {
   if (pathname === "/telemetry" || pathname.startsWith("/telemetry/")) return "telemetry";
   if (pathname === "/economics" || pathname.startsWith("/economics/")) return "economics";
+  if (pathname === "/board") return "board";
   if (pathname === "/operate") return "operate";
   return "overview";
 }
