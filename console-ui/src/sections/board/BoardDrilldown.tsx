@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FlowConsoleProjection } from "@kontourai/flow/console-contract";
-import { FlowRunPanel } from "../../components/FlowRunPanel";
+import { FlowRunPanel, asChildProjection } from "../../components/FlowRunPanel";
 import { Empty } from "@kontourai/ui/react";
 import type { BoardCard } from "./board";
 
@@ -30,15 +30,27 @@ export function BoardDrilldown({
   const [projection, setProjection] = useState<FlowConsoleProjection | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "empty" | "error">("loading");
 
+  // Read the fetcher through a ref so the fetch effect keys only on the selected
+  // runId, not on the fetcher's identity — the parent recreates it on every
+  // SSE-driven re-render, which would otherwise blank + refetch the open panel
+  // on every incoming event.
+  const fetchRef = useRef(fetchProjection);
+  fetchRef.current = fetchProjection;
+
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
     setProjection(null);
-    fetchProjection(card.runId)
+    fetchRef.current(card.runId)
       .then((result) => {
         if (cancelled) return;
-        if (result && typeof result === "object") {
-          setProjection(result as FlowConsoleProjection);
+        // Guard the exact shape <flow-run-panel> iterates (run.run_id + steps +
+        // gates arrays); a stored projection can satisfy the ingest validator
+        // (run.run_id only) yet lack these — treat a shape miss as empty, not a
+        // crash in the custom element.
+        const valid = asChildProjection(result);
+        if (valid) {
+          setProjection(valid);
           setStatus("ready");
         } else {
           setStatus("empty");
@@ -50,7 +62,7 @@ export function BoardDrilldown({
     return () => {
       cancelled = true;
     };
-  }, [card.runId, fetchProjection]);
+  }, [card.runId]);
 
   return (
     <section className="board-drilldown" aria-label={`Work item ${card.title}`}>

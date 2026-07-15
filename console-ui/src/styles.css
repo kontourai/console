@@ -3340,27 +3340,23 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
 }
 
 /* ── #178 work-item drill-down: card → flow position, gates, evidence ────── */
+.board-card:has(.board-card-button) {
+  padding: 0;
+}
+
 .board-card-button {
   display: flex;
   flex-direction: column;
   gap: 6px;
   width: 100%;
   text-align: start;
-  padding: 0;
+  padding: 10px;
   background: none;
   border: none;
+  border-radius: var(--radius);
   color: inherit;
   cursor: pointer;
   font: inherit;
-}
-
-.board-card:has(.board-card-button) {
-  padding: 0;
-}
-
-.board-card-button {
-  padding: 10px;
-  border-radius: var(--radius);
 }
 
 .board-card-button:hover {

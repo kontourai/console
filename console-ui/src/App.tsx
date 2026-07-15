@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { DEFAULT_HUB_URL, IS_SAME_ORIGIN, getTelemetry, getEconomics, getEconomicsValue, getEconomicsDelegations, getSession, getFlowRunProjection, postSessionLogout } from "./hubClient";
 import { useHubConnection } from "./hooks/useHubConnection";
 import { useTheme } from "./hooks/useTheme";
@@ -89,11 +89,23 @@ export default function App() {
     });
   }, []);
 
-  const auth = cookieAuth
-    ? { useCookie: true as const, tenantId: sessionTenantId || undefined }
-    : { token: authToken || undefined, tenantId: tenantId || undefined };
+  // Memoized so downstream fetchers (BoardSection/WorkGrid projection reads)
+  // keep a stable identity across SSE-driven re-renders — otherwise an open
+  // drill-down would refetch and flicker on every incoming event.
+  const auth = useMemo(
+    () =>
+      cookieAuth
+        ? { useCookie: true as const, tenantId: sessionTenantId || undefined }
+        : { token: authToken || undefined, tenantId: tenantId || undefined },
+    [cookieAuth, sessionTenantId, authToken, tenantId]
+  );
 
   const { status, state, lastAccepted, lastTelemetryUpdated, error } = useHubConnection(hubUrl, auth);
+
+  const fetchProjection = useCallback(
+    (runId: string) => getFlowRunProjection(hubUrl, runId, auth),
+    [hubUrl, auth]
+  );
 
   useEffect(() => {
     function syncViewFromHistory() {
@@ -254,7 +266,7 @@ export default function App() {
           onOpen={(target: OverviewTarget) => selectView(target)}
         />
       ) : view === "board" ? (
-        <BoardSection state={state} fetchProjection={(runId) => getFlowRunProjection(hubUrl, runId, auth)} />
+        <BoardSection state={state} fetchProjection={fetchProjection} />
       ) : view === "operate" ? (
         <>
           <StageBand state={state} />
@@ -263,7 +275,7 @@ export default function App() {
             state={state}
             selectedNodeId={selectedNodeId}
             onNodeSelect={setSelectedNodeId}
-            fetchChildProjection={(runId) => getFlowRunProjection(hubUrl, runId, auth)}
+            fetchChildProjection={fetchProjection}
           />
           <TimelineSection state={state} lastAccepted={lastAccepted} />
         </>

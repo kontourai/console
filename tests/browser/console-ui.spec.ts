@@ -745,6 +745,11 @@ test("renders the Board tab: work items grouped by flow stage", async ({ page })
     .poll(() => page.evaluate(() => window.__kontourIngestRequests ?? []))
     .toContain("process-survey-review");
   await expect(page.locator(".board-drilldown")).toContainText("No flow projection recorded");
+  // The open panel fetches exactly once — a stable (memoized) fetcher must not
+  // refetch on the parent's SSE-driven re-renders.
+  await expect
+    .poll(() => page.evaluate(() => (window.__kontourIngestRequests ?? []).filter((r) => r === "process-survey-review").length))
+    .toBe(1);
 
   // Closing returns to the board with no drill-down open.
   await page.locator(".board-drilldown-close").click();
