@@ -7,6 +7,7 @@ import { telemetryFacets } from "./telemetry/facets";
 import { deriveFocusMap } from "./telemetry/focus";
 import { TelemetryFocus } from "./telemetry/FocusPanel";
 import { TelemetryGrid } from "./telemetry/Grid";
+import { TelemetryProvenanceFootnote } from "./telemetry/ProvenanceFootnote";
 import { labelFilters } from "./telemetry/queryModel";
 import { TelemetryQueryControls } from "./telemetry/QueryControls";
 import { RecentTelemetryEvents } from "./telemetry/RecentEvents";
@@ -79,6 +80,7 @@ export function TelemetrySection({ telemetry, error, query, drilldown, onQueryCh
         onNextPage={actions.nextPage}
       />
       <TelemetryWarnings telemetry={telemetry} />
+      <TelemetryProvenanceFootnote telemetry={telemetry} />
     </section>
   );
 }

@@ -19,14 +19,17 @@ export function TelemetryGrid({
   onOpenRoute(route: TelemetryRouteState): void;
   query: TelemetryQueryInput;
 }) {
-  const primaryFacetIds = ["projects", "cwd", "tools", "runtimes", "models", "events"];
+  // #181: feature only the meaning-carrying dimensions — what (tools), on which
+  // model, for which project, by which agent. Ingestion mechanics (cwd,
+  // runtimes, raw event mix) fall through to the compact "Additional breakdowns"
+  // filter rail below; the Sources hero moves to the provenance footnote.
+  const primaryFacetIds = ["tools", "models", "projects", "agents"];
   const primaryFacets = primaryFacetIds
     .map((id) => facets.find((facet) => facet.id === id))
     .filter((facet): facet is NonNullable<typeof facet> => Boolean(facet));
   const secondaryFacets = facets.filter((facet) => !primaryFacetIds.includes(facet.id));
   return (
     <div className="telemetry-grid">
-      <TelemetrySources sources={telemetry?.sources || []} />
       {primaryFacets.map((facet) => (
         <TelemetryPanel label={facet.id} title={facet.label} key={facet.id}>
           <BarList facet={facet} filters={filters} onToggleFilter={onToggleFilter} onOpenRoute={onOpenRoute} query={query} />
@@ -35,7 +38,11 @@ export function TelemetryGrid({
       {secondaryFacets.length ? (
         <TelemetryPanel label="Dimensions" title="Additional breakdowns">
           <div className="dimension-stack">
-            {secondaryFacets.slice(0, 6).map((facet) => (
+            {/* #181: this compact rail is now the home for the demoted ingestion
+                dimensions (cwd, runtimes, events, hook events) alongside the
+                derived ones (sessions, outcomes). Show them all rather than
+                capping — a hidden filter is a filter you can't reach. */}
+            {secondaryFacets.map((facet) => (
               <div className="dimension-row" key={facet.id}>
                 <strong>{facet.label}</strong>
                 <span>
@@ -113,26 +120,6 @@ function TelemetryFlowDetails({ details }: { details: NonNullable<ConsoleTelemet
         </div>
       ))}
     </dl>
-  );
-}
-
-function TelemetrySources({ sources }: { sources: ConsoleTelemetryResponse["sources"] }) {
-  return (
-    <TelemetryPanel label="Sources" title="Observed inputs">
-      <div className="stack">
-        {sources.map((source) => (
-          <div className="data-row telemetry-source" key={source.id}>
-            <div className="row-title">
-              <strong>{source.id}</strong>
-              <span>{source.recordCount}</span>
-            </div>
-            <p>{[source.kind, source.status].filter(Boolean).join(" / ") || "source"}</p>
-            <p>{source.path || "no path reported"}</p>
-          </div>
-        ))}
-        {!sources.length ? <Empty label="No telemetry sources observed." /> : null}
-      </div>
-    </TelemetryPanel>
   );
 }
 

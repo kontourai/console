@@ -1580,6 +1580,134 @@ dd {
   overflow-wrap: anywhere;
 }
 
+/* #181: provenance footnote — the demoted Sources hero + raw event-type mix,
+   collapsed to low-emphasis metadata at the foot of the page. */
+.telemetry-provenance {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.telemetry-provenance > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: fit-content;
+  cursor: pointer;
+  color: var(--dim);
+}
+
+.telemetry-provenance > summary .section-label {
+  margin: 0;
+}
+
+.telemetry-provenance-summary {
+  font-family: var(--k-font-mono);
+  font-size: 0.74rem;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.telemetry-provenance-body {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.telemetry-provenance-sources {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.telemetry-provenance-sources li {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 1.6fr) auto;
+  gap: 12px;
+  align-items: baseline;
+  padding-block: 3px;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--k-font-mono);
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+
+.telemetry-provenance-source-id {
+  color: var(--text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.telemetry-provenance-source-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telemetry-provenance-source-count {
+  text-align: right;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.telemetry-provenance-events {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.telemetry-provenance-events-label {
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+}
+
+.telemetry-provenance-events ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.telemetry-provenance-events li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.telemetry-provenance-events li span {
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.telemetry-provenance-more {
+  color: var(--dim);
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  font-style: italic;
+}
+
+.telemetry-provenance-sources .telemetry-provenance-more {
+  border-bottom: none;
+  padding-top: 4px;
+}
+
 .telemetry-details {
   margin-top: 8px;
   max-width: 100%;
