@@ -250,6 +250,38 @@ test("costPerTurn excludes cost of records with no turnId from the total (turn-s
   assert.equal(result.totalEstimatedCostUsd, 0.02, "turnId-less cost is excluded, not folded in");
 });
 
+test("costPerTurn scopes by event type — a session.usage record with a turnId cannot hijack a turn (#209)", () => {
+  // Hypothetical future/foreign emitter stamps a turnId onto a session-level
+  // usage record whose tokens span the WHOLE session. Grouping by turnId alone
+  // would let it win isMoreCompleteSnapshot and misattribute the entire session
+  // cost onto turn t1. The event-type guard must exclude it.
+  const toolSnapshot = summaryRecord({
+    eventId: "tool-e1",
+    sessionId: "s1",
+    turnId: "t1",
+    eventType: "tool.invoke",
+    model: "claude-opus-4-8",
+    inputTokens: 10,
+    outputTokens: 20,
+    estimatedCostUsd: 0.02
+  });
+  const sessionUsage = summaryRecord({
+    eventId: "sess-e1",
+    sessionId: "s1",
+    turnId: "t1",
+    eventType: "session.usage",
+    model: "claude-opus-4-8",
+    inputTokens: 100_000,
+    outputTokens: 200_000,
+    estimatedCostUsd: 9.99
+  });
+  const result = costPerTurn([toolSnapshot, sessionUsage]);
+  assert.equal(result.turnCount, 1);
+  assert.equal(result.turns[0].estimatedCostUsd, 0.02, "session-level record excluded — turn keeps the tool snapshot's cost");
+  assert.equal(result.turns[0].inputTokens, 10, "canonical is the tool snapshot, not the whole-session record");
+  assert.equal(result.totalEstimatedCostUsd, 0.02, "whole-session cost is NOT folded into the turn total");
+});
+
 test("costPerTurn caps the detail list but keeps turnCount + total exact over all turns", async () => {
   const usage: TurnUsage = { model: "claude-opus-4-8", inputTokens: 10, outputTokens: 20 };
   const records: Record<string, unknown>[] = [];

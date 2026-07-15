@@ -212,6 +212,48 @@ test("per-event tool usage snapshots do not inflate usageTotals / dimension brea
   assert.equal(summary.analytics.costPerTurn.totalEstimatedCostUsd, expected, "costPerTurn shows the turn once");
 });
 
+test("usageByModel excludes a per-event tool snapshot even if it carries by_model (#209 defense-in-depth)", async () => {
+  // The emitter emits FLAT usage (no by_model) on tool events today, so this
+  // guards a hypothetical future symmetric enrichment: a tool.invoke carrying a
+  // by_model array must not double-count against the authoritative session.usage.
+  const sessionRecord = usageRecord({
+    sessionId: "s1", project: "projA", agent: "dev", runtime: "claude-code",
+    byModel: [{ model: "claude-opus-4-8", input: 1000, output: 2000, cacheRead: 500000 }]
+  });
+  const baseline = await summarizeFromJsonl([sessionRecord]);
+  const expected = baseline.analytics.usageByModel.find((m) => m.key === "claude-opus-4-8")?.estimatedCostUsd;
+  assert.ok(expected && expected > 0, "sanity: session priced a non-zero model cost");
+
+  // A tool event hand-stamped with by_model (not what the emitter does today).
+  const toolWithByModel: Record<string, unknown> = {
+    schema_version: "0.3.0",
+    timestamp: String(1781200099000),
+    session_id: "s1",
+    event_id: "evt-bymodel-1",
+    event_type: "tool.invoke",
+    agent: { name: "dev", runtime: "claude-code", version: "x" },
+    hook: { event_name: "PreToolUse", turn_id: "t1" },
+    context: { cwd: "/work/projA" },
+    tool: { name: "Edit", normalized_name: "fs_write" },
+    usage: {
+      model: "claude-opus-4-8",
+      // Flat top-level tokens are required for parseRecordUsage to reach the
+      // by_model branch (it early-returns when no flat tokens are present).
+      input_tokens: 1000,
+      output_tokens: 2000,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 500000,
+      by_model: [
+        { model: "claude-opus-4-8", input_tokens: 1000, output_tokens: 2000, cache_creation_input_tokens: 0, cache_read_input_tokens: 500000 }
+      ],
+      pricing_version: "2026-06-28"
+    }
+  };
+  const summary = await summarizeFromJsonl([sessionRecord, toolWithByModel]);
+  const opus = summary.analytics.usageByModel.find((m) => m.key === "claude-opus-4-8");
+  assert.equal(opus?.estimatedCostUsd, expected, "per-event by_model snapshot excluded — model cost not doubled");
+});
+
 test("non-usage records contribute zero; no phantom breakdown rows", async () => {
   const summary = await summarizeFromJsonl([
     plainRecord("tool.invoke", "s1"),
