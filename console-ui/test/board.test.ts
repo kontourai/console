@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { classifyBoardStage, deriveBoard, BOARD_STAGES } from "../src/sections/board/board";
+import { classifyBoardStage, deriveBoard, runIdFromProcessId, BOARD_STAGES } from "../src/sections/board/board";
 import type { OperatingState, ConsoleProcess } from "@kontourai/console-core";
 
 function proc(p: Partial<ConsoleProcess> & { id: string }): ConsoleProcess {
@@ -65,6 +65,24 @@ test("deriveBoard groups every process into exactly one stage column, most-advan
   assert.deepEqual(board.columns.map((c) => c.stage), BOARD_STAGES);
   assert.deepEqual(board.columns.map((c) => c.cards.length), [1, 1, 1, 1, 1]);
   assert.equal(board.totalCards, 5);
+});
+
+test("runIdFromProcessId strips the run- prefix to recover the projection key (#178)", () => {
+  assert.equal(runIdFromProcessId("run-kontourai-flow-agents-568"), "kontourai-flow-agents-568");
+  assert.equal(runIdFromProcessId("run-abc123"), "abc123");
+  // no prefix → used as-is (non-flow-bridge producer)
+  assert.equal(runIdFromProcessId("bare-id"), "bare-id");
+  // only the leading prefix is stripped
+  assert.equal(runIdFromProcessId("run-run-x"), "run-x");
+});
+
+test("deriveBoard exposes a drill-down runId per card (process id minus run- prefix)", () => {
+  const board = deriveBoard(state({
+    processes: [proc({ id: "run-foo", currentStep: "execute" }), proc({ id: "bare", currentStep: "execute" })]
+  }));
+  const cards = board.columns.flatMap((c) => c.cards);
+  assert.equal(cards.find((c) => c.id === "run-foo")?.runId, "foo");
+  assert.equal(cards.find((c) => c.id === "bare")?.runId, "bare");
 });
 
 test("deriveBoard tallies passed/blocked gates per card via processRef", () => {
