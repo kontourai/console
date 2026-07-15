@@ -32,6 +32,7 @@ function usageRecord(opts: {
   runtime: string;
   byModel: ModelTokens[];
   pricingVersion?: string;
+  taskSlug?: string;
 }): Record<string, unknown> {
   const sum = (k: keyof ModelTokens) => opts.byModel.reduce((s, m) => s + (Number(m[k]) || 0), 0);
   return {
@@ -43,6 +44,7 @@ function usageRecord(opts: {
     agent: { name: opts.agent, runtime: opts.runtime, version: "x" },
     hook: { event_name: "usage", model: "" },
     context: { cwd: `/work/${opts.project}` },
+    ...(opts.taskSlug ? { task_slug: opts.taskSlug } : {}),
     usage: {
       model: opts.byModel[0]?.model,
       duration_s: 1,
@@ -144,6 +146,58 @@ test("usageBy{project,agent,runtime} breakdowns group record-level usage", async
   assert.equal(cost(summary.analytics.usageByAgent, "reviewer"), round6(0.005));
   assert.equal(cost(summary.analytics.usageByRuntime, "claude-code"), round6(0.33));
   assert.equal(cost(summary.analytics.usageByRuntime, "strands"), round6(0.005));
+});
+
+test("usageByTaskSlug groups cost by Builder work-item; task-less records are excluded, not shown as an 'unknown' row (#178/#179)", async () => {
+  const summary = await summarizeFromJsonl([
+    usageRecord({ sessionId: "s1", project: "p", agent: "dev", runtime: "claude-code", taskSlug: "console-board-177",
+      byModel: [{ model: "claude-opus-4-8", input: 1000, output: 2000, cacheRead: 500000 }] }),
+    usageRecord({ sessionId: "s2", project: "p", agent: "dev", runtime: "claude-code", taskSlug: "console-board-177",
+      byModel: [{ model: "claude-opus-4-8", output: 1000 }] }),
+    usageRecord({ sessionId: "s3", project: "p", agent: "dev", runtime: "claude-code", taskSlug: "flow-agents-568",
+      byModel: [{ model: "claude-fable-5", output: 100 }] }),
+    // a regular (non-Builder) session with no work item — carries real cost but
+    // no attribution; it must NOT surface as a phantom "unknown" work-item row.
+    usageRecord({ sessionId: "s4", project: "p", agent: "dev", runtime: "claude-code",
+      byModel: [{ model: "claude-fable-5", output: 100 }] })
+  ]);
+  const rows = summary.analytics.usageByTaskSlug;
+  const cost = (key: string) => rows.find((r) => r.key === key)?.estimatedCostUsd;
+  // two records for board-177 sum; each work item is its own row
+  assert.equal(cost("console-board-177"), round6(0.33));
+  assert.ok((cost("flow-agents-568") ?? 0) > 0, "second work item priced independently");
+  assert.equal(rows.find((r) => r.key === "console-board-177")?.label, "console-board-177");
+  // The task-less record's cost is never bucketed into an "unknown" work item:
+  // absence of a slug means "not Builder work" (N/A), not "unlabeled". Only the
+  // two genuinely-attributed work items appear.
+  assert.ok(!rows.some((r) => r.key === "unknown"), "no 'unknown' work-item row for task-less records");
+  assert.equal(rows.length, 2, "exactly the two attributed work items, nothing else");
+});
+
+test("usageByTaskSlug is empty (panel hidden) when no record carries a task_slug — even with cost present (#178 honesty guard)", async () => {
+  const summary = await summarizeFromJsonl([
+    usageRecord({ sessionId: "s1", project: "p", agent: "dev", runtime: "claude-code",
+      byModel: [{ model: "claude-opus-4-8", input: 1000, output: 2000, cacheRead: 500000 }] }),
+    usageRecord({ sessionId: "s2", project: "p", agent: "dev", runtime: "claude-code",
+      byModel: [{ model: "claude-fable-5", output: 100 }] })
+  ]);
+  // Cost-bearing records exist, but none is Builder work. The read-model must be
+  // empty so the "Cost by work-item" panel stays hidden until attribution lands,
+  // rather than rendering a single "unknown = 100%" row that restates the totals.
+  assert.equal(summary.analytics.usageByTaskSlug.length, 0, "no attribution → empty breakdown → hidden panel");
+});
+
+test("summarizeRuntimeRecord populates taskSlug from a top-level task_slug, absent when not emitted", async () => {
+  const summary = await summarizeFromJsonl([
+    usageRecord({ sessionId: "s1", project: "p", agent: "dev", runtime: "claude-code", taskSlug: "my-work-item",
+      byModel: [{ model: "claude-opus-4-8", output: 1000 }] }),
+    usageRecord({ sessionId: "s2", project: "p", agent: "dev", runtime: "claude-code",
+      byModel: [{ model: "claude-opus-4-8", output: 1000 }] })
+  ]);
+  const withSlug = summary.records.find((r) => r.sessionId === "s1");
+  const withoutSlug = summary.records.find((r) => r.sessionId === "s2");
+  assert.equal(withSlug?.taskSlug, "my-work-item");
+  assert.equal(withoutSlug?.taskSlug, undefined, "no task_slug emitted → taskSlug undefined, not fabricated");
 });
 
 /** Build a tool.invoke/tool.result event carrying the #568 per-turn usage

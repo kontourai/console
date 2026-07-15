@@ -149,6 +149,13 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
           "$ref": "#/definitions/TelemetryUsageBreakdown"
         }
       },
+      "usageByTaskSlug": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryUsageBreakdown"
+        },
+        "description": "Cost grouped by Builder work-item (task_slug). Populated once the emitter stamps task attribution; empty for runtimes/sessions without a work item."
+      },
       "actionClasses": {
         "type": "array",
         "items": {
@@ -166,6 +173,7 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "usageByProject",
       "usageByAgent",
       "usageByRuntime",
+      "usageByTaskSlug",
       "actionClasses",
       "costPerTurn"
     ],

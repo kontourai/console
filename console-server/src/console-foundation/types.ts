@@ -974,6 +974,9 @@ export interface TelemetryAnalyticsSummary {
   usageByProject: TelemetryUsageBreakdown[];
   usageByAgent: TelemetryUsageBreakdown[];
   usageByRuntime: TelemetryUsageBreakdown[];
+  /** Cost grouped by Builder work-item (task_slug). Populated once the emitter
+   *  stamps task attribution; empty for runtimes/sessions without a work item. */
+  usageByTaskSlug: TelemetryUsageBreakdown[];
   // #180 read-model projections — turn raw tool events into operator meaning.
   actionClasses: TelemetryActionClassSummary[];
   costPerTurn: TelemetryTurnCostSummary;

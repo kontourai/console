@@ -23,6 +23,7 @@ export function TelemetryTotals({ telemetry }: { telemetry: ConsoleTelemetryResp
       <CostBreakdown title="Cost by project" keyHeader="project" rows={analytics?.usageByProject} />
       <CostBreakdown title="Cost by agent" keyHeader="agent" rows={analytics?.usageByAgent} />
       <CostBreakdown title="Cost by runtime" keyHeader="runtime" rows={analytics?.usageByRuntime} />
+      <CostBreakdown title="Cost by work-item" keyHeader="work-item" rows={analytics?.usageByTaskSlug} />
     </div>
   );
 }
