@@ -635,6 +635,10 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
   const agentName = nestedString(record, ["agent", "name"]);
   const runtime = nestedString(record, ["agent", "runtime"]);
   const toolName = nestedString(record, ["tool", "normalized_name"]) || nestedString(record, ["tool", "name"]);
+  // #178/#179 substrate: the emitter stamps the active Builder work-item slug as
+  // a top-level `task_slug` (from the run's current.json active_slug). Absent for
+  // non-Builder sessions — left undefined, never fabricated.
+  const taskSlug = nestedString(record, ["task_slug"]);
   const status = nestedString(record, ["status"]) || hookEventName;
   const outcome = nestedString(record, ["outcome"]) || nestedString(record, ["tool", "status"]);
   const usage = parseRecordUsage(nestedValue(record, ["usage"]), model);
@@ -658,6 +662,7 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
     project,
     cwd,
     delegationTarget: delegation,
+    taskSlug,
     toolName,
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
@@ -681,7 +686,8 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
       toolName,
       status,
       outcome,
-      delegationTarget: delegation
+      delegationTarget: delegation,
+      taskSlug
     }),
     path: filePath
   };
@@ -860,6 +866,20 @@ function buildAnalytics(records: TelemetryRecordSummary[], descriptor: Telemetry
     usageByProject: usageByDimensionBreakdown(records, (r) => r.project),
     usageByAgent: usageByDimensionBreakdown(records, (r) => r.agentName),
     usageByRuntime: usageByDimensionBreakdown(records, (r) => r.runtime),
+    // Unlike project/agent/runtime — where an "unknown" bucket is a real signal
+    // (a record we couldn't label) — an absent task_slug means the session was
+    // simply not Builder work, i.e. N/A rather than "unlabeled work item". So we
+    // drop the "unknown" bucket here: the panel stays empty (and hidden) until
+    // real work-item attribution exists, and never shows a single "unknown =
+    // 100%" row that just restates the page totals.
+    //
+    // NOTE: workflow-sidecar descriptor records also carry a `taskSlug` (from a
+    // directory-name fallback, used for flow matching). They're kept out of this
+    // cost breakdown by usageByDimensionBreakdown's cost-bearing guard — they
+    // carry no usage/cost — so today only emitter-stamped runtime records with
+    // real spend appear. If descriptor records ever gain cost fields, revisit
+    // this so directory-derived slugs don't blend with emitter-stamped ones.
+    usageByTaskSlug: usageByDimensionBreakdown(records, (r) => r.taskSlug).filter((b) => b.key !== "unknown"),
     actionClasses: actionTaxonomy(records),
     costPerTurn: costPerTurn(records)
   };

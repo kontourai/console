@@ -166,6 +166,7 @@ export interface ConsoleTelemetryAnalyticsSummary {
   usageByProject: ConsoleTelemetryUsageBreakdown[];
   usageByAgent: ConsoleTelemetryUsageBreakdown[];
   usageByRuntime: ConsoleTelemetryUsageBreakdown[];
+  usageByTaskSlug: ConsoleTelemetryUsageBreakdown[];
   actionClasses: ConsoleTelemetryActionClassSummary[];
   costPerTurn: ConsoleTelemetryTurnCostSummary;
 }
