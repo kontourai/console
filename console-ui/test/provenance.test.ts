@@ -44,6 +44,18 @@ test("deriveProvenance caps sources at 12 and event types at 8", () => {
   assert.equal(summary.eventTypes.length, 8, "event types capped");
   assert.equal(summary.sourceCount, 20, "count reflects all sources, not the capped list");
   assert.equal(summary.totalRecords, manySources.reduce((s, x) => s + x.recordCount, 0), "total spans all sources");
+  // Overflow is surfaced so the view can render an honest "+N more" hint.
+  assert.equal(summary.hiddenSourceCount, 8, "20 sources − 12 shown");
+  assert.equal(summary.hiddenEventTypeCount, 7, "15 event types − 8 shown");
+});
+
+test("deriveProvenance reports zero overflow when nothing is truncated", () => {
+  const summary = deriveProvenance(
+    [source({ id: "a", recordCount: 3 }), source({ id: "b", recordCount: 1 })],
+    { "tool.invoke": 2, "tool.result": 2 }
+  );
+  assert.equal(summary.hiddenSourceCount, 0, "both sources shown → no overflow");
+  assert.equal(summary.hiddenEventTypeCount, 0, "both event types shown → no overflow");
 });
 
 test("deriveProvenance tolerates missing/undefined inputs", () => {

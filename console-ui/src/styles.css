@@ -1696,6 +1696,18 @@ dd {
   font-variant-numeric: tabular-nums;
 }
 
+.telemetry-provenance-more {
+  color: var(--dim);
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  font-style: italic;
+}
+
+.telemetry-provenance-sources .telemetry-provenance-more {
+  border-bottom: none;
+  padding-top: 4px;
+}
+
 .telemetry-details {
   margin-top: 8px;
   max-width: 100%;

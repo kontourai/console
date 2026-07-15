@@ -37,6 +37,9 @@ export function TelemetryProvenanceFootnote({ telemetry }: { telemetry: ConsoleT
                 <span className="telemetry-provenance-source-count">{formatCompact(source.recordCount)}</span>
               </li>
             ))}
+            {summary.hiddenSourceCount > 0 ? (
+              <li className="telemetry-provenance-more">+{summary.hiddenSourceCount} more source{summary.hiddenSourceCount === 1 ? "" : "s"}</li>
+            ) : null}
           </ul>
         ) : null}
 
@@ -50,6 +53,9 @@ export function TelemetryProvenanceFootnote({ telemetry }: { telemetry: ConsoleT
                   <span>{formatCompact(entry.count)}</span>
                 </li>
               ))}
+              {summary.hiddenEventTypeCount > 0 ? (
+                <li className="telemetry-provenance-more">+{summary.hiddenEventTypeCount} more</li>
+              ) : null}
             </ul>
           </div>
         ) : null}

@@ -25,8 +25,12 @@ export interface ProvenanceSummary {
   sourceCount: number;
   totalRecords: number;
   sources: ProvenanceSource[];
+  /** Sources beyond the rendered cap, so the view can show a "+N more" hint. */
+  hiddenSourceCount: number;
   /** Raw runtime event-type mix, demoted here from a featured facet panel. */
   eventTypes: ProvenanceEventType[];
+  /** Distinct event types beyond the rendered cap. */
+  hiddenEventTypeCount: number;
 }
 
 const MAX_SOURCES = 12;
@@ -49,9 +53,10 @@ export function deriveProvenance(
       recordCount: source.recordCount || 0
     }));
 
-  const eventTypes = Object.entries(eventTypeCounts || {})
+  const rankedEventTypes = Object.entries(eventTypeCounts || {})
     .filter(([type, count]) => Boolean(type) && count > 0)
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const eventTypes = rankedEventTypes
     .slice(0, MAX_EVENT_TYPES)
     .map(([type, count]) => ({ type, count }));
 
@@ -59,7 +64,9 @@ export function deriveProvenance(
     sourceCount: safeSources.length,
     totalRecords: safeSources.reduce((sum, source) => sum + (source.recordCount || 0), 0),
     sources: ranked,
-    eventTypes
+    hiddenSourceCount: Math.max(0, safeSources.length - ranked.length),
+    eventTypes,
+    hiddenEventTypeCount: Math.max(0, rankedEventTypes.length - eventTypes.length)
   };
 }
 
