@@ -1,14 +1,21 @@
-import type { ConsoleActor, ConsoleGate, ConsoleProcess, OperatingState } from "@kontourai/console-core";
+import type { ConsoleGate, ConsoleProcess, OperatingState } from "@kontourai/console-core";
 
 /**
  * #177 Board — the control-plane front door. A Kanban of work items (operating-
- * state `processes`) across flow stages, reconciled with live agent presence
- * (liveness `actors`, joined by subjectId === work-item id) and gate health.
+ * state `processes`) across flow stages, with gate health per card.
  *
  * No new server plumbing: this is a pure projection over the existing `/state`
  * OperatingState the Operate tab already consumes. Stage is derived client-side
  * because the read model has no first-class stage field — only free-string
  * `status` / `currentStep` from flow events.
+ *
+ * Live agent presence per card is intentionally NOT computed here. Liveness
+ * `actors` carry `subjectId` = the flow-agents work-item slug, whereas a
+ * process `id` is `run-${runId}` from flow-bridge — a different producer and id
+ * space (operating-state.ts documents them as not joinable without a real
+ * mapping). Rather than imply a live count that would silently read zero in
+ * production, live presence waits on a verified cross-producer id mapping,
+ * alongside the Me/Team filter (per-user identity #98/#159).
  */
 
 export type BoardStage = "backlog" | "planning" | "in-flight" | "verify" | "done";
@@ -23,14 +30,20 @@ export const BOARD_STAGE_LABEL: Record<BoardStage, string> = {
   done: "Done"
 };
 
-// Terminal statuses win outright (a released/closed item is Done regardless of
-// which step string lingers). The remaining stages are matched against the
-// combined status + current-step text, most-advanced first, so a work item
-// mid-verify isn't misfiled as still planning.
+// A terminal STATUS wins outright — a released/closed item is Done regardless
+// of which step lingers.
 const DONE_STATUS = /(^|\b)(complete|completed|done|closed|released|delivered|shipped|merged|cancell?ed|abandoned)\b/;
-const VERIFY = /(verify|review|critique|gate|accept|validat|sign-?off)/;
-const IN_FLIGHT = /(execut|implement|build|coding|in[-\s]?flight|in[-\s]?progress|running|active|deliver)/;
-const PLANNING = /(plan|probe|design|pull[-\s]?work|groom|shape|scope|backlog[-\s]?refine|triage)/;
+
+// Stage is driven by the current STEP, not status: flow-bridge stamps every
+// non-terminal step `status:"running"`, so status can't distinguish planning
+// from in-flight. Match the most-advanced step keyword first. `release`/
+// `publish` are late-but-active work (In flight) until the status goes terminal.
+const VERIFY_STEP = /(verify|review|critique|gate|accept|validat|sign-?off)/;
+const IN_FLIGHT_STEP = /(execut|implement|build|coding|deliver|release|publish|in[-\s]?flight|in[-\s]?progress)/;
+const PLANNING_STEP = /(plan|probe|design|pull[-\s]?work|groom|shape|scope|backlog[-\s]?refine|triage)/;
+
+// Only consulted when there is no step string (producers that drive off status).
+const IN_FLIGHT_STATUS = /(running|active|in[-\s]?progress|execut|deliver)/;
 
 function stepText(step: ConsoleProcess["currentStep"]): string {
   if (!step) return "";
@@ -41,10 +54,19 @@ function stepText(step: ConsoleProcess["currentStep"]): string {
 export function classifyBoardStage(process: ConsoleProcess): BoardStage {
   const status = (process.status || "").toLowerCase();
   if (DONE_STATUS.test(status)) return "done";
-  const hay = `${status} ${stepText(process.currentStep)}`.toLowerCase();
-  if (VERIFY.test(hay)) return "verify";
-  if (IN_FLIGHT.test(hay)) return "in-flight";
-  if (PLANNING.test(hay)) return "planning";
+
+  const step = stepText(process.currentStep).toLowerCase();
+  if (step) {
+    if (VERIFY_STEP.test(step)) return "verify";
+    if (IN_FLIGHT_STEP.test(step)) return "in-flight";
+    if (PLANNING_STEP.test(step)) return "planning";
+    return "backlog";
+  }
+
+  // No step to read — fall back to status hints for status-driven producers.
+  if (VERIFY_STEP.test(status)) return "verify";
+  if (IN_FLIGHT_STATUS.test(status)) return "in-flight";
+  if (PLANNING_STEP.test(status)) return "planning";
   return "backlog";
 }
 
@@ -57,8 +79,6 @@ export interface BoardCard {
   stage: BoardStage;
   stepLabel?: string;
   percentComplete?: number;
-  /** Distinct live liveness actors holding this work item (subagents counted). */
-  liveAgentCount: number;
   gatesPassed: number;
   gatesBlocked: number;
   updatedAt?: string;
@@ -73,21 +93,6 @@ export interface BoardColumn {
 export interface BoardModel {
   columns: BoardColumn[];
   totalCards: number;
-  liveAgentTotal: number;
-}
-
-/** Count distinct live actors per work item (subjectId === work-item id). */
-function liveAgentsBySubject(actors: ConsoleActor[] | undefined): Map<string, number> {
-  const bySubject = new Map<string, Set<string>>();
-  for (const actor of actors || []) {
-    if (!actor.subjectId) continue;
-    const set = bySubject.get(actor.subjectId) || new Set<string>();
-    set.add(actor.actor || actor.id);
-    bySubject.set(actor.subjectId, set);
-  }
-  const counts = new Map<string, number>();
-  for (const [subjectId, set] of bySubject) counts.set(subjectId, set.size);
-  return counts;
 }
 
 /** Tally passed/blocked gates per work item (gate.processRef.id === work-item id). */
@@ -112,7 +117,6 @@ function gatesByProcess(gates: ConsoleGate[] | undefined): Map<string, { passed:
  */
 export function deriveBoard(state: OperatingState | null | undefined): BoardModel {
   const safe: OperatingState = state ?? ({} as OperatingState);
-  const liveCounts = liveAgentsBySubject(safe.actors);
   const gateCounts = gatesByProcess(safe.gates);
 
   const columns: BoardColumn[] = BOARD_STAGES.map((stage) => ({
@@ -132,7 +136,6 @@ export function deriveBoard(state: OperatingState | null | undefined): BoardMode
       stage,
       stepLabel: typeof step === "string" ? step : step?.label || step?.id,
       percentComplete: process.percentComplete,
-      liveAgentCount: liveCounts.get(process.id) || 0,
       gatesPassed: gates.passed,
       gatesBlocked: gates.blocked,
       updatedAt: process.updatedAt
@@ -144,14 +147,6 @@ export function deriveBoard(state: OperatingState | null | undefined): BoardMode
     column.cards.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   }
 
-  // Total reflects agents on cards actually shown, so the header never disagrees
-  // with the sum of the cards (actors holding items not on the board are excluded).
-  let totalCards = 0;
-  let liveAgentTotal = 0;
-  for (const column of columns) {
-    totalCards += column.cards.length;
-    for (const card of column.cards) liveAgentTotal += card.liveAgentCount;
-  }
-
-  return { columns, totalCards, liveAgentTotal };
+  const totalCards = columns.reduce((sum, column) => sum + column.cards.length, 0);
+  return { columns, totalCards };
 }

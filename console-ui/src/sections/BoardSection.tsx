@@ -6,10 +6,11 @@ import { deriveBoard, type BoardCard, type BoardColumn } from "./board/board";
 
 /**
  * #177 Board — the high-level front door. A Kanban of work items in flight,
- * grouped by flow stage, with live agent presence per card. Single-tenant for
- * now: the Me / Team / Everyone-live filter waits on per-user identity
- * (#98/#159) and is intentionally absent rather than faked against a shared
- * token. Card → drill-down (#178) is not wired yet.
+ * grouped by flow stage, with gate health per card. Single-tenant for now: the
+ * Me / Team / Everyone-live filter waits on per-user identity (#98/#159), and
+ * live agent presence per card waits on a verified liveness↔process id mapping
+ * (see board.ts) — both intentionally absent rather than faked. Card →
+ * drill-down (#178) is not wired yet.
  */
 export function BoardSection({ state }: { state: OperatingState }) {
   const board = useMemo(() => deriveBoard(state), [state]);
@@ -22,8 +23,7 @@ export function BoardSection({ state }: { state: OperatingState }) {
           <h2>Work in flight</h2>
         </div>
         <p className="receipt">
-          {board.totalCards} item{board.totalCards === 1 ? "" : "s"}
-          {board.liveAgentTotal > 0 ? ` · ${board.liveAgentTotal} live agent${board.liveAgentTotal === 1 ? "" : "s"}` : ""}
+          {board.totalCards} item{board.totalCards === 1 ? "" : "s"} in flight
         </p>
       </div>
 
@@ -72,14 +72,16 @@ function BoardCardView({ card }: { card: BoardCard }) {
         </div>
       ) : null}
       <div className="board-card-meta">
-        {card.liveAgentCount > 0 ? (
-          <span className="board-card-live" title={`${card.liveAgentCount} live agent${card.liveAgentCount === 1 ? "" : "s"}`}>
-            <span className="board-card-live-dot" aria-hidden="true" />
-            {card.liveAgentCount} live
+        {card.gatesPassed > 0 ? (
+          <span className="board-card-gate board-card-gate-passed" aria-label={`${card.gatesPassed} gate${card.gatesPassed === 1 ? "" : "s"} passed`}>
+            {card.gatesPassed} <span aria-hidden="true">✓</span>
           </span>
         ) : null}
-        {card.gatesPassed > 0 ? <span className="board-card-gate board-card-gate-passed">{card.gatesPassed} ✓</span> : null}
-        {card.gatesBlocked > 0 ? <span className="board-card-gate board-card-gate-blocked">{card.gatesBlocked} ✗</span> : null}
+        {card.gatesBlocked > 0 ? (
+          <span className="board-card-gate board-card-gate-blocked" aria-label={`${card.gatesBlocked} gate${card.gatesBlocked === 1 ? "" : "s"} blocked`}>
+            {card.gatesBlocked} <span aria-hidden="true">✗</span>
+          </span>
+        ) : null}
         {card.updatedAt ? <span className="board-card-time">{formatRelative(card.updatedAt)}</span> : null}
       </div>
     </li>

@@ -30,6 +30,28 @@ test("classifyBoardStage: terminal status wins over a lingering step string", ()
   assert.equal(classifyBoardStage(proc({ id: "z", status: "closed", currentStep: "execute" })), "done");
 });
 
+test("classifyBoardStage: step drives the stage even when status is the generic 'running' (M1)", () => {
+  // flow-bridge stamps EVERY non-terminal step status:"running". Stage must come
+  // from the step, so a run at the plan step is Planning, not In flight.
+  assert.equal(classifyBoardStage(proc({ id: "a", status: "running", currentStep: "plan" })), "planning");
+  assert.equal(classifyBoardStage(proc({ id: "b", status: "running", currentStep: { id: "design-probe", label: "design-probe" } })), "planning");
+  assert.equal(classifyBoardStage(proc({ id: "c", status: "running", currentStep: "execute" })), "in-flight");
+  assert.equal(classifyBoardStage(proc({ id: "d", status: "running", currentStep: "verify" })), "verify");
+});
+
+test("classifyBoardStage: release/publish steps are In flight, not Backlog (M2)", () => {
+  assert.equal(classifyBoardStage(proc({ id: "a", status: "running", currentStep: "release" })), "in-flight");
+  assert.equal(classifyBoardStage(proc({ id: "b", status: "running", currentStep: { id: "builder.publish", label: "publish" } })), "in-flight");
+  // but a terminal 'released' STATUS is Done
+  assert.equal(classifyBoardStage(proc({ id: "c", status: "released" })), "done");
+});
+
+test("classifyBoardStage: status-only fallback when there is no step", () => {
+  assert.equal(classifyBoardStage(proc({ id: "a", status: "running" })), "in-flight");
+  assert.equal(classifyBoardStage(proc({ id: "b", status: "in-review" })), "verify");
+  assert.equal(classifyBoardStage(proc({ id: "c", status: "queued" })), "backlog");
+});
+
 test("deriveBoard groups every process into exactly one stage column, most-advanced honored", () => {
   const board = deriveBoard(state({
     processes: [
@@ -43,23 +65,6 @@ test("deriveBoard groups every process into exactly one stage column, most-advan
   assert.deepEqual(board.columns.map((c) => c.stage), BOARD_STAGES);
   assert.deepEqual(board.columns.map((c) => c.cards.length), [1, 1, 1, 1, 1]);
   assert.equal(board.totalCards, 5);
-});
-
-test("deriveBoard counts distinct live agents per card by subjectId === work-item id", () => {
-  const board = deriveBoard(state({
-    processes: [proc({ id: "item-1", currentStep: "execute" }), proc({ id: "item-2", currentStep: "execute" })],
-    actors: [
-      { id: "1", actor: "sessA", subjectId: "item-1" },
-      { id: "2", actor: "sessB", subjectId: "item-1" }, // a subagent on the same item
-      { id: "3", actor: "sessA", subjectId: "item-1" }, // duplicate actor → still 2 distinct
-      { id: "4", actor: "sessC", subjectId: "item-2" }
-    ] as OperatingState["actors"]
-  }));
-  const cards = board.columns.flatMap((c) => c.cards);
-  assert.equal(cards.find((c) => c.id === "item-1")?.liveAgentCount, 2, "two distinct actors, dedup applied");
-  assert.equal(cards.find((c) => c.id === "item-2")?.liveAgentCount, 1);
-  // header total counts only agents on shown cards
-  assert.equal(board.liveAgentTotal, 3);
 });
 
 test("deriveBoard tallies passed/blocked gates per card via processRef", () => {
@@ -93,6 +98,5 @@ test("deriveBoard on empty/undefined state yields five empty columns, zero total
   const board = deriveBoard(undefined);
   assert.equal(board.columns.length, 5);
   assert.equal(board.totalCards, 0);
-  assert.equal(board.liveAgentTotal, 0);
   assert.ok(board.columns.every((c) => c.cards.length === 0));
 });

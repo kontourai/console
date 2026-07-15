@@ -3330,20 +3330,6 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
   color: var(--dim);
 }
 
-.board-card-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--good);
-}
-
-.board-card-live-dot {
-  inline-size: 6px;
-  block-size: 6px;
-  border-radius: 999px;
-  background: var(--good);
-}
-
 .board-card-gate { font-variant-numeric: tabular-nums; }
 .board-card-gate-passed { color: var(--good); }
 .board-card-gate-blocked { color: var(--bad); }
