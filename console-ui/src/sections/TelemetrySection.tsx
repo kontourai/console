@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { formatTime } from "../utils/format";
+import { TelemetryActivityCost } from "./telemetry/ActivityCost";
 import { TelemetryDrilldownHeader } from "./telemetry/DrilldownHeader";
 import { TelemetryFilterBar } from "./telemetry/FilterBar";
 import { telemetryFacets } from "./telemetry/facets";
@@ -48,6 +49,7 @@ export function TelemetrySection({ telemetry, error, query, drilldown, onQueryCh
       />
       <TelemetrySavedPresets query={query} onQueryChange={onQueryChange} />
       {drilldown ? <TelemetryDrilldownHeader drilldown={drilldown} onOpenRoute={onOpenRoute} query={query} /> : null}
+      <TelemetryActivityCost telemetry={telemetry} />
       <TelemetryTotals telemetry={telemetry} />
       <TelemetryFocus focus={focus} filters={filters} onToggleFilter={actions.toggleFilter} />
       <TelemetryFilterBar
