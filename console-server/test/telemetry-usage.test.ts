@@ -146,6 +146,114 @@ test("usageBy{project,agent,runtime} breakdowns group record-level usage", async
   assert.equal(cost(summary.analytics.usageByRuntime, "strands"), round6(0.005));
 });
 
+/** Build a tool.invoke/tool.result event carrying the #568 per-turn usage
+ *  SNAPSHOT (flat usage, no by_model), as the emitter now stamps onto every
+ *  tool event of a turn. */
+function toolUsageEvent(opts: {
+  sessionId: string;
+  turnId: string;
+  eventType: "tool.invoke" | "tool.result";
+  model: string;
+  input?: number;
+  output?: number;
+  cacheRead?: number;
+}): Record<string, unknown> {
+  return {
+    schema_version: "0.3.0",
+    timestamp: String(1781200000000 + evtCounter * 1000),
+    session_id: opts.sessionId,
+    event_id: `evt-${evtCounter++}`,
+    event_type: opts.eventType,
+    agent: { name: "dev", runtime: "claude-code", version: "x" },
+    hook: { event_name: opts.eventType === "tool.invoke" ? "PreToolUse" : "PostToolUse", turn_id: opts.turnId },
+    context: { cwd: "/work/projA" },
+    tool: { name: "Edit", normalized_name: "fs_write" },
+    usage: {
+      model: opts.model,
+      input_tokens: opts.input ?? 0,
+      output_tokens: opts.output ?? 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: opts.cacheRead ?? 0,
+      pricing_version: "2026-06-28"
+    }
+  };
+}
+
+test("per-event tool usage snapshots do not inflate usageTotals / dimension breakdowns (#568 overcount fix)", async () => {
+  // One authoritative session.usage record + a turn of 3 tool calls (3 invoke +
+  // 3 result = 6 events), each carrying the SAME turn snapshot. Summing the tool
+  // events would inflate the total to 7× the true cost; they must be excluded
+  // (session.usage is authoritative). Cost is token-derived, so the expected
+  // value is read from a session-only baseline rather than hardcoded.
+  const sessionRecord = usageRecord({
+    sessionId: "s1", project: "projA", agent: "dev", runtime: "claude-code",
+    byModel: [{ model: "claude-opus-4-8", input: 1000, output: 2000, cacheRead: 500000 }]
+  });
+  const baseline = await summarizeFromJsonl([sessionRecord]);
+  const expected = baseline.totals.usage.estimatedCostUsd;
+  assert.ok(expected > 0, "sanity: the session priced to a non-zero cost");
+
+  const toolTurn: Record<string, unknown>[] = [];
+  for (let i = 0; i < 3; i += 1) {
+    toolTurn.push(toolUsageEvent({ sessionId: "s1", turnId: "t1", eventType: "tool.invoke", model: "claude-opus-4-8", input: 1000, output: 2000, cacheRead: 500000 }));
+    toolTurn.push(toolUsageEvent({ sessionId: "s1", turnId: "t1", eventType: "tool.result", model: "claude-opus-4-8", input: 1000, output: 2000, cacheRead: 500000 }));
+  }
+  const summary = await summarizeFromJsonl([sessionRecord, ...toolTurn]);
+
+  // Totals + dimension breakdown reflect only the authoritative session.usage
+  // cost — the 6 tool events add nothing.
+  assert.equal(summary.totals.usage.estimatedCostUsd, expected, "usageTotals excludes per-event snapshots");
+  const projA = summary.analytics.usageByProject.find((r) => r.key === "projA");
+  assert.equal(projA?.estimatedCostUsd, expected, "usageByProject excludes per-event snapshots");
+
+  // The tool-event turn cost is not lost — it surfaces (de-duplicated) in the
+  // costPerTurn projection: one turn, priced from the same tokens as the session.
+  assert.equal(summary.analytics.costPerTurn.turnCount, 1);
+  assert.equal(summary.analytics.costPerTurn.totalEstimatedCostUsd, expected, "costPerTurn shows the turn once");
+});
+
+test("usageByModel excludes a per-event tool snapshot even if it carries by_model (#209 defense-in-depth)", async () => {
+  // The emitter emits FLAT usage (no by_model) on tool events today, so this
+  // guards a hypothetical future symmetric enrichment: a tool.invoke carrying a
+  // by_model array must not double-count against the authoritative session.usage.
+  const sessionRecord = usageRecord({
+    sessionId: "s1", project: "projA", agent: "dev", runtime: "claude-code",
+    byModel: [{ model: "claude-opus-4-8", input: 1000, output: 2000, cacheRead: 500000 }]
+  });
+  const baseline = await summarizeFromJsonl([sessionRecord]);
+  const expected = baseline.analytics.usageByModel.find((m) => m.key === "claude-opus-4-8")?.estimatedCostUsd;
+  assert.ok(expected && expected > 0, "sanity: session priced a non-zero model cost");
+
+  // A tool event hand-stamped with by_model (not what the emitter does today).
+  const toolWithByModel: Record<string, unknown> = {
+    schema_version: "0.3.0",
+    timestamp: String(1781200099000),
+    session_id: "s1",
+    event_id: "evt-bymodel-1",
+    event_type: "tool.invoke",
+    agent: { name: "dev", runtime: "claude-code", version: "x" },
+    hook: { event_name: "PreToolUse", turn_id: "t1" },
+    context: { cwd: "/work/projA" },
+    tool: { name: "Edit", normalized_name: "fs_write" },
+    usage: {
+      model: "claude-opus-4-8",
+      // Flat top-level tokens are required for parseRecordUsage to reach the
+      // by_model branch (it early-returns when no flat tokens are present).
+      input_tokens: 1000,
+      output_tokens: 2000,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 500000,
+      by_model: [
+        { model: "claude-opus-4-8", input_tokens: 1000, output_tokens: 2000, cache_creation_input_tokens: 0, cache_read_input_tokens: 500000 }
+      ],
+      pricing_version: "2026-06-28"
+    }
+  };
+  const summary = await summarizeFromJsonl([sessionRecord, toolWithByModel]);
+  const opus = summary.analytics.usageByModel.find((m) => m.key === "claude-opus-4-8");
+  assert.equal(opus?.estimatedCostUsd, expected, "per-event by_model snapshot excluded — model cost not doubled");
+});
+
 test("non-usage records contribute zero; no phantom breakdown rows", async () => {
   const summary = await summarizeFromJsonl([
     plainRecord("tool.invoke", "s1"),

@@ -1504,6 +1504,7 @@ function emptyUsageTotals(): TelemetryUsageTotals {
 function usageTotals(records: TelemetryRecordSummary[]): TelemetryUsageTotals {
   const totals = emptyUsageTotals();
   for (const record of records) {
+    if (isPerEventUsageSnapshot(record)) continue;
     totals.inputTokens += num(record.inputTokens);
     totals.outputTokens += num(record.outputTokens);
     totals.cacheCreationInputTokens += num(record.cacheCreationInputTokens);
@@ -1519,6 +1520,12 @@ function usageTotals(records: TelemetryRecordSummary[]): TelemetryUsageTotals {
 function usageByModelBreakdown(records: TelemetryRecordSummary[]): TelemetryUsageBreakdown[] {
   const byModel = new Map<string, TelemetryUsageBreakdown>();
   for (const record of records) {
+    // Consistency with usageTotals / usageByDimensionBreakdown (#209): never let a
+    // per-event tool.invoke/tool.result usage snapshot contribute to an aggregate.
+    // Safe today because the emitter emits flat usage (no by_model) on tool events,
+    // but guard defensively so a future symmetric by_model enrichment can't silently
+    // re-overcount here.
+    if (isPerEventUsageSnapshot(record)) continue;
     for (const entry of record.usageByModel || []) {
       const current = byModel.get(entry.key) || {
         key: entry.key,
@@ -1553,6 +1560,7 @@ function usageByDimensionBreakdown(
 ): TelemetryUsageBreakdown[] {
   const byKey = new Map<string, TelemetryUsageBreakdown>();
   for (const record of records) {
+    if (isPerEventUsageSnapshot(record)) continue;
     if (record.estimatedCostUsd === undefined && record.inputTokens === undefined) continue;
     const key = (keyOf(record) || "unknown").trim() || "unknown";
     const current = byKey.get(key) || {
@@ -1648,6 +1656,16 @@ function isToolInvokeRecord(record: TelemetryRecordSummary): boolean {
   return record.eventType === "tool.invoke";
 }
 
+/** A tool event carries the turn's usage SNAPSHOT (flow-agents #568), repeated
+ *  across every tool.invoke/tool.result of the turn. It is a per-turn view of
+ *  cost the authoritative session.usage record already accounts for once — never
+ *  additional cost. Flat cost/token aggregators (usageTotals, dimension
+ *  breakdowns) must skip these to avoid counting a turn's cost once per tool
+ *  call; costPerTurn is the projection that reads them (de-duplicated). */
+function isPerEventUsageSnapshot(record: TelemetryRecordSummary): boolean {
+  return record.eventType === "tool.invoke" || record.eventType === "tool.result";
+}
+
 /** Activity by action class over the tool.invoke stream. Pure. */
 function actionTaxonomy(records: TelemetryRecordSummary[]): TelemetryActionClassSummary[] {
   const counts = new Map<TelemetryActionClass, { count: number; sessions: Set<string> }>();
@@ -1708,6 +1726,14 @@ export function costPerTurn(records: TelemetryRecordSummary[]): TelemetryTurnCos
   }
   const byTurn = new Map<string, TurnAccumulator>();
   for (const record of records) {
+    // Per-turn cost is built only from the per-event usage snapshots that carry
+    // it (tool.invoke/tool.result). Scope by event type, not merely by turnId
+    // presence (#209): a session.usage/session.end record hypothetically stamped
+    // with a turnId would otherwise win isMoreCompleteSnapshot (its whole-session
+    // tokens dwarf any single turn) and misattribute the whole session's cost onto
+    // one turn row. This also drops zero-cost non-usage events (e.g. userPromptSubmit)
+    // that would otherwise create spurious empty turn rows.
+    if (!isPerEventUsageSnapshot(record)) continue;
     const turnId = record.turnId;
     // Turn-scoped by definition: a record without a turnId cannot be attributed
     // to a turn, so it is excluded from both the per-turn rows and the total.
