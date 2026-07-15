@@ -19,7 +19,7 @@ import { CostSection } from "./CostSection";
 // Slice 1 scope (this file): the "Needs you" triage + the at-a-glance strip. Subsequent slices fold
 // "Happening now", "The fleet", and "What it's costing" into this same surface and retire the tabs.
 
-export type OverviewTarget = "operate" | "telemetry";
+export type OverviewTarget = "board" | "operate" | "telemetry";
 
 interface OverviewSectionProps {
   state: OperatingState;
@@ -83,7 +83,7 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen }: Overvi
           <h2 className="ov-title">At a glance</h2>
           <span className="ov-sub">operating state</span>
           <span className="ov-grow" />
-          <button type="button" className="ov-link" onClick={() => onOpen("operate")}>open the board →</button>
+          <button type="button" className="ov-link" onClick={() => onOpen("board")}>open the board →</button>
         </header>
         <div className="glance">
           <GlanceStat label="Active work" value={health.activeProcesses} onClick={() => onOpen("operate")} />
@@ -96,7 +96,7 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen }: Overvi
       </section>
 
       {/* ── ② Happening now — the live flow + activity ───────────────────────────── */}
-      <HappeningNowSection state={state} onOpen={() => onOpen("operate")} />
+      <HappeningNowSection state={state} onOpen={() => onOpen("board")} />
 
       {/* ── ③ The fleet — who's active (coordination state arrives with #295) ─────── */}
       <FleetSection
