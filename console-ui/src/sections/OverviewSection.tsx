@@ -35,6 +35,7 @@ const KIND_PRESENTATION: Record<
   AttentionKind,
   { tone: "negative" | "caution" | "active"; kind: string; action: string; target: OverviewTarget }
 > = {
+  "paused-run": { tone: "caution", kind: "run paused", action: "Open the run", target: "operate" },
   "blocked-gate": { tone: "negative", kind: "gate blocked", action: "Inspect gate", target: "operate" },
   "stale-claim": { tone: "caution", kind: "claim going stale", action: "Review claim", target: "operate" },
   "long-running-process": { tone: "active", kind: "long-running", action: "Open process", target: "operate" },
@@ -71,7 +72,7 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen }: Overvi
             <span className="ov-allclear-mark" aria-hidden="true">✓</span>
             <div>
               <h3 className="ov-allclear-title">Nothing needs your attention</h3>
-              <p className="ov-allclear-body">No blocked gates, stale claims, long-running work, or quiet sources right now. New issues surface here the moment they appear.</p>
+              <p className="ov-allclear-body">No paused runs, blocked gates, stale claims, long-running work, or quiet sources right now. New issues surface here the moment they appear.</p>
             </div>
           </div>
         )}

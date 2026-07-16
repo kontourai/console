@@ -8,6 +8,7 @@ import {
   deriveAttentionItems,
   deriveHealthCounts,
   deriveTopWorkloads,
+  type AttentionKind,
 } from "./environment/derive";
 
 export interface EnvironmentSectionProps {
@@ -158,12 +159,15 @@ function WorkloadPanel({ title, entries, emptyLabel }: {
   );
 }
 
-function attentionKindLabel(kind: string): string {
+// Typed as AttentionKind (not string) so the compiler forces a label for every
+// attention kind — a loose `string` param previously let a new kind fall
+// through to a raw system name in the Badge.
+function attentionKindLabel(kind: AttentionKind): string {
   switch (kind) {
+    case "paused-run": return "paused";
     case "blocked-gate": return "blocked";
     case "stale-claim": return "stale";
     case "long-running-process": return "long-running";
     case "quiet-source": return "quiet";
-    default: return kind;
   }
 }

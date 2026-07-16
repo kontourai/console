@@ -22,6 +22,20 @@ export interface HealthCounts {
 const STALE_CLAIM_STATUSES = new Set(["stale", "expired", "at-risk", "unverified"]);
 const OK_CLAIM_STATUSES = new Set(["ok", "verified", "confirmed", "current", "fresh"]);
 const BLOCKED_GATE_STATUSES = new Set(["blocked", "failed", "route-back", "rejected"]);
+// A gate that is OPEN and unmet — the run is parked waiting for evidence to be
+// recorded / the owner to sign off. Distinct from BLOCKED_GATE_STATUSES (a
+// gate that *failed* or was routed back): nothing went wrong here, the run just
+// needs you before it can continue. This is the state the stop-hook nags about
+// in the terminal ("complete or cancel the run before stopping"), surfaced here
+// in plain language. Kept disjoint from BLOCKED_GATE_STATUSES so a gate is
+// never counted as both paused and blocked. Only statuses with a real producer
+// are listed: "waiting" is what statusFromGateEvent emits for gate.opened
+// (console-server current-operating-state.ts), and "open" is the open-gate
+// alias console-server/index.ts + flow-process-helper.ts already test for.
+// (Pre-existing, tracked separately: a "routed_back" gate is caught by neither
+// this set nor BLOCKED_GATE_STATUSES's hyphenated "route-back" — a string
+// mismatch outside this change's scope.)
+const PAUSED_GATE_STATUSES = new Set(["waiting", "open"]);
 const PASSED_GATE_STATUSES = new Set(["passed", "approved", "accepted", "complete"]);
 const OPEN_INQUIRY_OUTCOMES = new Set(["unsupported", "derived", "matched"]);
 
@@ -73,6 +87,7 @@ export function deriveHealthCounts(input: OperatingState | null | undefined): He
 // ── Needs-attention items ────────────────────────────────────────────────────
 
 export type AttentionKind =
+  | "paused-run"
   | "blocked-gate"
   | "stale-claim"
   | "long-running-process"
@@ -98,6 +113,24 @@ export function deriveAttentionItems(
 ): AttentionItem[] {
   const state: OperatingState = input ?? ({} as OperatingState);
   const items: AttentionItem[] = [];
+
+  // Paused runs — a run parked at an OPEN gate (status "waiting"), waiting for
+  // the owner to record the remaining evidence or sign off before it can
+  // continue. Led first: a run blocked on *you* is the most literal "needs you".
+  // Deduped by run so a run with several open gates yields a single item.
+  const pausedRunIds = new Set<string>();
+  for (const gate of state.gates || []) {
+    if (!PAUSED_GATE_STATUSES.has((gate.status || "").toLowerCase())) continue;
+    const runId = gate.processRef?.id || gate.processRef?.label || gate.id;
+    if (pausedRunIds.has(runId)) continue;
+    pausedRunIds.add(runId);
+    items.push({
+      kind: "paused-run",
+      id: runId,
+      label: gate.processRef?.label || gate.processRef?.id || gate.label || gate.id,
+      detail: pausedRunDetail(gate),
+    });
+  }
 
   // Blocked gates
   for (const gate of state.gates || []) {
@@ -155,6 +188,16 @@ export function deriveAttentionItems(
   }
 
   return items;
+}
+
+function pausedRunDetail(gate: ConsoleGate): string {
+  const step = gate.label || gate.id;
+  if (gate.missingEvidence?.length) {
+    const needed = gate.missingEvidence.slice(0, 3).join(", ");
+    const more = gate.missingEvidence.length > 3 ? ` (+${gate.missingEvidence.length - 3} more)` : "";
+    return `Parked at ${step} — waiting for you to record: ${needed}${more}.`;
+  }
+  return `Parked at ${step} — waiting for the required evidence or your sign-off before it can continue.`;
 }
 
 function blockedGateDetail(gate: ConsoleGate): string {
