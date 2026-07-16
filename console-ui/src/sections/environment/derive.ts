@@ -103,6 +103,13 @@ export interface AttentionItem {
   id: string;
   label: string;
   detail: string;
+  /**
+   * WorkGrid node id (`"<kind>:<id>"`, e.g. `"gate:g-1"` / `"claim:c-1"`) the
+   * Operate view should scroll to and highlight when this card's CTA is clicked
+   * (#135). Undefined when the item has no specific row to land on (e.g. a
+   * long-running process or a quiet telemetry source).
+   */
+  anchor?: string;
 }
 
 /** Processes running beyond this many ms are flagged as long-running. */
@@ -134,6 +141,7 @@ export function deriveAttentionItems(
       id: runId,
       label: gate.processRef?.label || gate.processRef?.id || gate.label || gate.id,
       detail: pausedRunDetail(gate),
+      anchor: `gate:${gate.id}`,
     });
   }
 
@@ -145,6 +153,7 @@ export function deriveAttentionItems(
         id: gate.id,
         label: gate.label || gate.id,
         detail: blockedGateDetail(gate),
+        anchor: `gate:${gate.id}`,
       });
     }
   }
@@ -159,6 +168,7 @@ export function deriveAttentionItems(
         id: claim.id,
         label: claim.label || claim.id,
         detail: staleClaimDetail(claim),
+        anchor: `claim:${claim.id}`,
       });
     }
   }

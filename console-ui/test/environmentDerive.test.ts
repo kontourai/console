@@ -272,6 +272,40 @@ test("deriveAttentionItems flags long-running processes", () => {
   assert.equal(items[0].id, "p1");
 });
 
+// Deep-link anchors (#135): items that map to an Operate WorkGrid row carry an
+// `anchor` ("<kind>:<id>") so the "Needs you" CTA scrolls to + highlights the
+// exact item, not the generic board.
+test("deriveAttentionItems: blocked-gate and stale-claim carry Operate node anchors", () => {
+  const gateState: OperatingState = { gates: [{ id: "g1", status: "blocked" }] };
+  const gateItem = deriveAttentionItems(gateState, null)[0];
+  assert.equal(gateItem.kind, "blocked-gate");
+  assert.equal(gateItem.anchor, "gate:g1");
+
+  const claimState: OperatingState = { claims: [{ id: "c1", freshness: { status: "stale" } }] };
+  const claimItem = deriveAttentionItems(claimState, null)[0];
+  assert.equal(claimItem.kind, "stale-claim");
+  assert.equal(claimItem.anchor, "claim:c1");
+});
+
+test("deriveAttentionItems: a paused-run anchors to its parked gate (not the run id)", () => {
+  const state: OperatingState = {
+    gates: [{ id: "verify-gate", status: "waiting", processRef: { id: "run-9" } }],
+  };
+  const item = deriveAttentionItems(state, null)[0];
+  assert.equal(item.kind, "paused-run");
+  assert.equal(item.id, "run-9");
+  // Anchor targets the gate's WorkGrid row, since a run has no selectable row.
+  assert.equal(item.anchor, "gate:verify-gate");
+});
+
+test("deriveAttentionItems: items without an Operate row carry no anchor", () => {
+  const now = Date.now();
+  const longAgo = new Date(now - LONG_RUNNING_PROCESS_MS - 1000).toISOString();
+  const item = deriveAttentionItems({ processes: [{ id: "p1", status: "running", updatedAt: longAgo }] }, null, now)[0];
+  assert.equal(item.kind, "long-running-process");
+  assert.equal(item.anchor, undefined);
+});
+
 test("deriveAttentionItems flags quiet telemetry sources", () => {
   const now = Date.now();
   const quietAt = new Date(now - QUIET_SOURCE_MS - 5000).toISOString();

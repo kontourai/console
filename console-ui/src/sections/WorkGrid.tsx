@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Panel } from "@kontourai/ui/react";
 import type { FlowConsoleProjection } from "@kontourai/flow/console-contract";
 import { PipelineStepper } from "../components/PipelineStepper";
@@ -13,13 +13,20 @@ interface WorkGridProps {
   selectedNodeId: string | null;
   onNodeSelect(id: string | null): void;
   /**
+   * A deep-link target from a "Needs you" card (#135): a node id
+   * (`"<kind>:<id>"`) whose row should be scrolled into view and highlighted.
+   * `onAnchorConsumed` fires once it has been handled so it doesn't re-trigger.
+   */
+  anchor?: string | null;
+  onAnchorConsumed?: () => void;
+  /**
    * Live read-through fetch for a referenced child run's projection
    * (GET /ingest/flow/:runId). Passed to <FlowRunPanel> for drill-in fetch.
    */
   fetchChildProjection?: (runId: string) => Promise<unknown | null>;
 }
 
-export function WorkGrid({ state, selectedNodeId, onNodeSelect, fetchChildProjection }: WorkGridProps) {
+export function WorkGrid({ state, selectedNodeId, onNodeSelect, anchor, onAnchorConsumed, fetchChildProjection }: WorkGridProps) {
   const flow = buildProcessFlow(state);
   const activeProcessLearnings = flow.activeProcess
     ? selectLearningsBySubjectRef(state, processRef(flow.activeProcess))
@@ -47,8 +54,26 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect, fetchChildProjec
     }
   }
 
+  // Deep-link handling (#135): when a "Needs you" card routes here with a node
+  // anchor, scroll that row into view and select it (reusing the existing
+  // `.selected` highlight), then clear the anchor so it fires exactly once.
+  useEffect(() => {
+    if (!anchor) return;
+    const el = typeof document !== "undefined" ? document.getElementById(anchor) : null;
+    if (el) {
+      // Respect prefers-reduced-motion, matching the pattern in CostSection.tsx.
+      const reduceMotion = typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+      onNodeSelect(anchor);
+    }
+    onAnchorConsumed?.();
+    // Only re-run when the anchor changes; the callbacks are stable setState refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchor]);
+
   return (
     <section className="work-grid">
+      <div className="wg-main">
       <section className="flow-panel" aria-label="Primary process flow">
         <div className="section-head">
           <div>
@@ -81,44 +106,13 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect, fetchChildProjec
         ) : null}
       </section>
 
-      <div className="side-stack">
-        <Panel title="Active process" count={flow.activeProcess ? 1 : 0}>
-          {flow.activeProcess
-            ? <ProcessView process={flow.activeProcess} advisoryLearnings={activeProcessLearnings} />
-            : <DesignedEmpty
-                headline="Nothing running yet"
-                body="An active process will appear here once records are replayed."
-              />}
-        </Panel>
-
-        <Panel title="Gates" count={state.gates?.length || 0}>
-          <div className="stack">
-            {(state.gates || []).map((gate) => (
-              <button
-                key={gate.id}
-                type="button"
-                className={`data-row-btn${selectedNodeId === `gate:${gate.id}` ? " selected" : ""}`}
-                onClick={() => selectByEntityId("gate", gate.id)}
-              >
-                <GateRow gate={gate} />
-              </button>
-            ))}
-            {!state.gates?.length
-              ? <DesignedEmpty
-                  headline="No gates replayed."
-                  body="Gate records posted to this hub will appear here."
-                />
-              : null}
-          </div>
-        </Panel>
-      </div>
-
       <div className="bottom-grid">
         <Panel title="Claims" count={state.claims?.length || 0}>
           <div className="stack">
             {(state.claims || []).map((claim) => (
               <button
                 key={claim.id}
+                id={`claim:${claim.id}`}
                 type="button"
                 className={`data-row-btn${selectedNodeId === `claim:${claim.id}` ? " selected" : ""}`}
                 onClick={() => selectByEntityId("claim", claim.id)}
@@ -143,6 +137,7 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect, fetchChildProjec
             {(state.actions || []).map((action) => (
               <button
                 key={action.id}
+                id={`action:${action.id}`}
                 type="button"
                 className={`data-row-btn${selectedNodeId === `action:${action.id}` ? " selected" : ""}`}
                 onClick={() => selectByEntityId("action", action.id)}
@@ -166,6 +161,40 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect, fetchChildProjec
               ? <DesignedEmpty
                   headline="No learning context"
                   body="Advisory learnings from replayed records will appear here."
+                />
+              : null}
+          </div>
+        </Panel>
+      </div>
+      </div>
+
+      <div className="side-stack">
+        <Panel title="Active process" count={flow.activeProcess ? 1 : 0}>
+          {flow.activeProcess
+            ? <ProcessView process={flow.activeProcess} advisoryLearnings={activeProcessLearnings} />
+            : <DesignedEmpty
+                headline="Nothing running yet"
+                body="An active process will appear here once records are replayed."
+              />}
+        </Panel>
+
+        <Panel title="Gates" count={state.gates?.length || 0}>
+          <div className="stack">
+            {(state.gates || []).map((gate) => (
+              <button
+                key={gate.id}
+                id={`gate:${gate.id}`}
+                type="button"
+                className={`data-row-btn${selectedNodeId === `gate:${gate.id}` ? " selected" : ""}`}
+                onClick={() => selectByEntityId("gate", gate.id)}
+              >
+                <GateRow gate={gate} />
+              </button>
+            ))}
+            {!state.gates?.length
+              ? <DesignedEmpty
+                  headline="No gates replayed."
+                  body="Gate records posted to this hub will appear here."
                 />
               : null}
           </div>
