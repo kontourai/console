@@ -505,10 +505,21 @@ function sanitizePathToken(value: unknown, label: string): string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`${label} must be a non-empty path token`);
   }
-  if (path.isAbsolute(value) || value.includes("..") || /[\\/]/.test(value) || /[\u0000-\u001f\u007f]/.test(value)) {
+  // Still reject genuine traversal / unsafe inputs outright — an absolute path,
+  // any ".." segment, or a control char is never a legitimate id and must not
+  // reach the filesystem in any form. Path separators, by contrast, are encoded
+  // below rather than rejected.
+  if (path.isAbsolute(value) || value.includes("..") || /[\u0000-\u001f\u007f]/.test(value)) {
     throw new Error(`${label} must be a repo-relative safe path token`);
   }
-  return value;
+  // Percent-encode the path separators (and "%" itself, so the mapping stays
+  // reversible and injective — distinct ids never collide on one file). This
+  // lets a hierarchical id like a repo scope's "owner/repo" survive as a single
+  // safe filename token instead of being rejected (#188): the record keeps its
+  // natural id, only the derived filename is encoded. The result contains no
+  // separator and no "..", so the path stays inside the events/projections dir —
+  // and ensureContained/ensureSafeDestination re-verify that regardless.
+  return value.replace(/[%\\/]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
 }
 
 function ensureContained(root: string, target: string): void {
