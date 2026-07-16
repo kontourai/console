@@ -80,6 +80,21 @@ test("deriveHealthCounts classifies gates by status", () => {
   assert.equal(counts.gatesBlocked, 2); // blocked + failed
 });
 
+// Regression: console-server's statusFromGateEvent emits "routed_back"
+// (underscore) for a gate.routed_back event, but the blocked-gate set formerly
+// checked a hyphenated "route-back" no producer ever emits, so routed-back gates
+// were never counted as blocked.
+test("deriveHealthCounts counts a routed_back gate as blocked", () => {
+  const state: OperatingState = {
+    gates: [
+      { id: "g1", status: "routed_back" },
+      { id: "g2", status: "passed" },
+    ],
+  };
+  const counts = deriveHealthCounts(state);
+  assert.equal(counts.gatesBlocked, 1);
+});
+
 test("deriveHealthCounts classifies claims by freshness status", () => {
   const state: OperatingState = {
     claims: [
@@ -129,6 +144,33 @@ test("deriveAttentionItems flags blocked gates", () => {
   assert.equal(items[0].id, "g1");
   assert.equal(items[0].label, "Compliance Gate");
   assert.equal(items[0].detail, "missing SLA doc");
+});
+
+// Regression: a routed_back gate (a downstream check sent the work back to an
+// earlier step) must surface in the triage as a blocked-gate. It formerly matched
+// neither BLOCKED_GATE_STATUSES (which listed a phantom hyphenated "route-back")
+// nor PAUSED_GATE_STATUSES, so it was invisible to the owner.
+test("deriveAttentionItems flags a routed_back gate as a blocked-gate with its route-back reason", () => {
+  const state: OperatingState = {
+    gates: [
+      { id: "verify-gate", label: "verify", status: "routed_back", routeBack: { reason: "acceptance criteria not met" } },
+    ],
+  };
+  const items = deriveAttentionItems(state, null);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, "blocked-gate");
+  assert.equal(items[0].id, "verify-gate");
+  assert.equal(items[0].detail, "acceptance criteria not met");
+});
+
+test("deriveAttentionItems: a routed_back gate is a blocked-gate, not a paused-run (disjoint)", () => {
+  const state: OperatingState = {
+    gates: [{ id: "g1", label: "verify", status: "routed_back" }],
+  };
+  const items = deriveAttentionItems(state, null);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, "blocked-gate");
+  assert.equal(items.filter((i) => i.kind === "paused-run").length, 0);
 });
 
 test("deriveAttentionItems flags a run paused at an open (waiting) gate", () => {
