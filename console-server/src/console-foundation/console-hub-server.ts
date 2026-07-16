@@ -1664,7 +1664,8 @@ function prefersSse(request: IncomingMessage): boolean {
 
 function applyCorsPolicy(request: IncomingMessage, response: ServerResponse, runtimeConfig: ConsoleRuntimeConfig): boolean {
   const origin = request.headers.origin;
-  if (Array.isArray(origin) || !isAllowedOrigin(origin, runtimeConfig)) {
+  const requestHost = Array.isArray(request.headers.host) ? undefined : request.headers.host;
+  if (Array.isArray(origin) || !isAllowedOrigin(origin, runtimeConfig, requestHost)) {
     writeApiError(response, 403, "ORIGIN_NOT_ALLOWED", "origin is not allowed for the local console hub");
     return false;
   }
@@ -1715,12 +1716,48 @@ export function requireScope(
   return { ok: false, statusCode: 403, error: "INSUFFICIENT_SCOPE", safeMessage: `missing required scope: ${scope}`, scope };
 }
 
-function isAllowedOrigin(origin: string | undefined, runtimeConfig: ConsoleRuntimeConfig): boolean {
+function isAllowedOrigin(origin: string | undefined, runtimeConfig: ConsoleRuntimeConfig, requestHost?: string): boolean {
   if (!origin) return true;
-  const allowedOrigins = runtimeConfig.mode === "hosted"
-    ? runtimeConfig.allowedOrigins
-    : DEFAULT_ALLOWED_ORIGINS.concat(runtimeConfig.allowedOrigins);
-  return allowedOrigins.includes(origin);
+  // Hosted mode is fail-closed: only the explicitly configured origins.
+  if (runtimeConfig.mode === "hosted") {
+    return runtimeConfig.allowedOrigins.includes(origin);
+  }
+  // Local (loopback self-host): allow SAME-ORIGIN requests. When `kontour serve`
+  // hands the browser the bundled UI, the browser stamps every crossorigin
+  // module-script / CSS asset request with `Origin: <scheme>://<host:port>`
+  // matching the hub's own `Host` header. DEFAULT_ALLOWED_ORIGINS only lists the
+  // Vite dev ports (5173), so without this a fresh `kontour serve` 403s every one
+  // of its own assets with ORIGIN_NOT_ALLOWED (#187). Same-origin is by
+  // definition the console itself; a cross-site page's browser-set Origin can
+  // never match our Host, so this opens nothing to an attacker.
+  if (originMatchesHost(origin, requestHost)) return true;
+  return DEFAULT_ALLOWED_ORIGINS.concat(runtimeConfig.allowedOrigins).includes(origin);
+}
+
+/** True when `origin`'s authority equals the request's own Host header — i.e. the
+ *  request is same-origin with the hub. Both sides are normalized through the
+ *  Origin's own scheme so a default port (80/443) is stripped symmetrically: a
+ *  browser omits it in both `Origin` and `Host`, but a hand-written `Host:
+ *  127.0.0.1:80` would otherwise fail a raw string compare against an Origin that
+ *  dropped it. Still fail-closed for a cross-site Origin — the browser cannot be
+ *  tricked into sending a Host that matches an attacker-controlled Origin.
+ *  Exported for unit coverage of the default-port normalization. */
+export function originMatchesHost(origin: string, requestHost: string | undefined): boolean {
+  if (!requestHost) return false;
+  let originUrl: URL;
+  try {
+    originUrl = new URL(origin);
+  } catch {
+    return false;
+  }
+  if (!originUrl.host) return false;
+  let normalizedHost: string;
+  try {
+    normalizedHost = new URL(`${originUrl.protocol}//${requestHost}`).host;
+  } catch {
+    return false;
+  }
+  return originUrl.host === normalizedHost;
 }
 
 function isKnownRoute(pathname: string): boolean {
