@@ -108,7 +108,19 @@ export interface TelemetryRepositoryConfig {
 export function createTelemetryStore(options: ConsoleHubServerOptions = {}): TelemetryStore {
   const rootDir = path.resolve(options.rootDir || process.cwd());
   const telemetryRoot = resolvePath(rootDir, options.telemetryRoot || path.join("..", ".telemetry"));
-  const productRoots = resolveTelemetryProductRoots(rootDir, options);
+  const { roots: productRoots, dropped: droppedProductRoots } = resolveTelemetryProductRoots(rootDir, options);
+  // Loud, actionable diagnostics instead of a silent drop (#64): a mis-formatted
+  // CONSOLE_TELEMETRY_PRODUCT_ROOTS entry (e.g. a bare path with no "productId:"
+  // prefix) used to vanish with no signal, leaving the telemetry views
+  // mysteriously empty. Log each dropped entry at startup, and also surface them
+  // as summary warnings (below) so they show in the console UI next to the empty
+  // panels.
+  for (const drop of droppedProductRoots) {
+    console.warn(`[telemetry] CONSOLE_TELEMETRY_PRODUCT_ROOTS entry ${JSON.stringify(drop.entry)} ignored: ${drop.reason}`);
+  }
+  const productRootWarnings = droppedProductRoots.map((drop) =>
+    issue("warning", "telemetry-product-roots", `CONSOLE_TELEMETRY_PRODUCT_ROOTS entry ${JSON.stringify(drop.entry)} ignored: ${drop.reason}`)
+  );
   const sinkRoot = resolvePath(rootDir, options.telemetrySinkRoot || path.join(options.kontourRoot || options.localRoot || LOCAL_KONTOUR_DIR, "telemetry"));
   const descriptorPaths = options.telemetryDescriptorPaths || parseCsv(process.env.CONSOLE_TELEMETRY_DESCRIPTOR_PATHS);
   const telemetryDatabaseUrl = options.telemetryDatabaseUrl || process.env.CONSOLE_DATABASE_URL || process.env.CONSOLE_TELEMETRY_DATABASE_URL;
@@ -135,6 +147,7 @@ export function createTelemetryStore(options: ConsoleHubServerOptions = {}): Tel
       return summarizeTelemetry({
         rootDir,
         productRoots,
+        productRootWarnings,
         descriptorPaths,
         includeProductRecordSources: context.runtimeMode !== "hosted",
         runtimeSources: await repository.runtimeSources(context, query),
@@ -537,13 +550,17 @@ function parseBoundedInteger(name: "limit" | "offset", value: string | null, min
 function summarizeTelemetry(input: {
   rootDir: string;
   productRoots: TelemetryProductRoots;
+  productRootWarnings?: ValidationIssue[];
   descriptorPaths: string[];
   includeProductRecordSources: boolean;
   runtimeSources: Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>;
   query?: TelemetryQuery;
 }): TelemetrySummary {
   const sources: TelemetrySourceSummary[] = [];
-  const warnings: ValidationIssue[] = [];
+  // Config-level warnings (e.g. dropped CONSOLE_TELEMETRY_PRODUCT_ROOTS entries,
+  // #64) lead so they surface in the console UI even when there are zero sources
+  // — which is exactly the "empty panels" state a mis-configured root produces.
+  const warnings: ValidationIssue[] = [...(input.productRootWarnings || [])];
   const records: TelemetryRecordSummary[] = [];
   const seen = new Set<string>();
 
@@ -965,31 +982,72 @@ function defaultFacetDescriptors(): TelemetryFacetDescriptor[] {
   ];
 }
 
-function resolveTelemetryProductRoots(rootDir: string, options: ConsoleHubServerOptions): TelemetryProductRoots {
+/** An entry that was NOT loaded as a product root, with the reason why — so the
+ *  operator gets a loud message instead of a silent drop (#64). */
+export interface DroppedProductRoot {
+  entry: string;
+  reason: string;
+}
+
+/** The expected shape of one CONSOLE_TELEMETRY_PRODUCT_ROOTS entry, quoted in
+ *  every drop reason so the message is self-explanatory. */
+const PRODUCT_ROOTS_FORMAT_HINT = 'comma-separated "productId:path" entries (e.g. "flow:/abs/path,surface:./rel/path")';
+
+function resolveTelemetryProductRoots(rootDir: string, options: ConsoleHubServerOptions): { roots: TelemetryProductRoots; dropped: DroppedProductRoot[] } {
+  const envParsed = parseProductRoots(process.env.CONSOLE_TELEMETRY_PRODUCT_ROOTS);
   const configured = {
-    ...parseProductRoots(process.env.CONSOLE_TELEMETRY_PRODUCT_ROOTS),
+    ...envParsed.roots,
     ...(options.telemetryProductRoots || {})
   };
   const roots: TelemetryProductRoots = {};
+  const dropped = [...envParsed.dropped];
   for (const [productId, productRoot] of Object.entries(configured)) {
-    if (isSafeProductId(productId) && productRoot) roots[productId] = resolvePath(rootDir, productRoot);
+    if (isSafeProductId(productId) && productRoot) {
+      roots[productId] = resolvePath(rootDir, productRoot);
+    } else {
+      dropped.push({ entry: `${productId}:${productRoot}`, reason: !isSafeProductId(productId) ? `invalid product id "${productId}"` : "empty path" });
+    }
   }
-  return roots;
+  return { roots, dropped };
 }
 
-function parseProductRoots(value: string | undefined): TelemetryProductRoots {
+/**
+ * Parse CONSOLE_TELEMETRY_PRODUCT_ROOTS. Each entry is `productId:path`; the
+ * FIRST ":" splits id from path (so absolute paths after the colon are fine).
+ * Entries that don't fit are collected in `dropped` with a reason rather than
+ * silently skipped (#64) — a bare path like "/home/me/flow-agents" has no ":"
+ * and was previously discarded with no signal, leaving the telemetry views
+ * mysteriously empty.
+ */
+export function parseProductRoots(value: string | undefined): { roots: TelemetryProductRoots; dropped: DroppedProductRoot[] } {
   const roots: TelemetryProductRoots = {};
-  if (!value) return roots;
+  const dropped: DroppedProductRoot[] = [];
+  if (!value) return { roots, dropped };
   for (const item of value.split(",")) {
     const trimmed = item.trim();
     if (!trimmed) continue;
     const separator = trimmed.indexOf(":");
-    if (separator <= 0) continue;
+    if (separator < 0) {
+      dropped.push({ entry: trimmed, reason: `no ":" separator; expected ${PRODUCT_ROOTS_FORMAT_HINT}` });
+      continue;
+    }
+    if (separator === 0) {
+      dropped.push({ entry: trimmed, reason: `no product id before ":"; expected ${PRODUCT_ROOTS_FORMAT_HINT}` });
+      continue;
+    }
     const productId = trimmed.slice(0, separator).trim();
     const productRoot = trimmed.slice(separator + 1).trim();
-    if (isSafeProductId(productId) && productRoot) roots[productId] = productRoot;
+    if (!isSafeProductId(productId)) {
+      dropped.push({ entry: trimmed, reason: `invalid product id "${productId}" (allowed: alphanumeric, ".", "_", "-", up to 80 chars)` });
+      continue;
+    }
+    if (!productRoot) {
+      dropped.push({ entry: trimmed, reason: 'empty path after ":"' });
+      continue;
+    }
+    roots[productId] = productRoot;
   }
-  return roots;
+  return { roots, dropped };
 }
 
 function isSafeProductId(productId: string): boolean {

@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-import { createTelemetryStore } from "../src/console-foundation/telemetry";
+import { createTelemetryStore, parseProductRoots } from "../src/console-foundation/telemetry";
 import { getRegistry, setRegistry } from "@kontourai/telemetry";
 import type { TelemetrySummary } from "../src/console-foundation/types";
 
@@ -388,4 +388,56 @@ test("accept() path (POSTed records) is summarized with usage too", async () => 
   const summary = await store.summarize();
   assert.equal(summary.totals.usage.estimatedCostUsd, round6(1000 * 25 / 1_000_000));
   assert.equal(summary.analytics.usageByModel[0]?.key, "claude-opus-4-8");
+});
+
+// --- CONSOLE_TELEMETRY_PRODUCT_ROOTS parsing (#64) --------------------------
+
+test("parseProductRoots keeps well-formed productId:path entries", () => {
+  const { roots, dropped } = parseProductRoots("flow:/abs/flow-agents, surface:./rel/surface");
+  assert.deepEqual(roots, { flow: "/abs/flow-agents", surface: "./rel/surface" });
+  assert.equal(dropped.length, 0);
+});
+
+test("parseProductRoots splits on the FIRST colon so absolute paths after it survive", () => {
+  // A Windows-style or scheme-y path after the colon must not be mangled.
+  const { roots } = parseProductRoots("flow:/a:b/c");
+  assert.equal(roots.flow, "/a:b/c");
+});
+
+// The core #64 regression: a bare path (no "productId:" prefix) used to be
+// silently dropped. It is now surfaced in `dropped` with an explanatory reason.
+test("parseProductRoots reports a bare path as dropped instead of silently discarding it", () => {
+  const { roots, dropped } = parseProductRoots("/home/me/dev/flow-agents");
+  assert.deepEqual(roots, {});
+  assert.equal(dropped.length, 1);
+  assert.equal(dropped[0].entry, "/home/me/dev/flow-agents");
+  assert.match(dropped[0].reason, /no ":" separator/);
+});
+
+test("parseProductRoots reports each malformed entry with a specific reason", () => {
+  const { roots, dropped } = parseProductRoots(":/no/id, bad id:/x, ok:/y, empty:");
+  assert.deepEqual(roots, { ok: "/y" });
+  const byReason = Object.fromEntries(dropped.map((d) => [d.entry, d.reason]));
+  assert.match(byReason[":/no/id"], /no product id before ":"/);
+  assert.match(byReason["bad id:/x"], /invalid product id/);
+  assert.match(byReason["empty:"], /empty path/);
+});
+
+// End-to-end: a dropped env entry surfaces as a summary warning so the operator
+// sees WHY the telemetry panels are empty, in the console UI itself.
+test("summary surfaces a warning when CONSOLE_TELEMETRY_PRODUCT_ROOTS drops an entry (#64)", async () => {
+  const original = process.env.CONSOLE_TELEMETRY_PRODUCT_ROOTS;
+  process.env.CONSOLE_TELEMETRY_PRODUCT_ROOTS = "/home/me/dev/flow-agents";
+  try {
+    const rootDir = tempDir();
+    const store = createTelemetryStore({ rootDir, telemetryStorageAdapter: "local-jsonl" });
+    const summary = await store.summarize();
+    const warning = summary.warnings.find((w: any) => w.path === "telemetry-product-roots");
+    assert.ok(warning, "expected a telemetry-product-roots warning in the summary");
+    assert.match(warning!.message, /\/home\/me\/dev\/flow-agents/);
+    assert.match(warning!.message, /ignored/);
+  } finally {
+    if (original === undefined) delete process.env.CONSOLE_TELEMETRY_PRODUCT_ROOTS;
+    else process.env.CONSOLE_TELEMETRY_PRODUCT_ROOTS = original;
+  }
 });
