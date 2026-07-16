@@ -131,6 +131,73 @@ test("deriveAttentionItems flags blocked gates", () => {
   assert.equal(items[0].detail, "missing SLA doc");
 });
 
+test("deriveAttentionItems flags a run paused at an open (waiting) gate", () => {
+  const state: OperatingState = {
+    gates: [
+      { id: "verify-gate", label: "verify", status: "waiting", processRef: { id: "run-568", label: "flow-agents #568" } },
+      { id: "g-done", status: "passed" }, // not flagged
+    ],
+  };
+  const items = deriveAttentionItems(state, null);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, "paused-run");
+  assert.equal(items[0].id, "run-568");
+  assert.equal(items[0].label, "flow-agents #568");
+  assert.ok(items[0].detail.includes("Parked at verify"), `expected 'Parked at verify' in "${items[0].detail}"`);
+  assert.ok(items[0].detail.includes("waiting"), `expected 'waiting' in "${items[0].detail}"`);
+});
+
+test("deriveAttentionItems: a waiting gate is a paused-run, not a blocked-gate (disjoint)", () => {
+  const state: OperatingState = {
+    gates: [{ id: "g1", label: "verify", status: "waiting" }],
+  };
+  const items = deriveAttentionItems(state, null);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].kind, "paused-run");
+  assert.equal(items.filter((i) => i.kind === "blocked-gate").length, 0);
+});
+
+test("deriveAttentionItems: paused-run detail lists the specific missing evidence", () => {
+  const state: OperatingState = {
+    gates: [
+      {
+        id: "verify-gate",
+        label: "verify",
+        status: "waiting",
+        missingEvidence: ["clean-critique", "acceptance-criteria", "tests-evidence", "extra-one"],
+      },
+    ],
+  };
+  const items = deriveAttentionItems(state, null);
+  assert.equal(items.length, 1);
+  assert.ok(items[0].detail.includes("clean-critique"), `expected named evidence in "${items[0].detail}"`);
+  assert.ok(items[0].detail.includes("(+1 more)"), `expected overflow note in "${items[0].detail}"`);
+});
+
+test("deriveAttentionItems: multiple open gates on one run collapse to a single paused-run item", () => {
+  const state: OperatingState = {
+    gates: [
+      { id: "g1", label: "verify", status: "waiting", processRef: { id: "run-1" } },
+      { id: "g2", label: "merge-ready", status: "waiting", processRef: { id: "run-1" } },
+    ],
+  };
+  const items = deriveAttentionItems(state, null).filter((i) => i.kind === "paused-run");
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, "run-1");
+});
+
+test("deriveAttentionItems leads with paused runs before blocked gates", () => {
+  const state: OperatingState = {
+    gates: [
+      { id: "g-failed", label: "review", status: "failed", routeBack: { reason: "nope" } },
+      { id: "g-waiting", label: "verify", status: "waiting", processRef: { id: "run-2" } },
+    ],
+  };
+  const items = deriveAttentionItems(state, null);
+  assert.equal(items[0].kind, "paused-run");
+  assert.equal(items[1].kind, "blocked-gate");
+});
+
 test("deriveAttentionItems flags stale claims", () => {
   const state: OperatingState = {
     claims: [
