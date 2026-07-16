@@ -10,7 +10,7 @@ const {
   inspectFixtures,
   loadConsoleMigrations
 } = require("../src/console-foundation");
-const { signSessionCookie, verifySessionCookieValue } = require("../src/console-foundation/console-hub-server");
+const { signSessionCookie, verifySessionCookieValue, originMatchesHost } = require("../src/console-foundation/console-hub-server");
 const { CoreRecordsRepository } = require("../src/console-foundation/core-records");
 const { EconomicsRecordsRepository } = require("../src/console-foundation/economics-records");
 
@@ -295,6 +295,72 @@ test("local hub server allows explicitly configured browser origins", async () =
   } finally {
     await close(app);
   }
+});
+
+// Regression (#187): a fresh `kontour serve` handed the browser the bundled UI,
+// but every crossorigin asset request carries `Origin: http://<host:port>` of
+// the hub itself — which DEFAULT_ALLOWED_ORIGINS (only the 5173 dev ports) did
+// not include, so every asset 403'd and the UI was unusable out of the box.
+// Same-origin requests must be allowed in local mode.
+test("local hub server allows same-origin requests (its own bound origin)", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app); // http://127.0.0.1:<bound-port> — the browser's same-origin header
+    const allowed = await rawRequest("GET", `${baseUrl}/state`, undefined, {
+      origin: baseUrl
+    });
+
+    assert.equal(allowed.statusCode, 200);
+    assert.equal(allowed.headers["access-control-allow-origin"], baseUrl);
+  } finally {
+    await close(app);
+  }
+});
+
+// Sharpens the same-origin match: a DIFFERENT port on the same loopback host is a
+// different origin and must still be rejected — the allowance is same-origin, not
+// "any loopback address".
+test("local hub server rejects a same-host different-port origin", async () => {
+  const rootDir = tempRoot();
+  const app = createConsoleHubServer({ rootDir, port: 0 });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const otherPort = (serverUrl(app).endsWith(":1") ? "http://127.0.0.1:2" : "http://127.0.0.1:1");
+    const rejected = await rawRequest("GET", `${baseUrl}/state`, undefined, {
+      origin: otherPort
+    });
+
+    assert.equal(rejected.statusCode, 403);
+    assert.equal(rejected.headers["access-control-allow-origin"], undefined);
+    assert.equal(JSON.parse(rejected.body).error, "ORIGIN_NOT_ALLOWED");
+  } finally {
+    await close(app);
+  }
+});
+
+// Unit coverage of the same-origin matcher, including the default-port symmetry
+// (#187 hardening): a browser omits :80/:443 in both Origin and Host, but a
+// client that writes the default port into Host must still match an Origin that
+// dropped it. The match stays fail-closed for a cross-site Origin.
+test("originMatchesHost matches same-origin and rejects cross-site, symmetric on default ports", () => {
+  // Same origin, explicit non-default port on both sides.
+  assert.equal(originMatchesHost("http://127.0.0.1:3737", "127.0.0.1:3737"), true);
+  // Default-port symmetry: Origin drops :80, Host keeps it (and vice-versa).
+  assert.equal(originMatchesHost("http://127.0.0.1", "127.0.0.1:80"), true);
+  assert.equal(originMatchesHost("http://127.0.0.1:80", "127.0.0.1"), true);
+  assert.equal(originMatchesHost("https://example.com", "example.com:443"), true);
+  // Cross-site Origin never matches the hub's own Host — the core guarantee.
+  assert.equal(originMatchesHost("http://evil.com", "127.0.0.1:3737"), false);
+  // Same host, different port is a different origin.
+  assert.equal(originMatchesHost("http://127.0.0.1:3737", "127.0.0.1:9999"), false);
+  // Userinfo trick: `new URL` parses the host as evil.com, which won't match a real Host.
+  assert.equal(originMatchesHost("http://127.0.0.1:3737@evil.com", "127.0.0.1:3737"), false);
+  // Missing Host header or unparseable Origin is fail-closed.
+  assert.equal(originMatchesHost("http://127.0.0.1:3737", undefined), false);
+  assert.equal(originMatchesHost("not-a-url", "127.0.0.1:3737"), false);
 });
 
 test("local hub server summarizes telemetry logs without product-specific descriptors", async () => {
