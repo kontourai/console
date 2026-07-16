@@ -274,6 +274,54 @@ test("projection record identity is stable across generatedAt changes", () => {
   assert.equal(classifyRecord(first).recordId, classifyRecord(second).recordId);
 });
 
+// #188: a repo-scoped event's natural id is "owner/repo" (a slash). The slash
+// must not be rejected — the record keeps its natural id and the derived
+// filename percent-encodes the separator into a single safe token.
+test("local sink accepts a repo scope id with a slash, encoding it into a safe filename", () => {
+  const root = tempRoot();
+  const event = validEvent({
+    id: "event-repo-scoped",
+    scope: { product: "surface", kind: "repo", id: "kontourai/console", label: "Console" }
+  });
+
+  const result = new LocalFileSink({ root }).deliver(event);
+
+  assert.equal(result.outcome, "accepted");
+  // The slash is encoded (%2F) so the filename is a single flat, contained token.
+  assert.equal(result.destination, path.join("events", event.producer.id, "repo-kontourai%2Fconsole.jsonl"));
+  const written = path.join(root, result.destination);
+  assert.equal(fs.existsSync(written), true);
+  // The record CONTENT keeps the natural, un-encoded repo id — only the filename
+  // is encoded.
+  const persisted = JSON.parse(fs.readFileSync(written, "utf8").trim());
+  assert.equal(persisted.scope.id, "kontourai/console");
+});
+
+// The encoding must stay injective: "%" in an id is itself encoded so it can
+// never collide with the encoding of a separator.
+test("local sink encodes a literal percent so it cannot collide with an encoded slash", () => {
+  const root = tempRoot();
+  const slashed = new LocalFileSink({ root }).deliver(validEvent({ id: "e-slash", scope: { product: "surface", kind: "repo", id: "a/b" } }));
+  const literalPercent = new LocalFileSink({ root }).deliver(validEvent({ id: "e-pct", scope: { product: "surface", kind: "repo", id: "a%2Fb" } }));
+
+  assert.equal(slashed.destination, path.join("events", "surface-producer", "repo-a%2Fb.jsonl"));
+  assert.equal(literalPercent.destination, path.join("events", "surface-producer", "repo-a%252Fb.jsonl"));
+  assert.notEqual(slashed.destination, literalPercent.destination);
+});
+
+// The traversal guard is unchanged for genuinely unsafe tokens: ".." and
+// absolute paths in scope.id are still rejected outright, not encoded.
+test("local sink still rejects a scope id containing .. traversal", () => {
+  const root = tempRoot();
+  const event = validEvent({ scope: { product: "surface", kind: "repo", id: "../../etc/passwd" } });
+
+  const result = new LocalFileSink({ root }).deliver(event);
+
+  assert.equal(result.outcome, "failed");
+  assert.match(result.safeMessage, /scope\.id/);
+  assert.equal(fs.existsSync(path.join(path.dirname(root), "etc")), false);
+});
+
 test("local sink rejects unsafe path tokens without escaping the kontour root", () => {
   const root = tempRoot();
   const event = validEvent({
