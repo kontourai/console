@@ -21,7 +21,15 @@ export interface HealthCounts {
 
 const STALE_CLAIM_STATUSES = new Set(["stale", "expired", "at-risk", "unverified"]);
 const OK_CLAIM_STATUSES = new Set(["ok", "verified", "confirmed", "current", "fresh"]);
-const BLOCKED_GATE_STATUSES = new Set(["blocked", "failed", "route-back", "rejected"]);
+// A gate the owner should see as *something went wrong*: it hard-failed, was
+// rejected, or a downstream check routed the work back to an earlier step.
+// "routed_back" (underscore) is the exact status statusFromGateEvent emits for a
+// gate.routed_back event (console-server current-operating-state.ts:886) — the
+// set previously listed a hyphenated "route-back" that no producer ever emits,
+// so routed-back gates fell through both this set and PAUSED_GATE_STATUSES and
+// were invisible in the triage. blockedGateDetail surfaces gate.routeBack.reason
+// first, so a routed-back gate renders its route-back reason as its detail.
+const BLOCKED_GATE_STATUSES = new Set(["blocked", "failed", "routed_back", "rejected"]);
 // A gate that is OPEN and unmet — the run is parked waiting for evidence to be
 // recorded / the owner to sign off. Distinct from BLOCKED_GATE_STATUSES (a
 // gate that *failed* or was routed back): nothing went wrong here, the run just
@@ -32,9 +40,6 @@ const BLOCKED_GATE_STATUSES = new Set(["blocked", "failed", "route-back", "rejec
 // are listed: "waiting" is what statusFromGateEvent emits for gate.opened
 // (console-server current-operating-state.ts), and "open" is the open-gate
 // alias console-server/index.ts + flow-process-helper.ts already test for.
-// (Pre-existing, tracked separately: a "routed_back" gate is caught by neither
-// this set nor BLOCKED_GATE_STATUSES's hyphenated "route-back" — a string
-// mismatch outside this change's scope.)
 const PAUSED_GATE_STATUSES = new Set(["waiting", "open"]);
 const PASSED_GATE_STATUSES = new Set(["passed", "approved", "accepted", "complete"]);
 const OPEN_INQUIRY_OUTCOMES = new Set(["unsupported", "derived", "matched"]);

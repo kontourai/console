@@ -70,7 +70,12 @@ export function classifyBoardStage(process: ConsoleProcess): BoardStage {
   return "backlog";
 }
 
-const BLOCKED_GATE_STATUSES = new Set(["blocked", "failed", "route-back", "rejected"]);
+// "routed_back" (underscore) is the exact status console-server emits for a
+// gate.routed_back event (statusFromGateEvent, current-operating-state.ts:886);
+// the hyphenated "route-back" listed here before matched no producer, so a
+// routed-back gate was undercounted in a card's blocked-gate tally. Mirrors the
+// same set in sections/environment/derive.ts.
+const BLOCKED_GATE_STATUSES = new Set(["blocked", "failed", "routed_back", "rejected"]);
 const PASSED_GATE_STATUSES = new Set(["passed", "approved", "accepted", "complete"]);
 
 export interface BoardCard {

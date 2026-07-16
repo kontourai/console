@@ -100,6 +100,20 @@ test("deriveBoard tallies passed/blocked gates per card via processRef", () => {
   assert.equal(card?.gatesBlocked, 1);
 });
 
+// Regression: console-server emits "routed_back" (underscore) for a routed-back
+// gate; the blocked set formerly checked a hyphenated "route-back" no producer
+// emits, so a routed-back gate was undercounted in a card's blocked tally.
+test("deriveBoard counts a routed_back gate as blocked in a card's tally", () => {
+  const board = deriveBoard(state({
+    processes: [proc({ id: "item-1", currentStep: "verify" })],
+    gates: [
+      { id: "g1", status: "routed_back", processRef: { id: "item-1" } }
+    ] as OperatingState["gates"]
+  }));
+  const card = board.columns.flatMap((c) => c.cards).find((c) => c.id === "item-1");
+  assert.equal(card?.gatesBlocked, 1);
+});
+
 test("deriveBoard sorts a column's cards by updatedAt desc", () => {
   const board = deriveBoard(state({
     processes: [
