@@ -950,6 +950,25 @@ export type {
 } from "./flow-bridge";
 export { DEFAULT_CONSOLE_RUNTIME_ROOT } from "./runtime-root";
 
+// Producer integration surface (#71). These names are provided at RUNTIME by
+// the `module.exports = {...}` literal above (which reassigns the module object,
+// so this `export ... from` statement is types-only at runtime — the same
+// dual-source pattern the other re-exports in this file use). It makes an
+// index-level TypeScript consumer get real types now that emitter.ts uses named
+// exports (its declarations previously compiled to an empty `export {}`). Option
+// types (KontourEmitterOptions, LocalFileSinkOptions, ...) are re-exported from
+// "./types" in the type block above. The producer-surface guard test keeps this
+// list and the runtime literal from drifting apart.
+export {
+  KontourEmitter,
+  LocalFileSink,
+  CompositeSink,
+  InMemorySink,
+  ApiSink,
+  classifyRecord,
+  formatDeliveryResult,
+} from "./emitter";
+
 export {
   handleFlowIngest,
   validateFlowIngestRequest,
