@@ -6,6 +6,8 @@ import {
   deriveActivityBuckets,
   deriveTopWorkloads,
   deriveProcessList,
+  deriveCostByDimension,
+  COST_DIMENSIONS,
   formatAge,
   isSourceQuiet,
   LONG_RUNNING_PROCESS_MS,
@@ -495,3 +497,51 @@ function makeTelemetry(
     warnings: [],
   };
 }
+
+// ── deriveCostByDimension (#179) ─────────────────────────────────────────────
+
+function analyticsWith(over: Partial<ConsoleTelemetryResponse["analytics"]>): ConsoleTelemetryResponse["analytics"] {
+  return {
+    facets: [], flows: [],
+    usageByModel: [], usageByProject: [], usageByAgent: [], usageByRuntime: [], usageByTaskSlug: [],
+    actionClasses: [], costPerTurn: { turns: 0, estimatedCostUsd: 0, avgCostPerTurnUsd: 0 },
+    ...over,
+  } as any;
+}
+
+function bar(key: string, cost: number, tokens = 0) {
+  return { key, label: key, inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0, totalTokens: tokens, estimatedCostUsd: cost } as any;
+}
+
+test("deriveCostByDimension maps each enabled dimension to its analytics field", () => {
+  const telemetry = makeTelemetry([], analyticsWith({
+    usageByModel: [bar("claude-opus-4-8", 3)],
+    usageByProject: [bar("console", 5)],
+    usageByAgent: [bar("dev", 2)],
+    usageByTaskSlug: [bar("console-board-177", 7)],
+  }));
+  assert.equal(deriveCostByDimension(telemetry, "model")[0].label, "claude-opus-4-8");
+  assert.equal(deriveCostByDimension(telemetry, "project")[0].label, "console");
+  assert.equal(deriveCostByDimension(telemetry, "agent")[0].label, "dev");
+  // "workflow" is backed by the task_slug breakdown (the per-run Builder work item).
+  assert.equal(deriveCostByDimension(telemetry, "workflow")[0].label, "console-board-177");
+});
+
+test("deriveCostByDimension sorts by spend desc, drops unlabeled rows, and caps at the limit", () => {
+  const rows = [bar("a", 1), { ...bar("", 99) }, bar("b", 5), bar("c", 3)];
+  const telemetry = makeTelemetry([], analyticsWith({ usageByProject: rows }));
+  const bars = deriveCostByDimension(telemetry, "project", 2);
+  assert.deepEqual(bars.map((b) => b.label), ["b", "c"]); // sorted by cost desc (b=5,c=3,a=1), limited to 2, unlabeled dropped
+});
+
+test("deriveCostByDimension returns [] for null telemetry or an empty dimension", () => {
+  assert.deepEqual(deriveCostByDimension(null, "model"), []);
+  assert.deepEqual(deriveCostByDimension(makeTelemetry([], analyticsWith({})), "model"), []);
+});
+
+test("COST_DIMENSIONS locks user/role (identity-gated) and enables the data-backed dimensions", () => {
+  const locked = COST_DIMENSIONS.filter((d) => d.locked).map((d) => d.id);
+  const enabled = COST_DIMENSIONS.filter((d) => !d.locked).map((d) => d.id);
+  assert.deepEqual(locked, ["user", "role"]);
+  assert.deepEqual(enabled, ["model", "project", "agent", "workflow"]);
+});

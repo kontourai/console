@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ConsoleTelemetryResponse } from "../serverApiTypes";
-import { deriveActivityBuckets } from "./environment/derive";
+import { deriveActivityBuckets, deriveCostByDimension, COST_DIMENSIONS, type CostDimensionId } from "./environment/derive";
 import { formatCompact, formatUsd } from "../utils/format";
 
 // "What it's costing" — the telemetry view distilled to the operator's question: spend, tokens, and
@@ -43,14 +43,15 @@ export function CostSection({ telemetry, onOpen }: CostSectionProps) {
     [telemetry],
   );
 
-  const models = useMemo(() => {
-    const list = (telemetry?.analytics.usageByModel || [])
-      .map((m) => ({ label: m.label || m.key, cost: m.estimatedCostUsd ?? 0, tokens: m.totalTokens ?? 0 }))
-      .filter((m) => m.label)
-      .sort((a, b) => b.cost - a.cost);
-    const max = list.reduce((acc, m) => Math.max(acc, m.cost), 0);
+  // Cost by dimension (#179): the operator picks which axis to slice spend by.
+  // user/role are identity-gated (auth #98) and render locked until then.
+  const [dimension, setDimension] = useState<CostDimensionId>("model");
+  const bars = useMemo(() => {
+    const list = deriveCostByDimension(telemetry, dimension);
+    const max = list.reduce((acc, b) => Math.max(acc, b.cost), 0);
     return { list, max };
-  }, [telemetry]);
+  }, [telemetry, dimension]);
+  const dimensionLabel = (COST_DIMENSIONS.find((d) => d.id === dimension)?.label || "").toLowerCase();
 
   const hasActivity = series.some((s) => s.count > 0);
 
@@ -102,22 +103,56 @@ export function CostSection({ telemetry, onOpen }: CostSectionProps) {
           )}
         </div>
 
-        {/* Spend by model */}
+        {/* Cost by dimension (#179) */}
         <div className="cost-panel">
-          <div className="cost-panel-head">Spend by model <span className="cost-sub">{models.list.length} model{models.list.length === 1 ? "" : "s"}</span></div>
-          {models.list.length > 0 ? (
+          <div className="cost-panel-head">
+            Cost by
+            <span className="cost-dim-tabs" role="tablist" aria-label="Cost dimension">
+              {COST_DIMENSIONS.map((d) => (
+                <button
+                  key={d.id}
+                  id={`cost-dim-tab-${d.id}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={!d.locked && d.id === dimension}
+                  aria-controls="cost-dim-panel"
+                  className={`cost-dim-tab${!d.locked && d.id === dimension ? " active" : ""}${d.locked ? " locked" : ""}`}
+                  disabled={d.locked}
+                  title={d.locked ? "Per-user attribution needs identity — enable auth (#98)" : undefined}
+                  onClick={() => { if (!d.locked) setDimension(d.id); }}
+                >
+                  {d.label}
+                </button>
+              ))}
+            </span>
+            <span className="cost-sub">{bars.list.length} {dimensionLabel}{bars.list.length === 1 ? "" : "s"}</span>
+          </div>
+
+          <div id="cost-dim-panel" role="tabpanel" aria-labelledby={`cost-dim-tab-${dimension}`}>
+          {bars.list.length > 0 ? (
             <ul className="cost-models">
-              {models.list.slice(0, 6).map((m) => (
-                <li key={m.label} className="cost-model-row">
-                  <span className="cost-model-name">{m.label}</span>
-                  <span className="cost-model-track"><span className="cost-model-fill" style={{ width: `${models.max > 0 ? Math.max(3, (m.cost / models.max) * 100) : 3}%` }} /></span>
-                  <span className="cost-model-amt">{formatUsd(m.cost)}</span>
+              {bars.list.map((b) => (
+                <li key={b.label} className="cost-model-row">
+                  <span className="cost-model-name">{b.label}</span>
+                  <span className="cost-model-track"><span className="cost-model-fill" style={{ width: `${bars.max > 0 ? Math.max(3, (b.cost / bars.max) * 100) : 3}%` }} /></span>
+                  <span className="cost-model-amt">{formatUsd(b.cost)}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="now-idle">No model spend recorded yet.</p>
+            <p className="now-idle">No {dimensionLabel} spend recorded yet.</p>
           )}
+          </div>
+
+          {/* Me-vs-team scope — locked until per-user identity is enabled (#98). */}
+          <div className="cost-scope" role="group" aria-label="Cost scope">
+            <span className="cost-scope-label">Scope</span>
+            <span className="cost-scope-toggle">
+              <button type="button" className="cost-scope-btn active" disabled aria-pressed="true">Team</button>
+              <button type="button" className="cost-scope-btn locked" disabled aria-pressed="false" title="Me-vs-team needs per-user identity — enable auth (#98)">Me</button>
+            </span>
+            <span className="cost-scope-note">User, Role &amp; Me unlock with identity</span>
+          </div>
         </div>
       </div>
     </section>
