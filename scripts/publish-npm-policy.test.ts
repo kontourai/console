@@ -146,7 +146,14 @@ test("target-tag authority is used for package-specific release gates", async ()
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /TARGET_TAG: \$\{\{ inputs\.target_tag \}\}/);
-  assert.match(workflow, /if: startsWith\(inputs\.target_tag, 'cli-v'\)/);
+  // The anti-drift "Verify … Core Dependency Is Public" gate must fire for BOTH
+  // exact-core-pinned packages — cli AND console-server — and must pass the
+  // resolved manifest so it checks the RIGHT package's core pin. Pinning the
+  // full condition (not just a `cli-v` substring) means dropping the
+  // console-server branch or the manifest env — which would let a console-server
+  // release publish against an unverified core pin (#70) — fails this test.
+  assert.match(workflow, /if: startsWith\(inputs\.target_tag, 'cli-v'\) \|\| startsWith\(inputs\.target_tag, 'console-server-v'\)/);
+  assert.match(workflow, /PACKAGE_MANIFEST: \$\{\{ needs\.gate\.outputs\.manifest \}\}/);
   assert.match(workflow, /if: startsWith\(inputs\.target_tag, 'v'\)/);
   assert.doesNotMatch(workflow, /startsWith\(github\.ref/);
   assert.doesNotMatch(workflow, /GITHUB_REF_NAME/);

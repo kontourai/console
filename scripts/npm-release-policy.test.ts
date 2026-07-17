@@ -10,8 +10,8 @@ test("release tag selection is behavioral and unambiguous", () => {
   assert.deepEqual(selectRelease("v2.6.0"), { workspace: ".", manifest: "package.json", tagPrefix: "v" });
   assert.deepEqual(selectRelease("cli-v0.3.1"), { workspace: "@kontourai/cli", manifest: "cli/package.json", tagPrefix: "cli-v" });
   assert.deepEqual(selectRelease("console-core-v0.2.0"), { workspace: "@kontourai/console-core", manifest: "console-core/package.json", tagPrefix: "console-core-v" });
+  assert.deepEqual(selectRelease("console-server-v0.1.0"), { workspace: "@kontourai/console-server", manifest: "console-server/package.json", tagPrefix: "console-server-v" });
   assert.throws(() => selectRelease("core-v0.2.0"), /Unsupported/);
-  assert.throws(() => selectRelease("console-server-v0.1.0"), /Unsupported/);
   assert.throws(() => selectRelease("server-v0.1.0"), /Unsupported/);
   assert.doesNotThrow(() => assertTagVersion("cli-v0.3.1", "cli-v", "0.3.1"));
   assert.throws(() => assertTagVersion("cli-v0.3.1", "cli-v", "0.3.0"), /does not match/);

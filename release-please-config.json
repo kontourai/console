@@ -54,6 +54,18 @@
           "jsonpath": "$.packages[''].dependencies['@kontourai/console-core']"
         }
       ]
+    },
+    "console-server": {
+      "component": "console-server",
+      "package-name": "@kontourai/console-server",
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/package-lock.json",
+          "jsonpath": "$.packages.console-server.version"
+        }
+      ]
     }
   }
 }

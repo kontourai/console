@@ -3,6 +3,7 @@ export interface ReleaseSelection { workspace: string; manifest: string; tagPref
 export function selectRelease(tag: string): ReleaseSelection {
   if (/^cli-v/.test(tag)) return { workspace: "@kontourai/cli", manifest: "cli/package.json", tagPrefix: "cli-v" };
   if (/^console-core-v/.test(tag)) return { workspace: "@kontourai/console-core", manifest: "console-core/package.json", tagPrefix: "console-core-v" };
+  if (/^console-server-v/.test(tag)) return { workspace: "@kontourai/console-server", manifest: "console-server/package.json", tagPrefix: "console-server-v" };
   if (/^v/.test(tag)) return { workspace: ".", manifest: "package.json", tagPrefix: "v" };
   throw new Error(`Unsupported release tag ${tag}`);
 }
