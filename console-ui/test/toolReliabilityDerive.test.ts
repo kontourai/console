@@ -51,6 +51,24 @@ test("deriveToolReliability tolerates a missing summary", () => {
   assert.equal(view.hasSignal, false);
 });
 
+test("deriveToolReliability marks hasFailureSignal false when denom==0 (only ambiguous/unlabeled), even with real latency — never a reassuring 0%", () => {
+  const { rows } = deriveToolReliability({
+    tools: [
+      tool({ toolName: "Grep", count: 5, p50DurationMs: 40, p95DurationMs: 90, ambiguousCount: 5, passCount: 0, failCount: 0, failureRate: 0 })
+    ]
+  });
+  assert.equal(rows[0].hasFailureSignal, false, "denom==0 (0 pass + 0 fail) → no failure signal, distinct from a true 0%");
+  assert.equal(rows[0].p50DurationMs, 40, "latency still surfaced — it is real data");
+  assert.equal(rows[0].p95DurationMs, 90);
+});
+
+test("deriveToolReliability marks hasFailureSignal true once at least one pass or fail exists", () => {
+  const passOnly = deriveToolReliability({ tools: [tool({ toolName: "Edit", passCount: 1 })] }).rows[0];
+  assert.equal(passOnly.hasFailureSignal, true);
+  const failOnly = deriveToolReliability({ tools: [tool({ toolName: "Edit", failCount: 1 })] }).rows[0];
+  assert.equal(failOnly.hasFailureSignal, true);
+});
+
 test("formatLatencyMs renders ms / seconds / minutes and null as an em dash", () => {
   assert.equal(formatLatencyMs(0), "0ms");
   assert.equal(formatLatencyMs(820), "820ms");

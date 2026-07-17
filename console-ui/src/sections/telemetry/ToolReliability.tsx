@@ -43,10 +43,24 @@ export function TelemetryToolReliability({ telemetry }: { telemetry: ConsoleTele
                 <td className="tr-num">{formatLatencyMs(tool.p50DurationMs)}</td>
                 <td className="tr-num">{formatLatencyMs(tool.p95DurationMs)}</td>
                 <td className="tr-fail">
-                  <span className={`tr-fail-bar tr-fail-${failureTone(tool.failureRate)}`}>
-                    <span className="tr-fail-fill" style={{ width: `${failureBarWidth(tool.failureRate)}%` }} />
-                  </span>
-                  <span className="tr-fail-val">{formatFailureRate(tool.failureRate)}</span>
+                  {tool.hasFailureSignal ? (
+                    <>
+                      <span className={`tr-fail-bar tr-fail-${failureTone(tool.failureRate)}`}>
+                        <span className="tr-fail-fill" style={{ width: `${failureBarWidth(tool.failureRate)}%` }} />
+                      </span>
+                      <span className="tr-fail-val">{formatFailureRate(tool.failureRate)}</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="tr-fail-bar tr-fail-unknown" />
+                      <span
+                        className="tr-fail-val tr-fail-val-unknown"
+                        title="No recognized pass or fail outcome yet for this tool — not measured as a true 0%"
+                      >
+                        no signal
+                      </span>
+                    </>
+                  )}
                   {tool.ambiguousCount > 0 ? (
                     <span className="tr-ambiguous" title="Results that were neither a clear pass nor fail — excluded from the failure rate">
                       {tool.ambiguousCount.toLocaleString()} amb.

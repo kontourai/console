@@ -1357,12 +1357,23 @@ dd {
 .tr-fail-good .tr-fail-fill { background: var(--good); }
 .tr-fail-caution .tr-fail-fill { background: var(--warn); }
 .tr-fail-bad .tr-fail-fill { background: var(--bad); }
+/* denom==0 — no recognized pass/fail outcome yet. Deliberately NOT the "good"
+   green: an empty/neutral track distinguishes "not measured" from "measured,
+   0% failed". */
+.tr-fail-unknown { background: var(--line); }
 
 .tr-fail-val {
   font-family: var(--k-font-mono);
   color: var(--text);
   min-width: 3ch;
   text-align: right;
+}
+
+.tr-fail-val-unknown {
+  color: var(--dim);
+  font-family: var(--k-font-ui);
+  font-style: italic;
+  white-space: nowrap;
 }
 
 .tr-ambiguous {
@@ -1376,6 +1387,12 @@ dd {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.activity-timeline-note {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.75rem;
 }
 
 /* Cost rollup tables */

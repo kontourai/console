@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 
 import {
   deriveActivityTimeline,
-  formatBucketLabel
+  formatBucketLabel,
+  timelineWindowLabel,
+  TIMELINE_WINDOW_CAP
 } from "../src/sections/telemetry/activityTimelineDerive";
 import type { ConsoleTelemetryActivityTimeline } from "../src/serverApiTypes";
 
@@ -51,4 +53,18 @@ test("formatBucketLabel handles hourly, daily, and unparseable timestamps", () =
   assert.equal(formatBucketLabel("not-a-date", "hour"), "");
   assert.match(formatBucketLabel("2026-07-14T09:00:00.000Z", "hour"), /\d/);
   assert.match(formatBucketLabel("2026-07-14T09:00:00.000Z", "day"), /\w/);
+});
+
+test("deriveActivityTimeline discloses the fixed display window so truncated history is not silently implied complete", () => {
+  const view = deriveActivityTimeline(
+    timeline([{ startedAt: "2026-07-14T00:00:00.000Z", total: 1, byActionClass: { edit: 1, read: 0, search: 0, execute: 0, web: 0, delegate: 0, other: 0 } }])
+  );
+  assert.match(view.windowLabel, new RegExp(String(TIMELINE_WINDOW_CAP)), "discloses the window cap");
+  assert.match(view.windowLabel, /hour/i);
+});
+
+test("timelineWindowLabel names the bucket unit for hour vs day", () => {
+  assert.match(timelineWindowLabel("hour"), /hours, bucketed hourly/);
+  assert.match(timelineWindowLabel("day"), /days, bucketed daily/);
+  assert.match(timelineWindowLabel("hour", 48), /48 hours/, "custom cap is reflected");
 });

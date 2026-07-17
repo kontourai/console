@@ -41,7 +41,7 @@ function prefersReducedMotion(): boolean {
  * action class into a stacked bar. Honest empty state until activity exists.
  */
 export function TelemetryActivityTimeline({ telemetry }: { telemetry: ConsoleTelemetryResponse | null }) {
-  const { points, totalActions } = deriveActivityTimeline(telemetry?.analytics?.activityTimeline);
+  const { points, totalActions, windowLabel } = deriveActivityTimeline(telemetry?.analytics?.activityTimeline);
   const reduceMotion = prefersReducedMotion();
 
   return (
@@ -79,6 +79,7 @@ export function TelemetryActivityTimeline({ telemetry }: { telemetry: ConsoleTel
               </li>
             ))}
           </ul>
+          <p className="activity-timeline-note">{windowLabel}</p>
         </div>
       ) : (
         <Empty label="No activity to chart yet — the timeline fills as agents run and emit tool events." />

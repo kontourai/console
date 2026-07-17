@@ -3,9 +3,20 @@ import type {
   ConsoleTelemetryToolReliabilitySummary
 } from "../../serverApiTypes";
 
+/** A tool row for display, carrying an explicit failure-signal flag alongside
+ *  the server's raw counts. `failureRate` is `fail/(pass+fail)` from the server
+ *  — 0 both when nothing failed AND when there is no pass-or-fail result at all
+ *  (denom==0). `hasFailureSignal` disambiguates the two: false means "no
+ *  recognized pass/fail outcome yet" (e.g. only ambiguous results, or an
+ *  unlabeled/future outcome string), which must render as "no signal" — never
+ *  a reassuring green 0%. */
+export interface ToolReliabilityRow extends ConsoleTelemetryToolReliability {
+  hasFailureSignal: boolean;
+}
+
 export interface ToolReliabilityView {
   /** Rows to render, capped to `limit`, in server order (result volume desc). */
-  rows: ConsoleTelemetryToolReliability[];
+  rows: ToolReliabilityRow[];
   /** True once at least one tool carries a latency OR a pass/fail/ambiguous
    *  outcome — i.e. the #580 enriched result stream has landed. Bare result
    *  counts with no signal read as "not yet" so the panel shows an honest empty
@@ -21,7 +32,11 @@ export function deriveToolReliability(
   const hasSignal = all.some(
     (t) => t.p50DurationMs != null || t.passCount + t.failCount + t.ambiguousCount > 0
   );
-  return { rows: all.slice(0, limit), hasSignal };
+  const rows: ToolReliabilityRow[] = all.slice(0, limit).map((tool) => ({
+    ...tool,
+    hasFailureSignal: tool.passCount + tool.failCount > 0
+  }));
+  return { rows, hasSignal };
 }
 
 /** Latency in a compact human form: "820ms", "1.4s", "2m 3s". Null/absent →
