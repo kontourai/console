@@ -483,3 +483,18 @@ function without(source: any, keys: any) {
   keys.forEach((key: any) => delete copy[key]);
   return copy;
 }
+
+// #71: the producer integration surface (sinks + emitter + helpers) must be
+// re-exported from the console-foundation index — an index consumer previously
+// got no emitter at all, and the compiled emitter.d.ts was an empty `export {}`
+// (the types half is enforced by the build/typecheck; this guards the runtime
+// re-export list from silently regressing).
+test("console-foundation index re-exports the full producer surface", () => {
+  const foundation = require("../src/console-foundation");
+  for (const name of ["KontourEmitter", "LocalFileSink", "CompositeSink", "InMemorySink", "ApiSink", "classifyRecord", "formatDeliveryResult", "createConsoleHubServer"]) {
+    assert.equal(typeof foundation[name], "function", `expected console-foundation to export ${name}`);
+  }
+  // The re-exported classes must be the real constructors, not undefined shims.
+  const sink = new foundation.LocalFileSink({ root: tempRoot() });
+  assert.equal(sink.sinkRole, "LocalFileSink");
+});

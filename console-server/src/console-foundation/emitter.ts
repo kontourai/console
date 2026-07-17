@@ -20,7 +20,7 @@ import { isLivenessRecord } from "./liveness";
 const DEFAULT_ROOT = DEFAULT_CONSOLE_RUNTIME_ROOT;
 type SinkIdentity = Pick<Sink, "sinkId" | "sinkRole" | "id" | "name">;
 
-class KontourEmitter {
+export class KontourEmitter {
   sink: Sink;
 
   constructor(options: KontourEmitterOptions) {
@@ -55,7 +55,7 @@ class KontourEmitter {
   }
 }
 
-class LocalFileSink {
+export class LocalFileSink {
   root: string;
   sinkId: string;
   sinkRole: string;
@@ -142,7 +142,7 @@ class LocalFileSink {
   }
 }
 
-class CompositeSink {
+export class CompositeSink {
   sinks: Sink[];
   sinkId: string;
   sinkRole: string;
@@ -191,7 +191,7 @@ class CompositeSink {
   }
 }
 
-class InMemorySink {
+export class InMemorySink {
   sinkId: string;
   sinkRole: string;
   records: ConsoleRecord[];
@@ -225,7 +225,7 @@ class InMemorySink {
 // a shared sentIds set (re-uses the bridge's event-id dedup); transient (5xx /
 // network) failures are retried with linear backoff; auth + tenant travel in
 // headers the hub already understands.
-class ApiSink {
+export class ApiSink {
   hubUrl: string;
   token: string;
   sinkId: string;
@@ -375,7 +375,7 @@ class ApiSink {
   }
 }
 
-function classifyRecord(record: ConsoleRecord): ClassifiedRecord {
+export function classifyRecord(record: ConsoleRecord): ClassifiedRecord {
   const { validateEvent, validateProjection } = require("./index");
   const { validateLivenessRecord } = require("./liveness");
   const recordKind = record && record.schema === "kontour.console.projection" ? "projection" : "event";
@@ -483,7 +483,7 @@ function normalizeOutcome(value: unknown): DeliveryOutcome {
   return "failed";
 }
 
-function formatDeliveryResult(fields: DeliveryResultFields): DeliveryResult {
+export function formatDeliveryResult(fields: DeliveryResultFields): DeliveryResult {
   const result: DeliveryResult = {
     sinkId: fields.sinkId,
     sinkRole: fields.sinkRole,
@@ -587,12 +587,8 @@ function safeErrorMessage(error: unknown, options: { exposeKnown?: boolean } = {
   return "sink delivery failed";
 }
 
-module.exports = {
-  KontourEmitter,
-  LocalFileSink,
-  CompositeSink,
-  InMemorySink,
-  ApiSink,
-  classifyRecord,
-  formatDeliveryResult
-};
+// The producer helpers above are named exports (`export class` / `export
+// function`) rather than a trailing `module.exports = {...}` so the compiled
+// emitter.d.ts emits real declarations instead of an empty `export {}` — the
+// docs position these sinks as THE producer integration surface, so consumers
+// (and the console-foundation index re-export) need their types (#71).
