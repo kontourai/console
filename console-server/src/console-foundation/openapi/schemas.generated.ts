@@ -110,6 +110,87 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
     ],
     "additionalProperties": false
   },
+  "TelemetryActivityBucket": {
+    "type": "object",
+    "properties": {
+      "startedAt": {
+        "type": "string",
+        "description": "ISO start of the bucket window."
+      },
+      "byActionClass": {
+        "type": "object",
+        "properties": {
+          "edit": {
+            "type": "number"
+          },
+          "read": {
+            "type": "number"
+          },
+          "search": {
+            "type": "number"
+          },
+          "execute": {
+            "type": "number"
+          },
+          "web": {
+            "type": "number"
+          },
+          "delegate": {
+            "type": "number"
+          },
+          "other": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "edit",
+          "read",
+          "search",
+          "execute",
+          "web",
+          "delegate",
+          "other"
+        ],
+        "additionalProperties": false,
+        "description": "Count of tool.invoke actions in this bucket, per action class (zero-filled across all classes for a stable stacked-chart shape)."
+      },
+      "total": {
+        "type": "number",
+        "description": "Sum of byActionClass — total actions in the bucket."
+      }
+    },
+    "required": [
+      "startedAt",
+      "byActionClass",
+      "total"
+    ],
+    "additionalProperties": false,
+    "description": "One time bucket of tool.invoke activity, split by action class."
+  },
+  "TelemetryActivityTimeline": {
+    "type": "object",
+    "properties": {
+      "bucket": {
+        "type": "string",
+        "enum": [
+          "hour",
+          "day"
+        ]
+      },
+      "buckets": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryActivityBucket"
+        }
+      }
+    },
+    "required": [
+      "bucket",
+      "buckets"
+    ],
+    "additionalProperties": false,
+    "description": "Activity (tool.invoke) over time, bucketed at a fixed granularity. Sparse: only buckets with activity are emitted, most-recent window first trimmed to a cap. Counts invokes only (like actionClasses) to avoid double-counting the paired tool.result."
+  },
   "TelemetryAnalyticsSummary": {
     "type": "object",
     "properties": {
@@ -164,6 +245,12 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       },
       "costPerTurn": {
         "$ref": "#/definitions/TelemetryTurnCostSummary"
+      },
+      "toolReliability": {
+        "$ref": "#/definitions/TelemetryToolReliabilitySummary"
+      },
+      "activityTimeline": {
+        "$ref": "#/definitions/TelemetryActivityTimeline"
       }
     },
     "required": [
@@ -175,7 +262,9 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "usageByRuntime",
       "usageByTaskSlug",
       "actionClasses",
-      "costPerTurn"
+      "costPerTurn",
+      "toolReliability",
+      "activityTimeline"
     ],
     "additionalProperties": false
   },
@@ -472,6 +561,14 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "toolName": {
         "type": "string"
       },
+      "toolDurationMs": {
+        "type": "number",
+        "description": "tool.result latency in ms (flow-agents #580); null/absent when the runtime did not measure it. Feeds the per-tool p50/p95 reliability projection."
+      },
+      "toolOutcome": {
+        "type": "string",
+        "description": "tool.result honest outcome (flow-agents #580): \"pass\" | \"fail\" | \"ambiguous\". Ambiguous is neither success nor failure and is reported separately."
+      },
       "taskSlug": {
         "type": "string"
       },
@@ -632,6 +729,77 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "analytics",
       "records",
       "warnings"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryToolReliability": {
+    "type": "object",
+    "properties": {
+      "toolName": {
+        "type": "string"
+      },
+      "actionClass": {
+        "$ref": "#/definitions/TelemetryActionClass"
+      },
+      "count": {
+        "type": "number",
+        "description": "tool.result events observed for this tool (all outcomes, timed or not)."
+      },
+      "p50DurationMs": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "p50 latency over non-null durations; null when no result carried a duration."
+      },
+      "p95DurationMs": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "description": "p95 latency over non-null durations; null when no result carried a duration."
+      },
+      "failureRate": {
+        "type": "number",
+        "description": "fail / (pass + fail) — ambiguous excluded from the denominator. 0 when no pass-or-fail result exists yet."
+      },
+      "failCount": {
+        "type": "number"
+      },
+      "passCount": {
+        "type": "number"
+      },
+      "ambiguousCount": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "toolName",
+      "actionClass",
+      "count",
+      "p50DurationMs",
+      "p95DurationMs",
+      "failureRate",
+      "failCount",
+      "passCount",
+      "ambiguousCount"
+    ],
+    "additionalProperties": false,
+    "description": "Per-tool latency + outcome reliability over the tool.result stream (flow-agents #580). Honest by construction: `ambiguous` results are excluded from the failure-rate denominator and reported separately as ambiguousCount, never folded into pass or fail."
+  },
+  "TelemetryToolReliabilitySummary": {
+    "type": "object",
+    "properties": {
+      "tools": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryToolReliability"
+        },
+        "description": "One row per tool, ordered by result volume (desc), then name."
+      }
+    },
+    "required": [
+      "tools"
     ],
     "additionalProperties": false
   },

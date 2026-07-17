@@ -877,6 +877,12 @@ export interface TelemetryRecordSummary {
   cwd?: string;
   delegationTarget?: string;
   toolName?: string;
+  /** tool.result latency in ms (flow-agents #580); null/absent when the runtime
+   *  did not measure it. Feeds the per-tool p50/p95 reliability projection. */
+  toolDurationMs?: number;
+  /** tool.result honest outcome (flow-agents #580): "pass" | "fail" | "ambiguous".
+   *  Ambiguous is neither success nor failure and is reported separately. */
+  toolOutcome?: string;
   taskSlug?: string;
   title?: string;
   inputTokens?: number;
@@ -980,6 +986,9 @@ export interface TelemetryAnalyticsSummary {
   // #180 read-model projections — turn raw tool events into operator meaning.
   actionClasses: TelemetryActionClassSummary[];
   costPerTurn: TelemetryTurnCostSummary;
+  // #181 read-model projections built on the #568/#580 enriched tool stream.
+  toolReliability: TelemetryToolReliabilitySummary;
+  activityTimeline: TelemetryActivityTimeline;
 }
 
 // A coarse, integration-agnostic classification of what a tool call *did*.
@@ -1026,6 +1035,52 @@ export interface TelemetryTurnCostSummary {
   turnCount: number;
   /** Sum of each distinct turn's cost — every turn counted once. */
   totalEstimatedCostUsd: number;
+}
+
+/** Per-tool latency + outcome reliability over the tool.result stream
+ *  (flow-agents #580). Honest by construction: `ambiguous` results are excluded
+ *  from the failure-rate denominator and reported separately as ambiguousCount,
+ *  never folded into pass or fail. */
+export interface TelemetryToolReliability {
+  toolName: string;
+  actionClass: TelemetryActionClass;
+  /** tool.result events observed for this tool (all outcomes, timed or not). */
+  count: number;
+  /** p50 latency over non-null durations; null when no result carried a duration. */
+  p50DurationMs: number | null;
+  /** p95 latency over non-null durations; null when no result carried a duration. */
+  p95DurationMs: number | null;
+  /** fail / (pass + fail) — ambiguous excluded from the denominator. 0 when no
+   *  pass-or-fail result exists yet. */
+  failureRate: number;
+  failCount: number;
+  passCount: number;
+  ambiguousCount: number;
+}
+
+export interface TelemetryToolReliabilitySummary {
+  /** One row per tool, ordered by result volume (desc), then name. */
+  tools: TelemetryToolReliability[];
+}
+
+/** One time bucket of tool.invoke activity, split by action class. */
+export interface TelemetryActivityBucket {
+  /** ISO start of the bucket window. */
+  startedAt: string;
+  /** Count of tool.invoke actions in this bucket, per action class (zero-filled
+   *  across all classes for a stable stacked-chart shape). */
+  byActionClass: Record<TelemetryActionClass, number>;
+  /** Sum of byActionClass — total actions in the bucket. */
+  total: number;
+}
+
+/** Activity (tool.invoke) over time, bucketed at a fixed granularity. Sparse:
+ *  only buckets with activity are emitted, most-recent window first trimmed to a
+ *  cap. Counts invokes only (like actionClasses) to avoid double-counting the
+ *  paired tool.result. */
+export interface TelemetryActivityTimeline {
+  bucket: "hour" | "day";
+  buckets: TelemetryActivityBucket[];
 }
 
 export interface TelemetrySourceSummary {

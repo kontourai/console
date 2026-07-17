@@ -1262,6 +1262,194 @@ dd {
   font-size: 0.78rem;
 }
 
+/* ── #181 telemetry projection panels (reliability / timeline / rollup) ───── */
+.telemetry-panel {
+  margin-top: 14px;
+  padding: 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Tool reliability table */
+.tool-reliability {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.tool-reliability thead th {
+  text-align: left;
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--dim);
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tool-reliability tbody th,
+.tool-reliability tbody td {
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  font-weight: 400;
+  vertical-align: middle;
+}
+
+.tool-reliability tbody tr:first-child th,
+.tool-reliability tbody tr:first-child td {
+  border-top: none;
+}
+
+.tr-num {
+  text-align: right;
+  font-family: var(--k-font-mono);
+  color: var(--text);
+  padding-left: 16px;
+  white-space: nowrap;
+}
+
+.tr-fail-head {
+  text-align: left;
+  padding-left: 16px;
+  width: 40%;
+}
+
+.tr-tool {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--text);
+}
+
+.tr-tool-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--k-font-mono);
+}
+
+.tr-fail {
+  padding-left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tr-fail-bar {
+  flex: 1;
+  min-width: 40px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.tr-fail-fill {
+  display: block;
+  height: 100%;
+}
+
+.tr-fail-good .tr-fail-fill { background: var(--good); }
+.tr-fail-caution .tr-fail-fill { background: var(--warn); }
+.tr-fail-bad .tr-fail-fill { background: var(--bad); }
+
+.tr-fail-val {
+  font-family: var(--k-font-mono);
+  color: var(--text);
+  min-width: 3ch;
+  text-align: right;
+}
+
+.tr-ambiguous {
+  color: var(--dim);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+/* Activity timeline chart */
+.activity-timeline-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Cost rollup tables */
+.cost-rollup-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+
+@media (max-width: 760px) {
+  .cost-rollup-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.cost-rollup {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  background: var(--panel-2);
+  padding: 12px;
+}
+
+.cost-rollup caption {
+  text-align: left;
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  color: var(--dim);
+  padding: 12px 12px 8px;
+  caption-side: top;
+}
+
+.cost-rollup thead th {
+  text-align: left;
+  font-family: var(--k-font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: var(--dim);
+  padding: 0 12px 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cost-rollup tbody th,
+.cost-rollup tbody td {
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  font-weight: 400;
+}
+
+.cr-num {
+  text-align: right;
+  font-family: var(--k-font-mono);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.cr-key {
+  text-align: left;
+  color: var(--text);
+  font-family: var(--k-font-mono);
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cost-rollup-note {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.75rem;
+}
+
 .telemetry-query-controls {
   display: grid;
   grid-template-columns: minmax(280px, 1.1fr) minmax(360px, 1.4fr) minmax(260px, 1fr);
