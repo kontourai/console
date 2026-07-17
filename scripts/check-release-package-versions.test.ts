@@ -15,7 +15,7 @@ function fixture(rootVersion = "2.6.0", cliVersion = "0.3.1", coreVersion = "0.2
     rootManifest: { name: "@kontourai/console", version: rootVersion, dependencies: { "@kontourai/console-core": coreVersion } },
     cliManifest: { name: "@kontourai/cli", version: cliVersion, dependencies: { "@kontourai/console-core": coreVersion } },
     coreManifest: { name: "@kontourai/console-core", version: coreVersion },
-    serverManifest: { name: "@kontourai/console-server", version: "0.1.0", private: true, dependencies: { "@kontourai/console-core": coreVersion } },
+    serverManifest: { name: "@kontourai/console-server", version: "0.1.0", publishConfig: { access: "public" }, dependencies: { "@kontourai/console-core": coreVersion } },
     lockfile: {
       name: "@kontourai/console",
       version: rootVersion,
@@ -31,6 +31,7 @@ function fixture(rootVersion = "2.6.0", cliVersion = "0.3.1", coreVersion = "0.2
       ".": { "exclude-paths": ["cli", "console-core", "console-server"] },
       cli: { "extra-files": [{ type: "json", path: "/package-lock.json", jsonpath: "$.packages.cli.version" }] },
       "console-core": { "extra-files": [{ type: "json", path: "/package-lock.json", jsonpath: "$.packages.console-core.version" }, { type: "json", path: "/package-lock.json", jsonpath: "$.packages.cli.dependencies['@kontourai/console-core']" }, { type: "json", path: "/console-server/package.json", jsonpath: "$.dependencies['@kontourai/console-core']" }, { type: "json", path: "/package-lock.json", jsonpath: "$.packages.console-server.dependencies['@kontourai/console-core']" }, { type: "json", path: "/package-lock.json", jsonpath: "$.packages[''].dependencies['@kontourai/console-core']" }] },
+      "console-server": { "package-name": "@kontourai/console-server", "include-component-in-tag": true, "extra-files": [{ type: "json", path: "/package-lock.json", jsonpath: "$.packages.console-server.version" }] },
     } },
   };
 }
@@ -82,9 +83,14 @@ for (const [label, mutate, expected] of [
   ["ranged Console Server Core dependency", (value: ReturnType<typeof fixture>) => { value.serverManifest.dependencies["@kontourai/console-core"] = "^0.2.0"; }, /Console Server package manifest Core dependency must be an exact semver/],
   ["stale Console Server Core lock edge", (value: ReturnType<typeof fixture>) => { value.lockfile.packages["console-server"].dependencies["@kontourai/console-core"] = "0.1.0"; }, /Console Server Core dependency does not match package lock workspace edge/],
   ["stale Console Server lock version", (value: ReturnType<typeof fixture>) => { value.lockfile.packages["console-server"].version = "2.6.2"; }, /Console Server package lock identity .* does not match manifest/],
-  ["public Console Server package", (value: ReturnType<typeof fixture>) => { value.serverManifest.private = false; }, /Console Server package manifest must be private/],
-  ["Console Server publishConfig", (value: ReturnType<typeof fixture>) => { (value.serverManifest as Record<string, unknown>).publishConfig = { access: "public" }; }, /must not declare publishConfig/],
+  ["private Console Server package", (value: ReturnType<typeof fixture>) => { (value.serverManifest as Record<string, unknown>).private = true; }, /Console Server package manifest must not be private/],
+  ["missing Console Server publishConfig", (value: ReturnType<typeof fixture>) => { delete (value.serverManifest as Record<string, unknown>).publishConfig; }, /publishConfig must be an object/],
+  ["Console Server publishConfig not public", (value: ReturnType<typeof fixture>) => { (value.serverManifest as Record<string, unknown>).publishConfig = { access: "restricted" }; }, /publishConfig must declare public access/],
   ["missing Console Server root exclusion", (value: ReturnType<typeof fixture>) => { value.releaseConfig.packages["."]["exclude-paths"] = ["cli", "console-core"]; }, /root package must exclude console-server ownership/],
+  ["missing Console Server release package-name", (value: ReturnType<typeof fixture>) => { delete (value.releaseConfig.packages["console-server"] as Record<string, unknown>)["package-name"]; }, /must declare package-name @kontourai\/console-server/],
+  ["missing Console Server include-component-in-tag", (value: ReturnType<typeof fixture>) => { (value.releaseConfig.packages["console-server"] as Record<string, unknown>)["include-component-in-tag"] = false; }, /must include the component in its release tag/],
+  ["missing Console Server release lock updater", (value: ReturnType<typeof fixture>) => { (value.releaseConfig.packages["console-server"] as Record<string, unknown>)["extra-files"] = []; }, /Console Server package must declare exactly one root package-lock updater/],
+  ["wrong Console Server release lock updater JSONPath", (value: ReturnType<typeof fixture>) => { (value.releaseConfig.packages["console-server"] as { "extra-files": Array<Record<string, unknown>> })["extra-files"][0].jsonpath = "$.version"; }, /must target \$\.packages\.console-server\.version/],
   ["missing Core release updater", (value: ReturnType<typeof fixture>) => { value.releaseConfig.packages["console-core"]["extra-files"] = []; }, /Core package must declare exactly five/],
   ["wrong Core root dependency updater", (value: ReturnType<typeof fixture>) => { value.releaseConfig.packages["console-core"]["extra-files"][4].jsonpath = "$.dependencies['@kontourai/console-core']"; }, /must target \/package-lock\.json \$\.packages\[''\]\.dependencies/],
   ["wrong Core CLI dependency updater", (value: ReturnType<typeof fixture>) => { value.releaseConfig.packages["console-core"]["extra-files"][1].jsonpath = "$.packages.cli.dependencies.core"; }, /must target \/package-lock\.json \$\.packages\.cli\.dependencies/],

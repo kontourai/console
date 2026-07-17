@@ -12,13 +12,13 @@ const { Manifest } = require("release-please/build/src/manifest.js") as typeof i
 type Baseline = { root: string; cli: string; core: string; server: string };
 const repositoryRoot = join(__dirname, "..");
 const releaseWorkflow = readFileSync(join(repositoryRoot, ".github/workflows/release-please.yml"), "utf8");
-type ReleaseSet = { console?: string; core?: string; cli?: string };
+type ReleaseSet = { console?: string; core?: string; cli?: string; server?: string };
 type WorkflowDocument = { jobs: Record<string, { needs?: string | string[]; if?: string; uses?: string; with?: { target_tag?: string } }> };
 
 function evaluatePublishCalls(document: WorkflowDocument, releases: ReleaseSet, coreResult = "success"): string[] {
   const calls: string[] = [];
-  const tags: Record<string, string | undefined> = { console_tag_name: releases.console, core_tag_name: releases.core, cli_tag_name: releases.cli };
-  const created: Record<string, boolean> = { console_release_created: !!releases.console, core_release_created: !!releases.core, cli_release_created: !!releases.cli };
+  const tags: Record<string, string | undefined> = { console_tag_name: releases.console, core_tag_name: releases.core, cli_tag_name: releases.cli, server_tag_name: releases.server };
+  const created: Record<string, boolean> = { console_release_created: !!releases.console, core_release_created: !!releases.core, cli_release_created: !!releases.cli, server_release_created: !!releases.server };
   for (const [id, job] of Object.entries(document.jobs)) {
     if (!id.startsWith("publish-")) continue;
     if (job.uses !== "./.github/workflows/publish-npm.yml") continue;
@@ -37,14 +37,15 @@ function evaluatePublishCalls(document: WorkflowDocument, releases: ReleaseSet, 
 }
 
 function assertReleaseMatrix(document: WorkflowDocument): void {
-  const all = { console: "v2.0.0", core: "console-core-v1.0.0", cli: "cli-v1.0.0" };
+  const all = { console: "v2.0.0", core: "console-core-v1.0.0", cli: "cli-v1.0.0", server: "console-server-v1.0.0" };
   assert.deepEqual(evaluatePublishCalls(document, all).sort(), Object.values(all).sort());
   assert.deepEqual(evaluatePublishCalls(document, { core: all.core }), [all.core]);
   assert.deepEqual(evaluatePublishCalls(document, { console: all.console }), [all.console]);
   assert.deepEqual(evaluatePublishCalls(document, { cli: all.cli }), [all.cli]);
+  assert.deepEqual(evaluatePublishCalls(document, { server: all.server }), [all.server]);
   assert.deepEqual(evaluatePublishCalls(document, all, "failure"), [all.core]);
   assert.deepEqual(evaluatePublishCalls(document, {}), []);
-  assert.equal(new Set(evaluatePublishCalls(document, all)).size, 3);
+  assert.equal(new Set(evaluatePublishCalls(document, all)).size, 4);
 }
 const releaseConfig = readFileSync(join(repositoryRoot, "release-please-config.json"), "utf8");
 const loadedManifest = JSON.parse(readFileSync(join(repositoryRoot, ".release-please-manifest.json"), "utf8")) as Record<string, string>;
@@ -67,7 +68,7 @@ function patchVersion(version: string): string { const [major, minor, patch] = p
 function featureVersion(version: string): string { const [major, minor] = parts(version); return `${major}.${minor + 1}.0`; }
 function breakingVersion(version: string): string { const [major] = parts(version); return `${major + 1}.0.0`; }
 function candidateFor(baseline: Baseline): Baseline {
-  return { root: patchVersion(baseline.root), cli: patchVersion(baseline.cli), core: featureVersion(baseline.core), server: baseline.server };
+  return { root: patchVersion(baseline.root), cli: patchVersion(baseline.cli), core: featureVersion(baseline.core), server: patchVersion(baseline.server) };
 }
 
 const isolatedMarker = "KONTOUR_RELEASE_PLEASE_FIXTURE_ISOLATED";
@@ -83,11 +84,11 @@ async function buildFixture(baseline: Baseline, includeCoreRelease: boolean) {
     put(root, "package.json", { name: "@kontourai/console", version: baseline.root, workspaces: ["cli", "console-core", "console-server"], dependencies: { "@kontourai/console-core": baseline.core } });
     put(root, "cli/package.json", { name: "@kontourai/cli", version: baseline.cli, dependencies: { "@kontourai/console-core": baseline.core } });
     put(root, "console-core/package.json", { name: "@kontourai/console-core", version: baseline.core });
-    put(root, "console-server/package.json", { name: "@kontourai/console-server", version: baseline.server, private: true, dependencies: { "@kontourai/console-core": baseline.core } });
+    put(root, "console-server/package.json", { name: "@kontourai/console-server", version: baseline.server, publishConfig: { access: "public" }, dependencies: { "@kontourai/console-core": baseline.core } });
     put(root, "package-lock.json", { name: "@kontourai/console", version: baseline.root, lockfileVersion: 3, packages: { "": { name: "@kontourai/console", version: baseline.root, dependencies: { "@kontourai/console-core": baseline.core } }, cli: { name: "@kontourai/cli", version: baseline.cli, dependencies: { "@kontourai/console-core": baseline.core } }, "console-core": { name: "@kontourai/console-core", version: baseline.core }, "console-server": { name: "@kontourai/console-server", version: baseline.server, dependencies: { "@kontourai/console-core": baseline.core } } } });
-    put(root, ".release-please-manifest.json", { ".": baseline.root, cli: baseline.cli, "console-core": baseline.core });
+    put(root, ".release-please-manifest.json", { ".": baseline.root, cli: baseline.cli, "console-core": baseline.core, "console-server": baseline.server });
     put(root, "release-please-config.json", releaseConfig);
-    put(root, "CHANGELOG.md", "# Changelog\n"); put(root, "cli/CHANGELOG.md", "# Changelog\n"); put(root, "console-core/CHANGELOG.md", "# Changelog\n");
+    put(root, "CHANGELOG.md", "# Changelog\n"); put(root, "cli/CHANGELOG.md", "# Changelog\n"); put(root, "console-core/CHANGELOG.md", "# Changelog\n"); put(root, "console-server/CHANGELOG.md", "# Changelog\n");
     git(root, "add", "."); git(root, "commit", "-m", "feat(console-core)!: historical release content"); const releaseSha = git(root, "rev-parse", "HEAD");
     put(root, "release-boundary.txt", "release history is supplied by the fixture provider\n"); git(root, "add", "."); git(root, "commit", "-m", "chore: configure release boundary");
     put(root, "console-core/descriptor.txt", "published descriptor surface\n"); git(root, "add", "."); git(root, "commit", "-m", "feat(console-core): publish descriptor package subpaths");
@@ -95,6 +96,7 @@ async function buildFixture(baseline: Baseline, includeCoreRelease: boolean) {
       { id: 1, tagName: `v${baseline.root}`, sha: releaseSha, url: "https://example.test/releases/console" },
       { id: 2, tagName: `cli-v${baseline.cli}`, sha: releaseSha, url: "https://example.test/releases/cli" },
       ...(includeCoreRelease ? [{ id: 3, tagName: `console-core-v${baseline.core}`, sha: releaseSha, url: "https://example.test/releases/core" }] : []),
+      { id: 4, tagName: `console-server-v${baseline.server}`, sha: releaseSha, url: "https://example.test/releases/console-server" },
     ];
     const releaseIterator = async function* () { yield* releases; };
     const empty = async function* () { /* no pull requests in fixture provider state */ };
@@ -117,14 +119,14 @@ async function assertGeneratedCandidate(label: string, baseline: Baseline): Prom
   assert.equal(fixtureTags, "", `${label}: fixture must not inherit ambient tags`);
   assert.equal(prs.length, 1);
   const data = new Map(prs[0].body.releaseData.map((item: { component?: string; version?: { toString(): string } }) => [item.component ?? "", item.version?.toString()]));
-  assert.equal(data.get("console-core"), expected.core); assert.equal(data.get("cli"), expected.cli); assert.equal(data.get(""), expected.root);
+  assert.equal(data.get("console-core"), expected.core); assert.equal(data.get("cli"), expected.cli); assert.equal(data.get(""), expected.root); assert.equal(data.get("console-server"), expected.server);
   const cli = JSON.parse(updates.get("cli/package.json")!); const rootPackage = JSON.parse(updates.get("package.json")!); const server = JSON.parse(updates.get("console-server/package.json")!); const lock = JSON.parse(updates.get("package-lock.json")!); const versions = JSON.parse(updates.get(".release-please-manifest.json")!);
   assert.equal(cli.version, expected.cli); assert.equal(cli.dependencies["@kontourai/console-core"], expected.core);
   assert.equal(rootPackage.version, expected.root); assert.equal(rootPackage.dependencies["@kontourai/console-core"], expected.core); assert.equal(server.dependencies["@kontourai/console-core"], expected.core);
   assert.equal(lock.packages.cli.version, expected.cli); assert.equal(lock.packages.cli.dependencies["@kontourai/console-core"], expected.core); assert.equal(lock.packages["console-core"].version, expected.core);
   assert.equal(lock.packages[""].version, expected.root); assert.equal(lock.packages[""].dependencies["@kontourai/console-core"], expected.core); assert.equal(lock.packages["console-server"].dependencies["@kontourai/console-core"], expected.core);
-  assert.equal(server.version, expected.server); assert.equal(lock.packages["console-server"].version, expected.server, "root release must not rewrite Console Server lock identity");
-  assert.deepEqual(versions, { ".": expected.root, cli: expected.cli, "console-core": expected.core });
+  assert.equal(server.version, expected.server); assert.equal(lock.packages["console-server"].version, expected.server, "Console Server is now an independently released, published component and receives the same workspace-forced bump as cli and root");
+  assert.deepEqual(versions, { ".": expected.root, cli: expected.cli, "console-core": expected.core, "console-server": expected.server });
   assert.match(updates.get("console-core/CHANGELOG.md")!, new RegExp(expected.core.replaceAll(".", "\\."))); assert.match(updates.get("cli/CHANGELOG.md")!, new RegExp(expected.cli.replaceAll(".", "\\.")));
 }
 

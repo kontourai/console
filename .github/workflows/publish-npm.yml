@@ -153,7 +153,9 @@ jobs:
         working-directory: console
 
       - name: Verify CLI Core Dependency Is Public
-        if: startsWith(inputs.target_tag, 'cli-v')
+        if: startsWith(inputs.target_tag, 'cli-v') || startsWith(inputs.target_tag, 'console-server-v')
+        env:
+          PACKAGE_MANIFEST: ${{ needs.gate.outputs.manifest }}
         run: node --import tsx scripts/verify-cli-core-release.ts
         working-directory: console
 

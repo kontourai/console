@@ -22,8 +22,9 @@ export function validateReleasePackageVersions(input: { rootManifest: unknown; c
   const coreManifest = identity(input.coreManifest, "Core package manifest");
   const serverManifest = identity(input.serverManifest, "Console Server package manifest");
   const serverManifestRecord = record(input.serverManifest, "Console Server package manifest");
-  if (serverManifestRecord.private !== true) throw new Error("Console Server package manifest must be private");
-  if ("publishConfig" in serverManifestRecord) throw new Error("Console Server package manifest must not declare publishConfig");
+  if (serverManifestRecord.private) throw new Error("Console Server package manifest must not be private");
+  const serverPublishConfig = record(serverManifestRecord.publishConfig, "Console Server package manifest publishConfig");
+  if (serverPublishConfig.access !== "public") throw new Error("Console Server package manifest publishConfig must declare public access");
   const exactCoreEdge = (value: unknown, label: string): string => {
     const dependency = record(record(value, label).dependencies, `${label} dependencies`)["@kontourai/console-core"];
     if (typeof dependency !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(dependency)) throw new Error(`${label} Core dependency must be an exact semver version`);
@@ -80,6 +81,19 @@ export function validateReleasePackageVersions(input: { rootManifest: unknown; c
   const targets = new Set(coreUpdaters.map(value => `${value.type}:${value.path}:${value.jsonpath}`));
   for (const [path, jsonpath] of [["/package-lock.json", "$.packages.console-core.version"], ["/package-lock.json", "$.packages.cli.dependencies['@kontourai/console-core']"], ["/console-server/package.json", "$.dependencies['@kontourai/console-core']"], ["/package-lock.json", "$.packages.console-server.dependencies['@kontourai/console-core']"], ["/package-lock.json", "$.packages[''].dependencies['@kontourai/console-core']"]])
     if (!targets.has(`json:${path}:${jsonpath}`)) throw new Error(`Release Please Core updater must target ${path} ${jsonpath}`);
+  const serverRelease = record(releasePackages["console-server"], "Release Please Console Server package");
+  if (serverRelease["package-name"] !== "@kontourai/console-server") throw new Error("Release Please Console Server package must declare package-name @kontourai/console-server");
+  if (serverRelease["include-component-in-tag"] !== true) throw new Error("Release Please Console Server package must include the component in its release tag");
+  if (!Array.isArray(serverRelease["extra-files"])) throw new Error("Release Please Console Server package must declare extra-files");
+  const serverLockUpdaters = serverRelease["extra-files"].filter((value): value is JsonRecord => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const path = (value as JsonRecord).path;
+    return typeof path === "string" && path.replace(/^\/+/, "") === "package-lock.json";
+  });
+  if (serverLockUpdaters.length !== 1) throw new Error("Release Please Console Server package must declare exactly one root package-lock updater");
+  const serverUpdater = serverLockUpdaters[0];
+  if (serverUpdater.path !== "/package-lock.json") throw new Error("Release Please Console Server package-lock updater must use repository-root path /package-lock.json");
+  if (serverUpdater.type !== "json" || serverUpdater.jsonpath !== "$.packages.console-server.version") throw new Error("Release Please Console Server package-lock updater must target $.packages.console-server.version as JSON");
 }
 
 function readJson(path: string): unknown {
