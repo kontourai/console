@@ -485,6 +485,18 @@ h2 {
   align-items: start;
 }
 
+/* The left column flows Pipeline -> Claims/Actions/Learnings as one independent
+   column, decoupled from the tall Gates column on the right. Previously the two
+   columns shared a row grid, so a short Pipeline beside a tall Gates panel left a
+   large unexplained empty band under the Pipeline (#135). Independent columns
+   simply end at different heights, which reads as intentional. */
+.wg-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
 .flow-panel {
   position: relative;
   min-width: 0;
@@ -495,10 +507,10 @@ h2 {
   display: grid;
   gap: 16px;
   min-width: 0;
+  align-content: start;
 }
 
 .bottom-grid {
-  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
@@ -2035,13 +2047,12 @@ dd {
     justify-self: start;
   }
 
-  .flow-panel,
-  .bottom-grid {
-    grid-column: 1 / -1;
+  /* Stack the main column and the side (Gates) column full-width. */
+  .work-grid {
+    grid-template-columns: 1fr;
   }
 
   .side-stack {
-    grid-column: 1 / -1;
     grid-template-columns: 1fr 1fr;
   }
 }

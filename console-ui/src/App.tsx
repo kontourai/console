@@ -68,6 +68,9 @@ export default function App() {
   const [economicsDelegations, setEconomicsDelegations] = useState<ConsoleEconomicsDelegationRollup | null>(null);
   const [economicsError, setEconomicsError] = useState<string | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // A pending deep-link target for the Operate WorkGrid: when a "Needs you" card
+  // routes here, this names the node ("<kind>:<id>") to scroll to + highlight (#135).
+  const [operateAnchor, setOperateAnchor] = useState<string | null>(null);
   const { theme, toggleTheme } = useTheme();
 
   // Hosted session state: set when GET /session returns 200 at the same origin.
@@ -263,7 +266,10 @@ export default function App() {
           state={state}
           telemetry={telemetry}
           liveStatus={status === "connected" ? "live" : `stream ${status}`}
-          onOpen={(target: OverviewTarget) => selectView(target)}
+          onOpen={(target: OverviewTarget, anchor?: string) => {
+            setOperateAnchor(target === "operate" ? anchor ?? null : null);
+            selectView(target);
+          }}
         />
       ) : view === "board" ? (
         <BoardSection state={state} fetchProjection={fetchProjection} />
@@ -275,6 +281,8 @@ export default function App() {
             state={state}
             selectedNodeId={selectedNodeId}
             onNodeSelect={setSelectedNodeId}
+            anchor={operateAnchor}
+            onAnchorConsumed={() => setOperateAnchor(null)}
             fetchChildProjection={fetchProjection}
           />
           <TimelineSection state={state} lastAccepted={lastAccepted} />

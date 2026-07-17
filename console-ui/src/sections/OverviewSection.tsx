@@ -25,7 +25,10 @@ interface OverviewSectionProps {
   state: OperatingState;
   telemetry: ConsoleTelemetryResponse | null;
   liveStatus: string;
-  onOpen: (target: OverviewTarget) => void;
+  // `anchor` is an optional Operate WorkGrid node id ("<kind>:<id>") to scroll to
+  // and highlight after switching views — so a "Needs you" card deep-links to the
+  // exact item it names instead of the generic board (#135).
+  onOpen: (target: OverviewTarget, anchor?: string) => void;
 }
 
 // Present-tense, operator-facing framing for each attention kind: a severity tone (drives the
@@ -113,7 +116,7 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen }: Overvi
   );
 }
 
-function TriageCard({ item, onOpen }: { item: AttentionItem; onOpen: (t: OverviewTarget) => void }) {
+function TriageCard({ item, onOpen }: { item: AttentionItem; onOpen: (t: OverviewTarget, anchor?: string) => void }) {
   const p = KIND_PRESENTATION[item.kind];
   return (
     <article className={`tcard tone-${p.tone}`}>
@@ -121,7 +124,7 @@ function TriageCard({ item, onOpen }: { item: AttentionItem; onOpen: (t: Overvie
       <h3 className="tcard-title">{item.label}</h3>
       <p className="tcard-detail">{item.detail}</p>
       <div className="tcard-actions">
-        <button type="button" className="tcard-btn primary" onClick={() => onOpen(p.target)}>{p.action}</button>
+        <button type="button" className="tcard-btn primary" onClick={() => onOpen(p.target, item.anchor)}>{p.action}</button>
       </div>
     </article>
   );
