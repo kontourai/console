@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-import { createTelemetryStore, classifyActionClass, costPerTurn } from "../src/console-foundation/telemetry";
+import { createTelemetryStore, classifyActionClass, costPerTurn, toolReliability, activityTimeline } from "../src/console-foundation/telemetry";
 import type { TelemetrySummary, TelemetryRecordSummary } from "../src/console-foundation/types";
 
 /** Minimal TelemetryRecordSummary for direct (pure) costPerTurn tests. */
@@ -43,6 +43,8 @@ function toolEventRecord(opts: {
   toolName: string;
   usage?: TurnUsage;
   observedAt?: number;
+  durationMs?: number | null;
+  outcome?: "pass" | "fail" | "ambiguous";
 }): Record<string, unknown> {
   evtCounter += 1;
   const record: Record<string, unknown> = {
@@ -53,7 +55,12 @@ function toolEventRecord(opts: {
     event_type: opts.eventType,
     agent: { name: "claude-code", runtime: "claude-code", version: "3.11.0" },
     hook: { event_name: opts.eventType === "tool.invoke" ? "PreToolUse" : "PostToolUse", turn_id: opts.turnId },
-    tool: { name: opts.toolName, normalized_name: opts.toolName }
+    tool: {
+      name: opts.toolName,
+      normalized_name: opts.toolName,
+      ...(opts.durationMs !== undefined ? { duration_ms: opts.durationMs } : {}),
+      ...(opts.outcome !== undefined ? { outcome: opts.outcome } : {})
+    }
   };
   if (opts.usage) {
     record.usage = {
@@ -309,4 +316,171 @@ test("costPerTurn skips records without a turnId and tolerates missing usage", a
   assert.equal(cpt.turns[0].turnId, "t9");
   assert.equal(cpt.turns[0].estimatedCostUsd, 0);
   assert.equal(cpt.totalEstimatedCostUsd, 0);
+});
+
+
+// --- toolReliability (#181 Piece A) -----------------------------------------
+
+/** Minimal tool.result summary record for direct (pure) toolReliability tests. */
+function resultRecord(opts: {
+  eventId: string;
+  toolName: string;
+  durationMs?: number;
+  outcome?: "pass" | "fail" | "ambiguous";
+  sessionId?: string;
+}): TelemetryRecordSummary {
+  return {
+    sourceId: "test",
+    sourceKind: "runtime",
+    eventType: "tool.result",
+    sessionId: opts.sessionId ?? "s1",
+    eventId: opts.eventId,
+    toolName: opts.toolName,
+    toolDurationMs: opts.durationMs,
+    toolOutcome: opts.outcome
+  } as TelemetryRecordSummary;
+}
+
+test("toolReliability computes p50/p95 via nearest-rank over non-null durations", () => {
+  const records = [10, 20, 30, 40, 50].map((d, i) =>
+    resultRecord({ eventId: `e${i}`, toolName: "Bash", durationMs: d, outcome: "pass" })
+  );
+  // A result with no duration must not skew the percentiles (excluded), but still counts.
+  records.push(resultRecord({ eventId: "e5", toolName: "Bash", outcome: "pass" }));
+  const { tools } = toolReliability(records);
+  assert.equal(tools.length, 1);
+  const bash = tools[0];
+  assert.equal(bash.toolName, "Bash");
+  assert.equal(bash.actionClass, "execute");
+  assert.equal(bash.count, 6, "all results counted, timed or not");
+  assert.equal(bash.p50DurationMs, 30, "nearest-rank p50 of 5 samples → 3rd value");
+  assert.equal(bash.p95DurationMs, 50, "nearest-rank p95 of 5 samples → 5th value");
+});
+
+test("toolReliability failure rate excludes ambiguous from the denominator", () => {
+  // 3 pass, 1 fail, 6 ambiguous → failureRate = 1/(3+1) = 0.25, NOT 1/10.
+  const records = [
+    ...Array.from({ length: 3 }, (_u, i) => resultRecord({ eventId: `p${i}`, toolName: "Edit", outcome: "pass" })),
+    resultRecord({ eventId: "f0", toolName: "Edit", outcome: "fail" }),
+    ...Array.from({ length: 6 }, (_u, i) => resultRecord({ eventId: `a${i}`, toolName: "Edit", outcome: "ambiguous" }))
+  ];
+  const edit = toolReliability(records).tools[0];
+  assert.equal(edit.passCount, 3);
+  assert.equal(edit.failCount, 1);
+  assert.equal(edit.ambiguousCount, 6);
+  assert.equal(edit.failureRate, 0.25, "1/(pass+fail); ambiguous never in the denominator");
+  assert.equal(edit.count, 10);
+});
+
+test("toolReliability reports failureRate 0 and null percentiles when no timed/outcome'd result", () => {
+  const only = toolReliability([resultRecord({ eventId: "e0", toolName: "Read" })]).tools[0];
+  assert.equal(only.count, 1);
+  assert.equal(only.failureRate, 0, "no pass-or-fail result → honest 0, not NaN");
+  assert.equal(only.p50DurationMs, null);
+  assert.equal(only.p95DurationMs, null);
+});
+
+test("toolReliability on empty input yields no tools", () => {
+  assert.deepEqual(toolReliability([]), { tools: [] });
+});
+
+test("toolReliability only aggregates tool.result, never tool.invoke", () => {
+  const invoke = {
+    sourceId: "test", sourceKind: "runtime", eventType: "tool.invoke",
+    sessionId: "s1", eventId: "i0", toolName: "Bash", toolDurationMs: 999, toolOutcome: "fail"
+  } as TelemetryRecordSummary;
+  const result = resultRecord({ eventId: "r0", toolName: "Bash", durationMs: 5, outcome: "pass" });
+  const { tools } = toolReliability([invoke, result]);
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].count, 1, "the invoke is ignored; only the result aggregates");
+  assert.equal(tools[0].failCount, 0);
+  assert.equal(tools[0].p50DurationMs, 5);
+});
+
+test("toolReliability is prototype-pollution safe for attacker-supplied tool names", () => {
+  const records = ["constructor", "__proto__", "hasOwnProperty"].map((name, i) =>
+    resultRecord({ eventId: `e${i}`, toolName: name, outcome: "fail" })
+  );
+  const { tools } = toolReliability(records);
+  // Each poisoned name is an ordinary Map key → its own row, classed "other".
+  assert.equal(tools.length, 3);
+  for (const t of tools) {
+    assert.equal(t.actionClass, "other", `${t.toolName} → other`);
+    assert.equal(typeof t.toolName, "string");
+    assert.equal(t.failCount, 1);
+  }
+});
+
+test("toolReliability surfaces on buildAnalytics from the enriched tool.result stream", async () => {
+  const summary = await summarize([
+    toolEventRecord({ sessionId: "s1", turnId: "t1", eventType: "tool.invoke", toolName: "Bash" }),
+    toolEventRecord({ sessionId: "s1", turnId: "t1", eventType: "tool.result", toolName: "Bash", durationMs: 120, outcome: "pass" }),
+    toolEventRecord({ sessionId: "s1", turnId: "t2", eventType: "tool.result", toolName: "Bash", durationMs: 480, outcome: "fail" })
+  ]);
+  const tools = summary.analytics.toolReliability.tools;
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].count, 2);
+  assert.equal(tools[0].passCount, 1);
+  assert.equal(tools[0].failCount, 1);
+  assert.equal(tools[0].failureRate, 0.5);
+  assert.equal(tools[0].p50DurationMs, 120);
+});
+
+// --- activityTimeline (#181 Piece B) ----------------------------------------
+
+test("activityTimeline buckets tool.invoke by hour, per action class, oldest→newest", async () => {
+  const hour = 3_600_000;
+  const base = Date.parse("2026-07-14T00:00:00.000Z");
+  const summary = await summarize([
+    // hour 0: 2 edits + 1 search
+    toolEventRecord({ sessionId: "s1", turnId: "t1", eventType: "tool.invoke", toolName: "Edit", observedAt: base + 60_000 }),
+    toolEventRecord({ sessionId: "s1", turnId: "t1", eventType: "tool.invoke", toolName: "Write", observedAt: base + 120_000 }),
+    toolEventRecord({ sessionId: "s1", turnId: "t1", eventType: "tool.invoke", toolName: "Grep", observedAt: base + 180_000 }),
+    // paired result must NOT be counted
+    toolEventRecord({ sessionId: "s1", turnId: "t1", eventType: "tool.result", toolName: "Edit", observedAt: base + 200_000 }),
+    // hour 1: 1 execute
+    toolEventRecord({ sessionId: "s1", turnId: "t2", eventType: "tool.invoke", toolName: "Bash", observedAt: base + hour + 60_000 })
+  ]);
+  const timeline = summary.analytics.activityTimeline;
+  assert.equal(timeline.bucket, "hour");
+  assert.equal(timeline.buckets.length, 2);
+  assert.equal(timeline.buckets[0].startedAt, new Date(base).toISOString());
+  assert.equal(timeline.buckets[0].byActionClass.edit, 2);
+  assert.equal(timeline.buckets[0].byActionClass.search, 1);
+  assert.equal(timeline.buckets[0].total, 3, "results excluded — 3 invokes only");
+  assert.equal(timeline.buckets[1].byActionClass.execute, 1);
+  assert.equal(timeline.buckets[1].total, 1);
+});
+
+test("activityTimeline caps to the most-recent maxBuckets window", () => {
+  const hour = 3_600_000;
+  const base = Date.parse("2026-07-14T00:00:00.000Z");
+  const records: TelemetryRecordSummary[] = Array.from({ length: 30 }, (_u, i) => ({
+    sourceId: "test", sourceKind: "runtime", eventType: "tool.invoke",
+    sessionId: "s1", eventId: `e${i}`, toolName: "Edit",
+    observedAt: new Date(base + i * hour).toISOString()
+  } as TelemetryRecordSummary));
+  const timeline = activityTimeline(records, { maxBuckets: 24 });
+  assert.equal(timeline.buckets.length, 24, "30 hourly buckets trimmed to the last 24");
+  // The kept window is the most recent → starts at hour 6.
+  assert.equal(timeline.buckets[0].startedAt, new Date(base + 6 * hour).toISOString());
+  assert.equal(timeline.buckets[23].startedAt, new Date(base + 29 * hour).toISOString());
+});
+
+test("activityTimeline zero-fills all action classes and tolerates unparseable timestamps", () => {
+  const records: TelemetryRecordSummary[] = [
+    { sourceId: "test", sourceKind: "runtime", eventType: "tool.invoke", sessionId: "s1", eventId: "e0", toolName: "Edit", observedAt: "2026-07-14T00:00:00.000Z" } as TelemetryRecordSummary,
+    { sourceId: "test", sourceKind: "runtime", eventType: "tool.invoke", sessionId: "s1", eventId: "e1", toolName: "Edit", observedAt: "not-a-date" } as TelemetryRecordSummary,
+    { sourceId: "test", sourceKind: "runtime", eventType: "tool.invoke", sessionId: "s1", eventId: "e2", toolName: "Edit" } as TelemetryRecordSummary
+  ];
+  const timeline = activityTimeline(records);
+  assert.equal(timeline.buckets.length, 1, "records without a parseable observedAt are dropped");
+  const b = timeline.buckets[0].byActionClass;
+  assert.deepEqual(Object.keys(b).sort(), ["delegate", "edit", "execute", "other", "read", "search", "web"]);
+  assert.equal(b.edit, 1);
+  assert.equal(b.read, 0);
+});
+
+test("activityTimeline on empty input yields an empty bucket list", () => {
+  assert.deepEqual(activityTimeline([]), { bucket: "hour", buckets: [] });
 });

@@ -159,6 +159,33 @@ export interface ConsoleTelemetryTurnCostSummary {
   totalEstimatedCostUsd: number;
 }
 
+export interface ConsoleTelemetryToolReliability {
+  toolName: string;
+  actionClass: ConsoleTelemetryActionClass;
+  count: number;
+  p50DurationMs: number | null;
+  p95DurationMs: number | null;
+  failureRate: number;
+  failCount: number;
+  passCount: number;
+  ambiguousCount: number;
+}
+
+export interface ConsoleTelemetryToolReliabilitySummary {
+  tools: ConsoleTelemetryToolReliability[];
+}
+
+export interface ConsoleTelemetryActivityBucket {
+  startedAt: string;
+  byActionClass: Record<ConsoleTelemetryActionClass, number>;
+  total: number;
+}
+
+export interface ConsoleTelemetryActivityTimeline {
+  bucket: "hour" | "day";
+  buckets: ConsoleTelemetryActivityBucket[];
+}
+
 export interface ConsoleTelemetryAnalyticsSummary {
   facets: ConsoleTelemetryFacetSummary[];
   flows: ConsoleTelemetryFlowSummary[];
@@ -169,6 +196,8 @@ export interface ConsoleTelemetryAnalyticsSummary {
   usageByTaskSlug: ConsoleTelemetryUsageBreakdown[];
   actionClasses: ConsoleTelemetryActionClassSummary[];
   costPerTurn: ConsoleTelemetryTurnCostSummary;
+  toolReliability: ConsoleTelemetryToolReliabilitySummary;
+  activityTimeline: ConsoleTelemetryActivityTimeline;
 }
 
 export interface ConsoleTelemetryResponse {

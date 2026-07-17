@@ -12,6 +12,10 @@ import type {
   TelemetryActionClassSummary,
   TelemetryTurnCost,
   TelemetryTurnCostSummary,
+  TelemetryToolReliability,
+  TelemetryToolReliabilitySummary,
+  TelemetryActivityBucket,
+  TelemetryActivityTimeline,
   TelemetryStorageAdapterName,
   TelemetryFlowItem,
   TelemetryFlowSummary,
@@ -652,6 +656,12 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
   const agentName = nestedString(record, ["agent", "name"]);
   const runtime = nestedString(record, ["agent", "runtime"]);
   const toolName = nestedString(record, ["tool", "normalized_name"]) || nestedString(record, ["tool", "name"]);
+  // #181 Piece A reliability signals (flow-agents #580): the tool.result event's
+  // measured latency and honest pass/fail/ambiguous outcome. Kept as dedicated
+  // tool-scoped fields, distinct from the top-level `outcome`/`durationMs` above,
+  // so the reliability projection reads the tool's own numbers unambiguously.
+  const toolDurationMs = nestedNumber(record, ["tool", "duration_ms"]);
+  const toolOutcome = nestedString(record, ["tool", "outcome"]);
   // #178/#179 substrate: the emitter stamps the active Builder work-item slug as
   // a top-level `task_slug` (from the run's current.json active_slug). Absent for
   // non-Builder sessions — left undefined, never fabricated.
@@ -681,6 +691,8 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
     delegationTarget: delegation,
     taskSlug,
     toolName,
+    toolDurationMs,
+    toolOutcome,
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
     cacheCreationInputTokens: usage.cacheCreationInputTokens,
@@ -898,7 +910,9 @@ function buildAnalytics(records: TelemetryRecordSummary[], descriptor: Telemetry
     // this so directory-derived slugs don't blend with emitter-stamped ones.
     usageByTaskSlug: usageByDimensionBreakdown(records, (r) => r.taskSlug).filter((b) => b.key !== "unknown"),
     actionClasses: actionTaxonomy(records),
-    costPerTurn: costPerTurn(records)
+    costPerTurn: costPerTurn(records),
+    toolReliability: toolReliability(records),
+    activityTimeline: activityTimeline(records)
   };
 }
 
@@ -1501,6 +1515,11 @@ function nestedValue(data: unknown, keys: string[]): unknown {
   return current;
 }
 
+function nestedNumber(data: unknown, keys: string[]): number | undefined {
+  const value = nestedValue(data, keys);
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -1864,6 +1883,133 @@ export function costPerTurn(records: TelemetryRecordSummary[]): TelemetryTurnCos
   // exact; callers wanting more detail narrow the query window.
   const totalEstimatedCostUsd = round6(turns.reduce((sum, turn) => sum + turn.estimatedCostUsd, 0));
   return { turns: turns.slice(0, MAX_COST_PER_TURN_ROWS), turnCount: turns.length, totalEstimatedCostUsd };
+}
+
+// --- #181 Piece A: per-tool latency + outcome reliability -------------------
+
+/** A completed tool call carries the reliability signal (its latency + honest
+ *  outcome); the paired tool.invoke is the same action starting and carries no
+ *  result yet. Reliability aggregates over results only. */
+function isToolResultRecord(record: TelemetryRecordSummary): boolean {
+  return record.eventType === "tool.result";
+}
+
+/** Nearest-rank percentile over a non-empty sample. Deterministic and pure:
+ *  values are copied before sort, and the rank formula (ceil(p/100 * n)) picks a
+ *  real observed value — never interpolates a latency the tool never had. */
+function percentile(values: number[], p: number): number | undefined {
+  if (values.length === 0) return undefined;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil((p / 100) * sorted.length);
+  const index = Math.min(sorted.length - 1, Math.max(0, rank - 1));
+  return sorted[index];
+}
+
+/** Per-tool latency + outcome reliability over the tool.result stream (#580).
+ *  Failure rate excludes `ambiguous` from the denominator — an ambiguous result
+ *  is neither a pass nor a fail, so it is reported separately (ambiguousCount)
+ *  and never inflates or deflates the failure rate. p50/p95 are computed over
+ *  non-null durations only. Pure. */
+export function toolReliability(records: TelemetryRecordSummary[]): TelemetryToolReliabilitySummary {
+  interface Acc {
+    toolName: string;
+    durations: number[];
+    pass: number;
+    fail: number;
+    ambiguous: number;
+    count: number;
+  }
+  // Keyed by the untrusted, tenant-supplied tool name. A Map (not a plain object)
+  // keeps keys like "constructor"/"__proto__" as ordinary string keys instead of
+  // colliding with inherited built-ins.
+  const byTool = new Map<string, Acc>();
+  for (const record of records) {
+    if (!isToolResultRecord(record)) continue;
+    const toolName = record.toolName || "unknown";
+    let acc = byTool.get(toolName);
+    if (!acc) {
+      acc = { toolName, durations: [], pass: 0, fail: 0, ambiguous: 0, count: 0 };
+      byTool.set(toolName, acc);
+    }
+    acc.count += 1;
+    if (typeof record.toolDurationMs === "number" && Number.isFinite(record.toolDurationMs) && record.toolDurationMs >= 0) {
+      acc.durations.push(record.toolDurationMs);
+    }
+    switch (record.toolOutcome) {
+      case "pass": acc.pass += 1; break;
+      case "fail": acc.fail += 1; break;
+      case "ambiguous": acc.ambiguous += 1; break;
+      default: break; // unlabeled result — counted in `count`, excluded from rates
+    }
+  }
+  const tools: TelemetryToolReliability[] = Array.from(byTool.values())
+    .map((acc): TelemetryToolReliability => {
+      const denom = acc.pass + acc.fail;
+      return {
+        toolName: acc.toolName,
+        actionClass: classifyActionClass(acc.toolName),
+        count: acc.count,
+        p50DurationMs: percentile(acc.durations, 50) ?? null,
+        p95DurationMs: percentile(acc.durations, 95) ?? null,
+        failureRate: denom > 0 ? acc.fail / denom : 0,
+        failCount: acc.fail,
+        passCount: acc.pass,
+        ambiguousCount: acc.ambiguous
+      };
+    })
+    .sort((a, b) => b.count - a.count || a.toolName.localeCompare(b.toolName));
+  return { tools };
+}
+
+// --- #181 Piece B: activity timeline over time ------------------------------
+
+const TIMELINE_BUCKET_MS: Record<TelemetryTimelineBucket, number> = {
+  hour: 60 * 60 * 1000,
+  day: 24 * 60 * 60 * 1000
+};
+const MAX_TIMELINE_BUCKETS = 24;
+
+type TelemetryTimelineBucket = "hour" | "day";
+
+function zeroActionClassCounts(): Record<TelemetryActionClass, number> {
+  return { edit: 0, read: 0, search: 0, execute: 0, web: 0, delegate: 0, other: 0 };
+}
+
+/** Bucket the tool.invoke stream by observedAt into fixed time buckets, each a
+ *  per-action-class count. Counts tool.invoke ONLY (matching actionTaxonomy) so a
+ *  tool call is one action, not double-counted with its paired tool.result. Only
+ *  buckets with activity are emitted (sparse), most-recent MAX_TIMELINE_BUCKETS
+ *  kept, oldest→newest. Pure. */
+export function activityTimeline(
+  records: TelemetryRecordSummary[],
+  options: { bucket?: TelemetryTimelineBucket; maxBuckets?: number } = {}
+): TelemetryActivityTimeline {
+  const bucket = options.bucket ?? "hour";
+  const maxBuckets = options.maxBuckets ?? MAX_TIMELINE_BUCKETS;
+  const bucketMs = TIMELINE_BUCKET_MS[bucket];
+  const byBucket = new Map<number, Record<TelemetryActionClass, number>>();
+  for (const record of records) {
+    if (!isToolInvokeRecord(record)) continue;
+    if (!record.observedAt) continue;
+    const ts = Date.parse(record.observedAt);
+    if (!Number.isFinite(ts)) continue;
+    const start = Math.floor(ts / bucketMs) * bucketMs;
+    let counts = byBucket.get(start);
+    if (!counts) {
+      counts = zeroActionClassCounts();
+      byBucket.set(start, counts);
+    }
+    counts[classifyActionClass(record.toolName)] += 1;
+  }
+  const buckets: TelemetryActivityBucket[] = Array.from(byBucket.entries())
+    .sort((a, b) => a[0] - b[0])
+    .slice(-maxBuckets)
+    .map(([start, byActionClass]): TelemetryActivityBucket => ({
+      startedAt: new Date(start).toISOString(),
+      byActionClass,
+      total: Object.values(byActionClass).reduce((sum, n) => sum + n, 0)
+    }));
+  return { bucket, buckets };
 }
 
 function projectNameFromCwd(cwd: string | undefined): string | undefined {
