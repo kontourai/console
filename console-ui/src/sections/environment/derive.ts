@@ -332,6 +332,63 @@ export function deriveTopWorkloads(
   };
 }
 
+// ── Cost by dimension (#179) ─────────────────────────────────────────────────
+
+/** Dimensions the cost breakdown can slice by. `model`/`project`/`agent`/
+ *  `workflow` are backed by existing read-model analytics; `user`/`role` are
+ *  LOCKED because per-user attribution needs identity (auth #98/#159) — the
+ *  telemetry records carry no user field until then, so we surface an honest
+ *  locked state rather than an empty or fabricated breakdown. */
+export type CostDimensionId = "model" | "project" | "agent" | "workflow";
+export type LockedCostDimensionId = "user" | "role";
+
+/** A discriminated union on `locked` so a `!d.locked` check narrows `d.id` to a
+ *  data-backed CostDimensionId — the compiler (not a cast) guarantees a locked
+ *  dimension can never be selected. */
+export type CostDimensionOption =
+  | { id: CostDimensionId; label: string; locked?: false }
+  | { id: LockedCostDimensionId; label: string; locked: true };
+
+export const COST_DIMENSIONS: CostDimensionOption[] = [
+  { id: "model", label: "Model" },
+  { id: "project", label: "Project" },
+  { id: "agent", label: "Agent" },
+  { id: "workflow", label: "Workflow" },
+  { id: "user", label: "User", locked: true },
+  { id: "role", label: "Role", locked: true },
+];
+
+const COST_DIMENSION_FIELD: Record<CostDimensionId, "usageByModel" | "usageByProject" | "usageByAgent" | "usageByTaskSlug"> = {
+  model: "usageByModel",
+  project: "usageByProject",
+  agent: "usageByAgent",
+  workflow: "usageByTaskSlug",
+};
+
+export interface CostBar {
+  label: string;
+  cost: number;
+  tokens: number;
+}
+
+/**
+ * Project the telemetry analytics into cost bars for one dimension, sorted by
+ * spend descending and capped at `limit`. Rows with no label are dropped (an
+ * unattributed bucket is noise, not a real dimension value).
+ */
+export function deriveCostByDimension(
+  telemetry: ConsoleTelemetryResponse | null,
+  dimension: CostDimensionId,
+  limit = 6,
+): CostBar[] {
+  const rows = telemetry?.analytics?.[COST_DIMENSION_FIELD[dimension]] || [];
+  return rows
+    .map((row) => ({ label: row.label || row.key, cost: row.estimatedCostUsd ?? 0, tokens: row.totalTokens ?? 0 }))
+    .filter((row) => row.label)
+    .sort((a, b) => b.cost - a.cost)
+    .slice(0, limit);
+}
+
 function topFromFacetOrRecords(
   telemetry: ConsoleTelemetryResponse,
   facetId: string,
