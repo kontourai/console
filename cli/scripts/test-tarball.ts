@@ -36,6 +36,30 @@ function pack(packageRoot: string, destination: string, options: { ignoreScripts
   return join(destination, result[0].filename);
 }
 
+// Stages a copy of an already-installed node_modules package with its
+// `scripts` field stripped from the STAGED manifest, so `npm pack` on the
+// staged copy can never invoke a lifecycle script. This is required, not just
+// defensive: npm's `--ignore-scripts` (and `npm_config_ignore_scripts=true`)
+// handling for the `prepare` lifecycle is inconsistent across npm major
+// versions — npm 10.x (bundled with Node 22) still runs `prepare` on
+// `npm pack` despite both, while npm 11.x (bundled with Node 24) does not
+// (reproduced directly against a downloaded Node 22.18.0/npm 10.9.3 before
+// this fix, confirmed both suppression attempts alone were insufficient).
+// These installed copies carry only published-package content (no dev
+// source), so any `prepare`/`build` script here always fails regardless — its
+// dev-only build inputs are absent — and is never needed for our purpose (we
+// only read the already-built `dist` output already present in node_modules).
+function stageForPack(sourceDir: string, stagingRoot: string): string {
+  const staged = join(stagingRoot, basename(sourceDir));
+  mkdirSync(staged);
+  cpSync(sourceDir, staged, { recursive: true });
+  const manifestPath = join(staged, "package.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
+  delete manifest.scripts;
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  return staged;
+}
+
 function installOffline(project: string, tarballs: readonly string[], cache: string): void {
   run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false", ...tarballs], project, {
     npm_config_offline: "true",
@@ -234,10 +258,19 @@ function legacyConsoleSmoke(root: string, rootTarball: string, dependencyTarball
 function main(): void {
   const root = mkdtempSync(join(tmpdir(), "kontour-cli-tarball-"));
   const packs = join(root, "packs");
+  const staging = join(root, "staging");
   const makeDirectory = (path: string): void => { mkdirSync(path, { recursive: true }); };
   makeDirectory(packs);
+  makeDirectory(staging);
   makeDirectory(join(root, "cli-project"));
   makeDirectory(join(root, "legacy-project"));
+  // Third-party packages packed from this repo's own installed node_modules
+  // copies (published-package content only, no dev source) so the offline
+  // installs below can resolve @kontourai/console's real dependency tree
+  // (#228 review finding 1) and the transitive tree @kontourai/flow itself
+  // declares. Staged (manifest `scripts` stripped) before packing — see
+  // stageForPack().
+  const packThirdParty = (name: string): string => pack(stageForPack(join(repositoryRoot, "node_modules", name), staging), packs, { ignoreScripts: true });
   try {
     // Build/package while the checkout is available. Everything below the pack
     // calls installs and executes with npm offline and no source NODE_PATH.
@@ -255,13 +288,10 @@ function main(): void {
     // @kontourai/console name/version and therefore the same tarball filename.
     const rootConsole = pack(repositoryRoot, packs);
     const telemetry = pack(join(repositoryRoot, "telemetry"), packs);
-    const jose = pack(join(repositoryRoot, "node_modules/jose"), packs);
+    const jose = packThirdParty("jose");
     // @kontourai/flow is a real dependency of the root manifest (#228 review
     // finding 1): flow-bridge/flow-ingest re-export types that resolve
-    // @kontourai/flow/console-contract. These are packed from the already
-    // -installed node_modules copies (published-package content only, no dev
-    // source) with --ignore-scripts so pack never runs a build/prepare script
-    // that assumes a full source checkout.
+    // @kontourai/flow/console-contract.
     const flowDependencyTree = [
       "@kontourai/flow",
       "@kontourai/surface",
@@ -271,7 +301,7 @@ function main(): void {
       "fast-uri",
       "json-schema-traverse",
       "require-from-string",
-    ].map((name) => pack(join(repositoryRoot, "node_modules", name), packs, { ignoreScripts: true }));
+    ].map(packThirdParty);
     legacyConsoleSmoke(root, rootConsole, [consoleCore, telemetry, jose, ...flowDependencyTree]);
     if (cliFailure) throw cliFailure;
     process.stdout.write(`Tarball smoke passed: ${basename(cli)}, three product fixtures, and ${basename(rootConsole)}.\n`);
