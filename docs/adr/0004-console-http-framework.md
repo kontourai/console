@@ -12,7 +12,7 @@ The console HTTP server (`console-server/src/console-foundation/console-hub-serv
 is a raw `node:http` server with hand-coded if-chain routing and hand-written request
 validators. This was reasonable for a small surface, but the API has grown — multi-tenant
 REST (telemetry + cost/usage analytics, records, pricing), SSE, an OAuth 2.1 Resource
-Server (JWT/JWKS + per-route scopes, ADR 0003), an OIDC login flow, and an MCP (JSON-RPC)
+Server (JWT/JWKS + per-route scopes, ADR 0006), an OIDC login flow, and an MCP (JSON-RPC)
 server. The hand-rolled approach now has real costs:
 
 - **Hand-rolled security is the largest risk.** The Phase-2c adversarial review found

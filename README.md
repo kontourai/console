@@ -13,7 +13,7 @@ The primitives remain portable — Console never becomes the authority for any o
 - [Veritas](https://kontourai.io/veritas) owns repo/change governance.
 - [Flow Agents](https://kontourai.io/flow-agents) owns agent-facing runtime distribution.
 
-This repo ships local-first Console foundation code alongside the product context and architecture decisions. It includes fixture inspection, local file sinks, deterministic replay, and a loopback-only development server; it is not a hosted production service.
+This repo ships local-first Console foundation code alongside the product context and architecture decisions. It includes fixture inspection, local file sinks, deterministic replay, and a loopback-only development server. The same server source also implements an opt-in hosted runtime mode (`CONSOLE_RUNTIME_MODE=hosted`: multi-tenant auth, OIDC login, MCP, and economics) — see [Hosted Console Deployment](docs/deployment/hosted-console.md) for how a deployment overlay composes it. This repository does not itself operate a hosted deployment; Kontour's own hosted instance at `console.kontourai.io` runs from a private deployment overlay (`console-deploy`), not from this repo.
 
 ![Console local operating plane showing a replayed process flow with passed and waiting gates, claims, and an active process](docs/assets/console-operating-plane.png)
 
@@ -57,8 +57,10 @@ The `@kontourai/console` package's `kontour serve` entry point remains behaviora
 
 - `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, and `kontour-flow-bridge` bins.
 - `@kontourai/console-core` — shared record and process-flow shapes.
+- `@kontourai/cli` — the offline-first suite router (`kontour` bin) for Flow, Flow Agents, and Console product delegation.
+- `@kontourai/telemetry` — the canonical telemetry contract: event/pricing shapes, versioned pricing registry, and OpenTelemetry GenAI mapping, consumed by `@kontourai/console`.
 
-The React UI (`console-ui`) is built into the package at `console-ui/dist` and served by `kontour serve` at the hub origin. It is not published as a separate npm package.
+The React UI (`console-ui`) is built into the `@kontourai/console` package at `console-ui/dist` and served by `kontour serve` at the hub origin. It is not published as a separate npm package.
 
 ## Bridge a real Flow run
 
@@ -95,10 +97,12 @@ Open the UI, hit Reconnect, and the operating plane renders the replayed state: 
 
 ## Package Layout
 
-The Console prototype is split into TypeScript workspaces with clear ownership:
+The Console prototype is split into five TypeScript workspaces with clear ownership:
 
 - `console-core` owns shared TypeScript record and process-flow shapes used across packages.
-- `console-server` owns local file sinks, fixture/local inspection, current-state projection, and the loopback SSE hub.
+- `cli` owns the offline-first `@kontourai/cli` suite router (`kontour` bin, product delegation, descriptors).
+- `telemetry` owns the `@kontourai/telemetry` event/pricing contract and OpenTelemetry GenAI mapping.
+- `console-server` owns local file sinks, fixture/local inspection, current-state projection, and the loopback SSE hub (plus the optional hosted runtime mode).
 - `console-ui` owns the React/Vite UI that renders hub state and live events.
 
 Root commands delegate into those workspaces so a fresh checkout can still use `npm test`, `npm run typecheck`, `npm run inspect:fixtures`, and `npm run serve` from this directory.
@@ -209,7 +213,7 @@ Run the local development hub from the repo root:
 npm run serve
 ```
 
-The `kontour serve` command binds to `127.0.0.1:3737` by default and serves the operating-plane UI at the hub URL as well as the API endpoints:
+The `kontour serve` command binds to `127.0.0.1:3737` by default and serves the operating-plane UI at the hub URL as well as the API endpoints. This is the core subset for local fixture/event work:
 
 - `GET /` — Console UI (React SPA; index.html fallback for all unknown non-API paths)
 - `POST /records`
@@ -217,6 +221,8 @@ The `kontour serve` command binds to `127.0.0.1:3737` by default and serves the 
 - `GET /inspect`
 - `GET /stream`
 - `GET /events`
+
+The hub also exposes auth/session, telemetry, economics, MCP, and health/version routes (hosted-mode and operational endpoints). See `GET /openapi.json` for the live, generated route/schema reference, or `KNOWN_ROUTES` in `console-server/src/console-foundation/console-hub-server.ts` for the full source-of-truth route list.
 
 Open `http://127.0.0.1:3737/` in a browser after starting the hub to use the operating plane. The UI is bundled in the published package and served directly by the hub — no separate UI server process required.
 
@@ -308,14 +314,17 @@ safely if the selected adapter cannot be opened.
 
 ## Docs
 
-[**kontourai.github.io/console**](https://kontourai.github.io/console/) — the published docs site.
+[**kontourai.github.io/console**](https://kontourai.github.io/console/) — the published docs site, generated from [docs/index.md](docs/index.md). Start there for the full index; a few entry points:
 
 - [Product Boundaries](docs/product-boundaries.md)
 - [Event And Projection Schema](docs/specs/projection-schema.md)
 - [Emitter, Sink, And Plane Contract](docs/specs/emitter-sink-plane-contract.md)
 - [Telemetry Descriptor](docs/specs/telemetry-descriptor.md)
 - [Example event streams](docs/examples/event-streams/)
-- [ADR 0001: Console As Suite Management Plane](docs/adr/0001-console-as-suite-management-plane.md)
+- [Architecture decisions](docs/adr/) — ADR 0001 (suite management plane) through ADR 0006 (multi-tenant auth & MCP authorization).
+- [Deployment docs](docs/deployment/) — hosted Console, multi-tenant, local full-stack, npm package releases.
+- [Runtime root migration](docs/migrations/console-runtime-root.md)
+- [Flow Agents integration](docs/integrations/flow-agents-console.md)
 
 ## License
 

@@ -1,6 +1,6 @@
 # Console OAuth / OIDC deployment runbook
 
-How to turn on the console's OAuth 2.1 / OIDC auth (ADR 0003). Everything here is
+How to turn on the console's OAuth 2.1 / OIDC auth (ADR 0006). Everything here is
 **config-gated**: with none of these env vars set, the console behaves exactly as
 before (opaque bearer tokens + signed session cookies). It is **vendor-neutral** —
 point it at any OIDC-compliant provider (WorkOS, Auth0/Okta, Zitadel, Keycloak,

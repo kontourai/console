@@ -176,6 +176,17 @@ test("buildPipeline: runId and runLabel from state", () => {
   assert.match(pipeline.runLabel, /dev-7/);
 });
 
+test("buildPipeline: runId prefixing is idempotent — a run_id without the run- prefix gets it once", () => {
+  const pipeline = buildPipeline(sampleDefinition, { ...sampleState, run_id: "dag-demo-1" });
+  assert.equal(pipeline.runId, "run-dag-demo-1");
+});
+
+test("buildPipeline: runId prefixing is idempotent — a run_id that already starts with run- is not doubled", () => {
+  const pipeline = buildPipeline(sampleDefinition, { ...sampleState, run_id: "run-dag-demo-1" });
+  assert.equal(pipeline.runId, "run-dag-demo-1");
+  assert.notEqual(pipeline.runId, "run-run-dag-demo-1");
+});
+
 test("buildPipeline: pending stages beyond current step", () => {
   const state = { ...sampleState, current_step: "plan", gate_outcomes: [] };
   const pipeline = buildPipeline(sampleDefinition, state);

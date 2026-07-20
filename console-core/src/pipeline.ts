@@ -128,6 +128,35 @@ const EMPTY_PIPELINE: Pipeline = {
   currentStageId: null,
 };
 
+/**
+ * Namespaces a Flow run id for display as `pipeline.runId` (the `<code
+ * className="eyebrow">` badge `PipelineStepper.tsx` renders verbatim, CSS
+ * `text-transform: uppercase`d — this is a pure display value with no
+ * lookup/join consumer anywhere in console: `state.pipeline` is a whole-object
+ * replace-on-latest-snapshot in `current-operating-state.ts`, not indexed by
+ * `runId`). The `run-` prefix exists purely to read as a labeled run badge,
+ * matching flow-bridge/flow-ingest's own `run-<runId>` process-id convention.
+ *
+ * Idempotent: a Flow run id can itself already start with `run-` (an operator
+ * picks the run id; Flow does not enforce a convention on it), so
+ * unconditionally prefixing would double it into `run-run-<runId>` — which is
+ * exactly what rendered as `RUN-RUN-DAG-DEMO-1` in the operate tab (#bug
+ * repro: run id `run-dag-demo-1` via kontour-flow-bridge). A run id that
+ * already carries the prefix is returned unchanged.
+ *
+ * NOTE: this is intentionally NOT the same fix as guarding flow-bridge's or
+ * flow-ingest's `subject.id`/`producer.runId` construction (`run-${runId}` in
+ * flow-bridge.ts / flow-ingest.ts) — those ARE a lookup key: console-ui's
+ * board.ts `runIdFromProcessId` strips exactly one `run-` prefix back off to
+ * recover the raw runId for the `/ingest/flow/:runId` drill-down fetch (#178,
+ * tested), which requires that prefix to be added unconditionally so the
+ * strip is always lossless. Guarding those against doubling would silently
+ * break drill-down for exactly the run ids this bug is about.
+ */
+function toDisplayRunId(runId: string): string {
+  return runId.startsWith("run-") ? runId : `run-${runId}`;
+}
+
 export function buildPipeline(
   definition: unknown,
   runState: unknown,
@@ -395,7 +424,7 @@ export function buildPipeline(
   });
 
   return {
-    runId: `run-${runId}`,
+    runId: toDisplayRunId(runId),
     runLabel: subject ? `${subject} (${runId})` : runId,
     runStatus,
     stages,
