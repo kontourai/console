@@ -66,6 +66,15 @@
         ]
       },
       {
+        "id": "product.additional-areas",
+        "kind": "product-area",
+        "label": "Additional repository product areas",
+        "patterns": [
+          "demo/",
+          "dev/"
+        ]
+      },
+      {
         "id": "delivery.workflows",
         "kind": "delivery-area",
         "label": ".github/**",
@@ -79,6 +88,18 @@
         "label": "scripts/**",
         "patterns": [
           "scripts/"
+        ]
+      },
+      {
+        "id": "app.workspaces",
+        "kind": "product-area",
+        "label": "Console workspaces",
+        "patterns": [
+          "cli/",
+          "console-core/",
+          "console-server/",
+          "console-ui/",
+          "telemetry/"
         ]
       },
       {
