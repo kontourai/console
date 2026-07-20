@@ -15,7 +15,7 @@ type GateRecord = OpenRecord & { id?: string; status?: string };
 type ProcessRecord = OpenRecord & { id?: string; openGateRefs?: CrossProductRef[] };
 type StatusRecord = OpenRecord & { status?: unknown };
 
-function flowProcessStateToProjection(state: OpenRecord, options: OpenRecord = {}) {
+export function flowProcessStateToProjection(state: OpenRecord, options: OpenRecord = {}) {
   requireObject(state, "state");
   const stateProcess = asOpenRecord(state.process);
   const processId = requireString(stateProcess.id || state.processId || state.id, "state.processId");
@@ -149,7 +149,7 @@ function normalizeGates(gates: unknown, processRef: CrossProductRef) {
   });
 }
 
-function flowGateTransitionToEvent(transition: OpenRecord, options: OpenRecord = {}) {
+export function flowGateTransitionToEvent(transition: OpenRecord, options: OpenRecord = {}) {
   requireObject(transition, "transition");
   const gateId = requireString(transition.gateId || transition.id, "transition.gateId");
   const occurredAt = options.occurredAt || transition.occurredAt || transition.changedAt;

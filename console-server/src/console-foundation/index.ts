@@ -197,7 +197,7 @@ function inspectFixtures(options: InspectOptions = {}) {
   };
 }
 
-function inspectLocalKontour(options: InspectLocalOptions = {}) {
+export function inspectLocalKontour(options: InspectLocalOptions = {}) {
   const rootDir = path.resolve(options.rootDir || process.cwd());
   const kontourRoot = resolveUnderRoot(rootDir, options.kontourRoot || options.localRoot || LOCAL_KONTOUR_DIR);
   const sourceRoot = kontourRoot;
@@ -414,7 +414,7 @@ function getFlowProcessStatus(projections: ProjectionInspection[], options: Stat
     });
 }
 
-function validateEvent(event: ConsoleEventRecord, basePath: string): ValidationIssue[] {
+export function validateEvent(event: ConsoleEventRecord, basePath: string): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   requireString(event, "schema", basePath, issues);
   requireString(event, "version", basePath, issues);
@@ -434,7 +434,7 @@ function validateEvent(event: ConsoleEventRecord, basePath: string): ValidationI
   return issues;
 }
 
-function validateProjection(snapshot: ConsoleProjectionSnapshot, basePath: string): ValidationIssue[] {
+export function validateProjection(snapshot: ConsoleProjectionSnapshot, basePath: string): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   requireString(snapshot, "schema", basePath, issues);
   requireString(snapshot, "version", basePath, issues);
@@ -510,7 +510,7 @@ function summarizeProjection(snapshot: ConsoleProjectionSnapshot) {
   };
 }
 
-function extractActionDescriptors(snapshot: ConsoleProjectionSnapshot, basePath: string = "projection"): ActionDescriptor[] {
+export function extractActionDescriptors(snapshot: ConsoleProjectionSnapshot, basePath: string = "projection"): ActionDescriptor[] {
   return arrayOf<ConsoleObjectRecord>(snapshot.actions).map((action: ConsoleObjectRecord) => toActionDescriptor(action, `${basePath}.actions`));
 }
 
@@ -975,3 +975,17 @@ export {
   wrapFlowIngestRecord,
 } from "./flow-ingest";
 export type { FlowIngestResult } from "./flow-ingest";
+
+// Producer mapping helpers (#228 review finding 1): same dual-source pattern
+// as above — these names are provided at RUNTIME by the `module.exports = {...}`
+// literal above; this `export ... from` statement is types-only at runtime
+// (index-level TypeScript consumers get real types for the mapping helpers
+// instead of the implicit `any` an un-typed require() would otherwise carry).
+export {
+  surfaceClaimStateToProjection,
+  surfaceFreshnessTransitionToEvent,
+} from "./surface-claim-helper";
+export {
+  flowProcessStateToProjection,
+  flowGateTransitionToEvent,
+} from "./flow-process-helper";
