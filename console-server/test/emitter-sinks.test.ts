@@ -498,3 +498,27 @@ test("console-foundation index re-exports the full producer surface", () => {
   const sink = new foundation.LocalFileSink({ root: tempRoot() });
   assert.equal(sink.sinkRole, "LocalFileSink");
 });
+
+// #228 review finding 1: the inspection/validation functions (defined directly
+// in index.ts) and the surface/flow mapping helpers (re-exported from their own
+// sibling modules) must ALSO carry real declarations, not just a runtime
+// `module.exports` entry — a published-library TypeScript consumer imports
+// these by name (README "Local Console Producer Emission" / "Surface Claim
+// Status/Freshness Producer Helper"). This guards the runtime half; the packed
+// tarball's isolated tsc check (cli/scripts/test-tarball.ts) guards the types
+// half against the same class of regression.
+test("console-foundation index re-exports the inspection and mapping helpers", () => {
+  const foundation = require("../src/console-foundation");
+  for (const name of [
+    "validateEvent",
+    "validateProjection",
+    "extractActionDescriptors",
+    "inspectLocalKontour",
+    "surfaceClaimStateToProjection",
+    "surfaceFreshnessTransitionToEvent",
+    "flowProcessStateToProjection",
+    "flowGateTransitionToEvent",
+  ]) {
+    assert.equal(typeof foundation[name], "function", `expected console-foundation to export ${name}`);
+  }
+});

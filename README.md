@@ -147,7 +147,7 @@ A Console producer is the Kontour product or product runtime that emits control-
 
 Products can write local control-plane records without dependencies or hosted infrastructure. `LocalFileSink` writes under the configured Console runtime root, defaulting to `.kontourai/console`, with events below `events/` and current projection snapshots below `projections/`.
 
-The published `@kontourai/console` package ships compiled CommonJS in `dist`. Programmatic examples below use `require('@kontourai/console')` directly against the compiled output. When working inside this repo, `node --import tsx` also works.
+The published `@kontourai/console` package ships compiled CommonJS under `console-server/dist` and resolves it through the package's `main`/`exports` field, so `require('@kontourai/console')` needs no subpath. Programmatic examples below use `require('@kontourai/console')` directly against the compiled output. When working inside this repo, `node --import tsx` also works.
 
 ```ts
 const {

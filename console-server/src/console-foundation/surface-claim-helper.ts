@@ -14,7 +14,7 @@ type ResourceFields = {
 type RefMergeField = "apiVersion" | "name" | "uid" | "scope" | "label" | "url";
 type StatusRecord = OpenRecord & { status?: unknown };
 
-function surfaceClaimStateToProjection(state: OpenRecord, options: OpenRecord = {}) {
+export function surfaceClaimStateToProjection(state: OpenRecord, options: OpenRecord = {}) {
   requireObject(state, "state");
   const claimId = requireString(state.claimId || state.id, "state.claimId");
   const generatedAt = options.generatedAt || state.generatedAt || state.lastUpdatedAt;
@@ -71,7 +71,7 @@ function surfaceClaimStateToProjection(state: OpenRecord, options: OpenRecord = 
   });
 }
 
-function surfaceFreshnessTransitionToEvent(transition: OpenRecord, options: OpenRecord = {}) {
+export function surfaceFreshnessTransitionToEvent(transition: OpenRecord, options: OpenRecord = {}) {
   requireObject(transition, "transition");
   const claimId = requireString(transition.claimId || transition.id, "transition.claimId");
   const occurredAt = options.occurredAt || transition.occurredAt || transition.changedAt;
