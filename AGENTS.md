@@ -25,3 +25,8 @@ Console is the suite operating plane over the primitives — it renders and corr
 ## Useful Commands
 
 - `npm test` · `npm run dev:local` · `npm run inspect:fixtures` · `npm run check:content-boundary` · `npm run validate:repo-hooks`
+
+<!-- veritas:governance-block:start -->
+This repo uses Veritas for AI governance. Read `.veritas/GOVERNANCE.md` before making changes.
+After changes, run `veritas readiness` and address any FAIL lines before finishing.
+<!-- veritas:governance-block:end -->
