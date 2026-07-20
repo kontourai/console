@@ -99,6 +99,56 @@ function cliSmoke(root: string, tarballs: string[]): void {
   assert.deepEqual(records.map(({ product }) => product), ["flow", "flow-agents", "console"]);
 }
 
+// The published library entry (#228): `require`/`import` of the packed
+// @kontourai/console tarball must resolve the producer-emission surface the
+// README documents (KontourEmitter, LocalFileSink, validateEvent, ...) with
+// types, not just the kontour bin. This is the acceptance proof for #228.
+const CONSOLE_LIBRARY_EXPORTS = [
+  "KontourEmitter",
+  "LocalFileSink",
+  "CompositeSink",
+  "InMemorySink",
+  "ApiSink",
+  "validateEvent",
+  "validateProjection",
+  "inspectLocalKontour",
+  "surfaceClaimStateToProjection",
+  "surfaceFreshnessTransitionToEvent",
+] as const;
+
+function assertPackedConsoleLibrary(project: string): void {
+  const installed = join(project, "node_modules/@kontourai/console");
+  const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8")) as {
+    main?: string;
+    types?: string;
+    exports?: Record<string, unknown>;
+  };
+  assert.equal(manifest.main, "console-server/dist/src/console-foundation/index.js", "packed @kontourai/console must declare its library main entry");
+  assert.equal(manifest.types, "console-server/dist/src/console-foundation/index.d.ts", "packed @kontourai/console must declare its library types entry");
+  assert.ok(manifest.exports?.["."], 'packed @kontourai/console must declare a "." exports entry');
+  for (const file of [
+    "console-server/dist/src/console-foundation/index.js",
+    "console-server/dist/src/console-foundation/index.d.ts",
+  ]) assert.ok(existsSync(join(installed, file)), `packed @kontourai/console is missing ${file}`);
+
+  const checkNames = `const names = ${JSON.stringify(CONSOLE_LIBRARY_EXPORTS)}; for (const name of names) { if (typeof lib[name] !== "function") throw new Error("missing or non-function export: " + name); }`;
+  const requireOutput = runCombined(
+    "node",
+    ["-e", `const lib = require("@kontourai/console"); ${checkNames} console.log("require-ok");`],
+    project,
+    { NODE_PATH: "", npm_config_offline: "true" },
+  );
+  assert.match(requireOutput, /require-ok/, "require('@kontourai/console') did not resolve the documented library exports");
+
+  const importOutput = runCombined(
+    "node",
+    ["--input-type=module", "-e", `import lib from "@kontourai/console"; ${checkNames} console.log("import-ok");`],
+    project,
+    { NODE_PATH: "", npm_config_offline: "true" },
+  );
+  assert.match(importOutput, /import-ok/, "import('@kontourai/console') did not resolve the documented library exports");
+}
+
 function legacyConsoleSmoke(root: string, rootTarball: string, dependencyTarballs: string[]): void {
   const project = join(root, "legacy-project");
   const cache = join(root, "offline-cache-legacy");
@@ -112,6 +162,7 @@ function legacyConsoleSmoke(root: string, rootTarball: string, dependencyTarball
   assert.ok(existsSync(kontour), "legacy @kontourai/console tarball did not install kontour bin");
   const help = runCombined(kontour, ["serve", "--help"], project, { NODE_PATH: "", npm_config_offline: "true" });
   assert.match(help, /Usage: kontour serve/);
+  assertPackedConsoleLibrary(project);
 }
 
 function main(): void {

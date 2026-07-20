@@ -25,6 +25,15 @@
     "kontour-flow-bridge": "console-server/dist/bin/kontour-flow-bridge.js",
     "console-db-migrate": "console-server/dist/bin/console-db-migrate.js"
   },
+  "main": "console-server/dist/src/console-foundation/index.js",
+  "types": "console-server/dist/src/console-foundation/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./console-server/dist/src/console-foundation/index.d.ts",
+      "default": "./console-server/dist/src/console-foundation/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "console-server/dist",
     "console-core/dist",
