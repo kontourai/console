@@ -158,7 +158,7 @@ for a reprocessing job.
 ## Related
 
 - ADR 0001 — Console as suite-management plane (product neutrality).
-- ADR 0003 — Console multi-tenant auth & MCP authorization (telemetry plane ownership).
+- ADR 0006 — Console multi-tenant auth & MCP authorization (telemetry plane ownership).
 - `docs/product-boundaries.md` — primitives usable without a suite-level console.
 - Supersedes the implicit "console distributes pricing via an API + recompute" design and the
   bundled `default-registry` pricing snapshot.

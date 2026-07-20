@@ -74,3 +74,7 @@ See the [Golden Demo](examples/golden-demo.html) for a full end-to-end example a
 
 - [ADR 0001: Console As Suite Management Plane](adr/0001-console-as-suite-management-plane.html)
 - [ADR 0002: Learning Records Use Control Plane](adr/0002-learning-records-use-control-plane.html)
+- [ADR 0003: Authenticated Multi-Tenant Ingestion And The Value Plane](adr/0003-authenticated-multi-tenant-ingestion-and-the-value-plane.html)
+- [ADR 0004: Adopt Fastify For The Console HTTP API](adr/0004-console-http-framework.html)
+- [ADR 0005: Two-Layer Telemetry — Neutral Contract + Flow-Agents-Owned Cost/Pricing](adr/0005-telemetry-pricing-layers.html)
+- [ADR 0006: Console Multi-Tenant Authentication & MCP Authorization](adr/0006-console-multitenant-auth.html)

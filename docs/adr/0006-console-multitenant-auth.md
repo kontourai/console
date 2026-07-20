@@ -1,4 +1,11 @@
-# ADR 0003: Console Multi-Tenant Authentication & MCP Authorization
+# ADR 0006: Console Multi-Tenant Authentication & MCP Authorization
+
+> Renumbered from ADR 0003 during a 2026-07-20 content sweep: this repo had two
+> documents both numbered 0003. [ADR 0003: Authenticated Multi-Tenant Ingestion
+> And The Value Plane](0003-authenticated-multi-tenant-ingestion-and-the-value-plane.md)
+> keeps its number because it is linked by filename from the `evals` repo's
+> README; this document was renumbered to the next free slot instead. No
+> content below was otherwise changed.
 
 Date: 2026-06-29
 
