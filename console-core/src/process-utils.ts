@@ -1,7 +1,10 @@
 import type { ConsoleProcess } from "./operating-state";
 
+// Interactive-session states (console#229) are stalled-on-external-actor like
+// "blocked"/"waiting", not idle — a process needing human input or review is
+// exactly the kind of work an interactive board should be able to focus on.
 export function selectActiveProcess(processes: ConsoleProcess[]) {
-  return processes.find((process) => ["running", "open", "waiting", "in-progress", "in_progress", "blocked", "paused"].includes((process.status || "").toLowerCase().replace(/\s+/g, "-")))
+  return processes.find((process) => ["running", "open", "waiting", "in-progress", "in_progress", "blocked", "paused", "needs_input", "review_pending"].includes((process.status || "").toLowerCase().replace(/\s+/g, "-")))
     || processes[0]
     || null;
 }

@@ -8,6 +8,7 @@ export type {
   ConsoleLearning,
   ConsoleLink,
   ConsoleProcess,
+  ConsoleProcessStatus,
   ConsoleRef,
   ConsoleSource,
   OperatingState,

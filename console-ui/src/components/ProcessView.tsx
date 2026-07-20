@@ -13,6 +13,7 @@ export function ProcessView({ process, advisoryLearnings = [] }: { process: Cons
       <dl className="details">
         <div><dt>step</dt><dd>{formatStep(process.currentStep)}</dd></div>
         <div><dt>progress</dt><dd>{typeof process.percentComplete === "number" ? `${process.percentComplete}%` : "n/a"}</dd></div>
+        {process.blockedReason ? <div><dt>blocked reason</dt><dd>{process.blockedReason}</dd></div> : null}
         <div><dt>updated</dt><dd>{formatTime(process.updatedAt)}</dd></div>
       </dl>
       <Progress value={process.percentComplete} />
