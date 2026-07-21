@@ -43,7 +43,12 @@ const IN_FLIGHT_STEP = /(execut|implement|build|coding|deliver|release|publish|i
 const PLANNING_STEP = /(plan|probe|design|pull[-\s]?work|groom|shape|scope|backlog[-\s]?refine|triage)/;
 
 // Only consulted when there is no step string (producers that drive off status).
-const IN_FLIGHT_STATUS = /(running|active|in[-\s]?progress|execut|deliver)/;
+// `needs_input` (console#229) is deliberate, not regex luck: an interactive
+// session stalled on a human answer is active work-in-progress, not an
+// unstarted Backlog item. `review_pending` already matches via the "review"
+// substring above (VERIFY_STEP, checked first) — see the board test asserting
+// that pairing so it stays intentional, not an accident of match order.
+const IN_FLIGHT_STATUS = /(running|active|in[-\s]?progress|execut|deliver|needs[-_\s]?input)/;
 
 function stepText(step: ConsoleProcess["currentStep"]): string {
   if (!step) return "";

@@ -293,11 +293,27 @@ function applyEvent(state: MutableReplayState, event: ConsoleEventRecord | Conso
   const refs = arrayOf<CrossProductRef>(payload.refs);
   const after: ReplayPatch = isPlainObject(payload.after) ? clone(payload.after) : {};
   const summary = payload.summary || event.summary;
+  // console#229: the generic ConsoleEventPayload.reason carries WHY a process
+  // is blocked/needs_input/review_pending (docs/specs/projection-schema.md,
+  // "Event Payload"). It folds into ConsoleProcess.blockedReason below.
+  const reason = typeof payload.reason === "string" ? payload.reason : undefined;
 
   switch (event.type) {
     case "process.started":
     case "process.progressed":
-      upsertProcess(state, event, subject, refs, after);
+    // console#229 (review HIGH): these lifecycle events used to fall through
+    // to the default no-op case, so a process.blocked/paused/resumed/completed
+    // event never touched state.processes — status stayed stale at whatever
+    // process.started/progressed last set (a replay probe proved status stuck
+    // at "running" after a process.blocked event). Fold them the same way,
+    // with a type-derived status fallback (mirrors statusFromGateEvent below)
+    // for producers that only send the event type without an explicit
+    // payload.after.status.
+    case "process.paused":
+    case "process.resumed":
+    case "process.blocked":
+    case "process.completed":
+      upsertProcess(state, event, subject, refs, after, reason);
       break;
     case "gate.opened":
     case "gate.passed":
@@ -359,7 +375,7 @@ function applyEvent(state: MutableReplayState, event: ConsoleEventRecord | Conso
   });
 }
 
-function upsertProcess(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch): void {
+function upsertProcess(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch, reason?: string): void {
   const existing: ReplayObject = state.processes.get(subject.id) || {
     id: subject.id,
     label: subject.label,
@@ -370,12 +386,30 @@ function upsertProcess(state: MutableReplayState, event: ConsoleEventRecord, sub
     updatedAt: event.occurredAt
   };
 
+  // Explicit payload.after.status wins (covers needs_input/review_pending,
+  // which have no dedicated event type — console#229); otherwise fall back to
+  // a type-derived status so a bare process.blocked/paused/resumed/completed
+  // event still advances status. Mirrors statusFromGateEvent's precedence.
+  const status = (typeof after.status === "string" && after.status)
+    || statusFromProcessEvent(event.type)
+    || existing.status;
+
   const next: ReplayObject = {
     ...existing,
     ...after,
     id: subject.id,
     label: subject.label || existing.label,
     sourceRef: subject,
+    status,
+    // console#229 (review HIGH): blockedReason must not survive a transition
+    // out of a blocked-like status — otherwise a resumed/completed process
+    // keeps showing a stale "why it was stuck" reason. `undefined` here is
+    // deliberate: compactObject() below drops undefined keys, actually
+    // deleting the field (a JSON `null` can't express deletion and would
+    // fail validateProjection's "expected a string when present" check).
+    blockedReason: isBlockedLikeProcessStatus(status)
+      ? ((typeof after.blockedReason === "string" && after.blockedReason) || reason || existing.blockedReason)
+      : undefined,
     startedAt: existing.startedAt || (event.type === "process.started" ? event.occurredAt : undefined),
     updatedAt: event.occurredAt || existing.updatedAt
   };
@@ -384,6 +418,29 @@ function upsertProcess(state: MutableReplayState, event: ConsoleEventRecord, sub
   next.gateRefs = mergeRefs(existing.gateRefs, refs.filter((ref: CrossProductRef) => ref.product === "flow" && ref.kind === "gate"));
   next.evidenceRefs = mergeRefs(existing.evidenceRefs, refs.filter((ref: CrossProductRef) => ref.kind === "evidence"));
   state.processes.set(subject.id, compactObject(next));
+}
+
+/**
+ * Type-derived fallback status for process lifecycle events (console#229),
+ * used only when a producer omits an explicit `payload.after.status`. Mirrors
+ * `statusFromGateEvent`'s precedence pattern for gates. `process.blocked`
+ * defaults to the generic "blocked" — the interactive `needs_input` /
+ * `review_pending` states have no dedicated event type and require an
+ * explicit `payload.after.status` (docs/specs/projection-schema.md).
+ */
+function statusFromProcessEvent(type: string): string | undefined {
+  if (type === "process.paused") return "paused";
+  if (type === "process.resumed") return "running";
+  if (type === "process.blocked") return "blocked";
+  if (type === "process.completed") return "completed";
+  return undefined;
+}
+
+/** console#229: statuses for which a `blockedReason` is meaningful and retained. */
+const BLOCKED_LIKE_PROCESS_STATUSES = new Set(["blocked", "needs_input", "review_pending", "waiting", "paused"]);
+
+function isBlockedLikeProcessStatus(status: unknown): boolean {
+  return typeof status === "string" && BLOCKED_LIKE_PROCESS_STATUSES.has(status);
 }
 
 function upsertGate(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch): void {

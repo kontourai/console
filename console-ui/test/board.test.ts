@@ -52,6 +52,17 @@ test("classifyBoardStage: status-only fallback when there is no step", () => {
   assert.equal(classifyBoardStage(proc({ id: "c", status: "queued" })), "backlog");
 });
 
+// console#229 (review MEDIUM): interactive-session states with no step string
+// must land somewhere sane, not Backlog (unstarted) — they're active work
+// stalled on a human. needs_input previously fell through every pattern to
+// Backlog; this locks in the fix. review_pending already landed on Verify
+// (its "review" substring matches VERIFY_STEP, checked before the in-flight
+// status fallback) — asserted here too so that pairing stays intentional.
+test("classifyBoardStage: interactive-session statuses with no step land in an active stage, never Backlog", () => {
+  assert.equal(classifyBoardStage(proc({ id: "a", status: "needs_input" })), "in-flight");
+  assert.equal(classifyBoardStage(proc({ id: "b", status: "review_pending" })), "verify");
+});
+
 test("deriveBoard groups every process into exactly one stage column, most-advanced honored", () => {
   const board = deriveBoard(state({
     processes: [

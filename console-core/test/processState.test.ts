@@ -42,6 +42,30 @@ test("selectActiveProcess treats needs_input and review_pending like blocked/wai
   assert.equal(selectActiveProcess(reviewProcesses)?.id, "run-review-pending");
 });
 
+// console#229 (review MEDIUM): explicit tiered priority, not array-order luck.
+test("selectActiveProcess: needs_input outranks an earlier-ID running process (explicit priority, not array-order luck)", () => {
+  const processes: ConsoleProcess[] = [
+    { id: "run-a-earlier-running", status: "running" },
+    { id: "run-b-later-needs-input", status: "needs_input" }
+  ];
+  assert.equal(selectActiveProcess(processes)?.id, "run-b-later-needs-input");
+});
+
+test("selectActiveProcess: priority tiers are human-action > blocked/waiting > running, regardless of order", () => {
+  const allTiers: ConsoleProcess[] = [
+    { id: "run-running", status: "running" },
+    { id: "run-blocked", status: "blocked" },
+    { id: "run-review-pending", status: "review_pending" }
+  ];
+  assert.equal(selectActiveProcess(allTiers)?.id, "run-review-pending");
+
+  const noHumanAction: ConsoleProcess[] = [
+    { id: "run-running", status: "running" },
+    { id: "run-waiting", status: "waiting" }
+  ];
+  assert.equal(selectActiveProcess(noHumanAction)?.id, "run-waiting");
+});
+
 test("buildProcessFlow round-trips a needs_input process with a blockedReason", () => {
   const state: OperatingState = {
     processes: [{
