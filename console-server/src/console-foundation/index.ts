@@ -667,7 +667,14 @@ function validateClaim(claim: ConsoleObjectRecord, basePath: string, issues: Val
 
 function validateProcess(process: ConsoleObjectRecord, basePath: string, issues: ValidationIssue[]): void {
   requireString(process, "id", basePath, issues);
+  // `status` stays a free string, not an enum, like every other status field
+  // here — the vocabulary (including console#229's needs_input/review_pending)
+  // is documented in docs/specs/projection-schema.md, and producers may still
+  // emit product-specific values the console displays without recognizing.
   requireString(process, "status", basePath, issues);
+  // Optional cause for a blocked/needs_input/review_pending process (console#229).
+  // Absent on existing producer records, so this stays backward compatible.
+  validateOptionalString(process && process.blockedReason, `${basePath}.blockedReason`, issues);
   validateRefArray(process && process.openGateRefs, `${basePath}.openGateRefs`, issues);
   validateRefArray(process && process.reviewItemRefs, `${basePath}.reviewItemRefs`, issues);
   validateRefArray(process && process.claimRefs, `${basePath}.claimRefs`, issues);
@@ -761,6 +768,12 @@ function validateLearningFamily(value: unknown, pathName: string, issues: Valida
 function validateOptionalNumber(value: unknown, pathName: string, issues: ValidationIssue[]): void {
   if (value !== undefined && typeof value !== "number") {
     issues.push(issue("error", pathName, "expected a number when present"));
+  }
+}
+
+function validateOptionalString(value: unknown, pathName: string, issues: ValidationIssue[]): void {
+  if (value !== undefined && typeof value !== "string") {
+    issues.push(issue("error", pathName, "expected a string when present"));
   }
 }
 

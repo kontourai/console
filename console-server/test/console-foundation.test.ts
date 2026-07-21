@@ -247,6 +247,97 @@ test("projection validation reports malformed enriched ref fields", () => {
   assert.equal(paths.has("invalid-enriched.json.claims[0].evidenceRefs[0].scope"), true);
 });
 
+// console#229: interactive-session process states (needs_input, review_pending)
+// and the optional blockedReason field.
+test("validateEvent accepts a process.blocked event carrying the needs_input interactive state", () => {
+  const event = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-process-blocked-001",
+    type: "process.blocked",
+    occurredAt: "2026-07-20T12:00:00Z",
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "console" },
+    subject: { product: "flow-agents", kind: "run", id: "run-interactive-1" },
+    payload: {
+      reason: "Agent asked a clarifying question about scope.",
+      after: { status: "needs_input" }
+    }
+  };
+
+  const errors = validateEvent(event, "process.jsonl:1").filter((item: any) => item.severity === "error");
+  assert.deepEqual(errors, []);
+});
+
+test("validateProjection accepts needs_input and review_pending processes with blockedReason", () => {
+  const projection = {
+    schema: "kontour.console.projection",
+    version: "0.1",
+    generatedAt: "2026-07-20T12:00:05Z",
+    derivedFrom: {},
+    producer: { product: "flow-agents", id: "flow-agents-local" },
+    scope: { kind: "repo", id: "console" },
+    processes: [
+      { id: "run-needs-input", status: "needs_input", blockedReason: "Waiting on operator input." },
+      { id: "run-review-pending", status: "review_pending", blockedReason: "Waiting on reviewer approval." },
+      // Interactive states are optional — a process may carry them without a blockedReason.
+      { id: "run-needs-input-no-reason", status: "needs_input" }
+    ]
+  };
+
+  const errors = validateProjection(projection, "interactive-processes.json")
+    .filter((item: any) => item.severity === "error");
+  assert.deepEqual(errors, []);
+});
+
+test("validateProjection still accepts an old-shape process record unchanged (backward compat)", () => {
+  // Exact shape a pre-#229 producer already emits: no blockedReason, a
+  // pre-existing status. Must validate with zero errors, proving existing
+  // producers are unaffected by the new interactive vocabulary.
+  const projection = {
+    schema: "kontour.console.projection",
+    version: "0.1",
+    generatedAt: "2026-05-31T17:09:05Z",
+    derivedFrom: {},
+    producer: { product: "flow", id: "flow-local" },
+    scope: { kind: "project", id: "provider-directory-refresh" },
+    processes: [
+      {
+        id: "run-provider-directory-refresh",
+        status: "running",
+        currentStep: "verify",
+        percentComplete: 40,
+        openGateRefs: [{ product: "flow", kind: "gate", id: "gate-provider-directory-freshness" }],
+        claimRefs: [{ product: "surface", kind: "claim", id: "claim-provider-directory-current" }],
+        nextActionRefs: [{ product: "flow", kind: "action", id: "action-resume-provider-directory-refresh" }]
+      }
+    ]
+  };
+
+  const errors = validateProjection(projection, "old-shape-projection.json")
+    .filter((item: any) => item.severity === "error");
+  assert.deepEqual(errors, []);
+});
+
+test("validateProjection rejects a non-string blockedReason", () => {
+  const projection = {
+    schema: "kontour.console.projection",
+    version: "0.1",
+    generatedAt: "2026-07-20T12:00:10Z",
+    derivedFrom: {},
+    producer: {},
+    scope: {},
+    processes: [
+      { id: "run-bad-reason", status: "needs_input", blockedReason: 42 }
+    ]
+  };
+
+  const errors = validateProjection(projection, "bad-reason.json")
+    .filter((item: any) => item.severity === "error");
+  const paths = new Set(errors.map((item: any) => item.path));
+  assert.equal(paths.has("bad-reason.json.processes[0].blockedReason"), true);
+});
+
 test("learning event validation accepts thin non-authoritative payloads", () => {
   const event = {
     schema: "kontour.console.event",

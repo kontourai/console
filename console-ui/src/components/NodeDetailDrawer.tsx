@@ -164,6 +164,10 @@ function ProcessDetail({ process }: { process: ReturnType<typeof findProcess> })
     <dl className="node-detail-fields">
       <div><dt>Step</dt><dd>{step}</dd></div>
       <div><dt>Progress</dt><dd>{typeof process.percentComplete === "number" ? `${process.percentComplete}%` : "n/a"}</dd></div>
+      {/* console#229: why a blocked/needs_input/review_pending process is stalled. */}
+      {process.blockedReason ? (
+        <div><dt>Blocked reason</dt><dd>{process.blockedReason}</dd></div>
+      ) : null}
       {process.updatedAt ? (
         <div><dt>Updated</dt><dd>{formatTime(process.updatedAt)}</dd></div>
       ) : null}

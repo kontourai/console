@@ -374,6 +374,133 @@ test("replay ignores unsafe learning id and sourceRef payload fields", () => {
   assert.equal(state.learnings[0].sourceRef, undefined);
 });
 
+
+// console#229 (review HIGH): process.blocked/paused/resumed/completed used to
+// fall through to the default no-op case in applyEvent's switch — they never
+// reached upsertProcess, so a process.blocked event left `status` stuck at
+// whatever process.started/progressed last set. These are replay-level
+// regressions (event in -> projected state out), not validation-only checks.
+test("replay: process.blocked folds status from payload.after.status and blockedReason from payload.reason", () => {
+  const state = buildCurrentOperatingState([
+    {
+      schema: "kontour.console.event",
+      version: "0.1",
+      id: "evt-run-1-started",
+      type: "process.started",
+      occurredAt: "2026-07-20T12:00:00Z",
+      producer: { product: "flow-agents", id: "flow-agents-local" },
+      subject: { product: "flow-agents", kind: "run", id: "run-interactive-1", label: "Interactive session" },
+      payload: { after: { status: "running", currentStep: "await-input" } }
+    },
+    {
+      schema: "kontour.console.event",
+      version: "0.1",
+      id: "evt-run-1-blocked",
+      type: "process.blocked",
+      occurredAt: "2026-07-20T12:05:00Z",
+      producer: { product: "flow-agents", id: "flow-agents-local" },
+      subject: { product: "flow-agents", kind: "run", id: "run-interactive-1", label: "Interactive session" },
+      payload: {
+        reason: "Agent asked a clarifying question about scope.",
+        after: { status: "needs_input" }
+      }
+    }
+  ]);
+
+  assert.equal(state.processes.length, 1);
+  assert.equal(state.processes[0].status, "needs_input");
+  assert.equal(state.processes[0].blockedReason, "Agent asked a clarifying question about scope.");
+});
+
+test("replay: a bare process.blocked event (no payload.after.status) still advances status via a type-derived fallback", () => {
+  const state = buildCurrentOperatingState([
+    {
+      schema: "kontour.console.event",
+      version: "0.1",
+      id: "evt-run-2-blocked",
+      type: "process.blocked",
+      occurredAt: "2026-07-20T12:00:00Z",
+      producer: { product: "flow", id: "flow-local" },
+      subject: { product: "flow", kind: "run", id: "run-2" },
+      payload: { reason: "Waiting on external system." }
+    }
+  ]);
+
+  assert.equal(state.processes[0].status, "blocked");
+  assert.equal(state.processes[0].blockedReason, "Waiting on external system.");
+});
+
+test("replay: process.paused, process.resumed, and process.completed fold status (type-derived fallback)", () => {
+  const paused = buildCurrentOperatingState([
+    {
+      schema: "kontour.console.event", version: "0.1", id: "evt-paused", type: "process.paused",
+      occurredAt: "2026-07-20T12:00:00Z", producer: { product: "flow", id: "flow-local" },
+      subject: { product: "flow", kind: "run", id: "run-3" }, payload: {}
+    }
+  ]);
+  assert.equal(paused.processes[0].status, "paused");
+
+  const resumed = buildCurrentOperatingState([
+    {
+      schema: "kontour.console.event", version: "0.1", id: "evt-paused", type: "process.paused",
+      occurredAt: "2026-07-20T12:00:00Z", producer: { product: "flow", id: "flow-local" },
+      subject: { product: "flow", kind: "run", id: "run-4" }, payload: {}
+    },
+    {
+      schema: "kontour.console.event", version: "0.1", id: "evt-resumed", type: "process.resumed",
+      occurredAt: "2026-07-20T12:05:00Z", producer: { product: "flow", id: "flow-local" },
+      subject: { product: "flow", kind: "run", id: "run-4" }, payload: {}
+    }
+  ]);
+  assert.equal(resumed.processes[0].status, "running");
+
+  const completed = buildCurrentOperatingState([
+    {
+      schema: "kontour.console.event", version: "0.1", id: "evt-completed", type: "process.completed",
+      occurredAt: "2026-07-20T12:00:00Z", producer: { product: "flow", id: "flow-local" },
+      subject: { product: "flow", kind: "run", id: "run-5" }, payload: {}
+    }
+  ]);
+  assert.equal(completed.processes[0].status, "completed");
+});
+
+// console#229 (review HIGH): blockedReason staleness. A stale reason surviving
+// a transition out of a blocked-like status is worse than none — it would
+// claim a running process is still stuck on a question nobody is asking
+// anymore. JSON/null can't express deletion (and a literal null would fail
+// validateProjection's "expected a string when present" check), so the fold
+// must omit the key outright on any non-blocked-like transition.
+test("replay: blockedReason does not survive a transition out of a blocked-like status (block-with-reason then resume -> reason gone)", () => {
+  const blocked = buildCurrentOperatingState([
+    {
+      schema: "kontour.console.event", version: "0.1", id: "evt-run-6-blocked", type: "process.blocked",
+      occurredAt: "2026-07-20T12:00:00Z", producer: { product: "flow", id: "flow-local" },
+      subject: { product: "flow", kind: "run", id: "run-6" },
+      payload: { reason: "Waiting on reviewer approval.", after: { status: "review_pending" } }
+    }
+  ]);
+  assert.equal(blocked.processes[0].status, "review_pending");
+  assert.equal(blocked.processes[0].blockedReason, "Waiting on reviewer approval.");
+
+  const resumed = buildCurrentOperatingState([
+    {
+      schema: "kontour.console.event", version: "0.1", id: "evt-run-6-blocked", type: "process.blocked",
+      occurredAt: "2026-07-20T12:00:00Z", producer: { product: "flow", id: "flow-local" },
+      subject: { product: "flow", kind: "run", id: "run-6" },
+      payload: { reason: "Waiting on reviewer approval.", after: { status: "review_pending" } }
+    },
+    {
+      schema: "kontour.console.event", version: "0.1", id: "evt-run-6-resumed", type: "process.resumed",
+      occurredAt: "2026-07-20T12:05:00Z", producer: { product: "flow", id: "flow-local" },
+      subject: { product: "flow", kind: "run", id: "run-6" },
+      payload: { after: { status: "running" } }
+    }
+  ]);
+  assert.equal(resumed.processes[0].status, "running");
+  assert.equal(resumed.processes[0].blockedReason, undefined);
+  assert.equal(Object.prototype.hasOwnProperty.call(resumed.processes[0], "blockedReason"), false);
+});
+
 test("flow.pipeline.snapshot event populates operatingState.pipeline", () => {
   const pipelineSnapshot = {
     runId: "run-dev-7",

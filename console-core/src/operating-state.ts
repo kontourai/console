@@ -21,11 +21,42 @@ export interface ConsoleSource {
   lastAcceptedEventId?: string | null;
 }
 
+/**
+ * Process operating-state vocabulary (console#229). Generic across products —
+ * not a Flow-run-only or vertical-specific set. `needs_input` and
+ * `review_pending` cover interactive-session work (an agent session or
+ * process paused for a human to answer a question or review output) so an
+ * interactive board has real states to render instead of a bare `blocked`.
+ * Kept an open union (`| string`) like every other status field in this file:
+ * producers may emit product-specific statuses the console still displays,
+ * console-server's validator does not enforce this enum, and existing
+ * producers are unaffected by the new members.
+ */
+export type ConsoleProcessStatus =
+  | "not_started"
+  | "running"
+  | "paused"
+  | "blocked"
+  | "waiting"
+  | "needs_input"
+  | "review_pending"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | string;
+
 export interface ConsoleProcess {
   id: string;
   label?: string;
   sourceRef?: ConsoleRef;
-  status?: string;
+  status?: ConsoleProcessStatus;
+  /**
+   * Why the process is blocked/needs_input/review_pending — an operator- or
+   * agent-facing sentence, folded from the causing event's `payload.reason`
+   * (`process.blocked` and similar). Optional and independent of `status` so
+   * a producer can set it without also adopting the interactive states.
+   */
+  blockedReason?: string;
   currentStep?: string | { id?: string; label?: string };
   percentComplete?: number;
   updatedAt?: string;

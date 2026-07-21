@@ -229,7 +229,7 @@ The `| string` extension point lets products emit additional names, but custom e
 | Process | `process.progressed` | A process advanced to another step, updated percent complete, or reported meaningful progress. |
 | Process | `process.paused` | A process stopped temporarily by actor, policy, gate, or product control semantics. |
 | Process | `process.resumed` | A paused or waiting process resumed. |
-| Process | `process.blocked` | A process cannot continue until evidence, decision, action, exception, or external state changes. |
+| Process | `process.blocked` | A process cannot continue until evidence, decision, action, exception, or external state changes &mdash; including interactive-session cases where a `needs_input` or `review_pending` status and an optional `blockedReason` describe what the process is waiting on. |
 | Process | `process.completed` | A process reached terminal completion. Failed or cancelled products may still use product-specific detail in `payload.data`. |
 | Gates | `gate.opened` | A Flow gate or product gate became active and needs evidence, decision, exception, or action. |
 | Gates | `gate.passed` | A gate passed under its owning product semantics. |
@@ -474,7 +474,9 @@ type ProcessStatusProjection = {
   id: string;
   definitionId?: string;
   label?: string;
-  status: "not_started" | "running" | "paused" | "blocked" | "waiting" | "completed" | "failed" | "cancelled" | string;
+  status: "not_started" | "running" | "paused" | "blocked" | "waiting" | "needs_input" | "review_pending" | "completed" | "failed" | "cancelled" | string;
+  /** Why the process is blocked/needs_input/review_pending, such as "waiting on reviewer approval" or "agent asked a clarifying question". Optional; independent of `status`. */
+  blockedReason?: string;
   currentStep?: string;
   startedAt?: string;
   updatedAt?: string;
@@ -490,6 +492,8 @@ type ProcessStatusProjection = {
 ```
 
 Processes are usually projected from Flow Runs. Flow remains the authority for gate, transition, exception, and run-control semantics.
+
+`needs_input` and `review_pending` are generic interactive-session states, not Flow-specific or vertical-specific: a process (an agent session, a Flow run, a review workflow) that is paused waiting on a human to answer a question or review output, respectively. They fold the same way as any other status transition &mdash; a `process.blocked` (or a future interactive-specific) event's `payload.after.status` and `payload.reason` carry the new status and the `blockedReason` a projector places on the process object. Producers that never emit these states are unaffected; consumers that do not recognize them still have a plain string to render.
 
 ## Gates
 
