@@ -21,4 +21,5 @@ export {
   type BoardColumn,
   type BoardModel
 } from "./board.js";
-export type { ConsoleIntent, IntentHandler } from "./intent.js";
+export type { ConsoleIntent, IntentHandler, BindIntentHandlerOptions } from "./intent.js";
+export { bindIntentHandler } from "./intent.js";
