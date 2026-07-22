@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "declaration": true,
+    // #230 review (LOW): declarationMap/sourceMap are intentionally OFF —
+    // this package's "files" ships dist-lib only, not lib/src/*.ts(x), so
+    // emitted .map files would reference source paths absent from the
+    // published tarball (orphaned maps, 404s in a consumer's devtools).
+    "outDir": "dist-lib",
+    "rootDir": "lib/src",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true
+  },
+  "include": ["lib/src/**/*.ts", "lib/src/**/*.tsx"]
+}

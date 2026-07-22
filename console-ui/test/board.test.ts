@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { classifyBoardStage, deriveBoard, runIdFromProcessId, BOARD_STAGES } from "../src/sections/board/board";
+import { classifyBoardStage, deriveBoard, runIdFromProcessId, BOARD_STAGES, BOARD_STAGE_LABEL } from "../lib/src/board";
 import type { OperatingState, ConsoleProcess } from "@kontourai/console-core";
 
 function proc(p: Partial<ConsoleProcess> & { id: string }): ConsoleProcess {
@@ -142,4 +142,53 @@ test("deriveBoard on empty/undefined state yields five empty columns, zero total
   assert.equal(board.columns.length, 5);
   assert.equal(board.totalCards, 0);
   assert.ok(board.columns.every((c) => c.cards.length === 0));
+});
+
+// #236: blockedReason carries through onto the card unchanged, so a stalled
+// interactive session (needs_input/review_pending) is actionable, not a bare
+// status string.
+test("deriveBoard carries blockedReason through onto the card", () => {
+  const board = deriveBoard(state({
+    processes: [proc({ id: "p1", status: "needs_input", blockedReason: "Waiting on a design decision from the requester." })]
+  }));
+  const card = board.columns.flatMap((c) => c.cards).find((c) => c.id === "p1");
+  assert.equal(card?.blockedReason, "Waiting on a design decision from the requester.");
+  assert.equal(card?.stage, "in-flight");
+});
+
+test("deriveBoard leaves blockedReason undefined when the process has none", () => {
+  const board = deriveBoard(state({ processes: [proc({ id: "p1", currentStep: "execute" })] }));
+  const card = board.columns.flatMap((c) => c.cards).find((c) => c.id === "p1");
+  assert.equal(card?.blockedReason, undefined);
+});
+
+// #230 review (HIGH): BOARD_STAGES/BOARD_STAGE_LABEL are exported constants a
+// consumer script could try to mutate in place. Frozen exported copies must
+// reject that (ES modules are strict mode: a frozen-object mutation attempt
+// throws a TypeError at the mutation site) AND deriveBoard must keep working
+// correctly afterward — it reads separate, private, never-exported bindings,
+// not the frozen public ones, so even a defeated freeze couldn't corrupt it.
+test("BOARD_STAGES is frozen: external mutation attempts throw and never corrupt board derivation", () => {
+  const mutable = BOARD_STAGES as unknown as string[];
+  assert.throws(() => { mutable.length = 0; }, TypeError);
+  assert.throws(() => { mutable.push("hacked"); }, TypeError);
+  assert.throws(() => { mutable[0] = "hacked"; }, TypeError);
+  assert.deepEqual(BOARD_STAGES, ["backlog", "planning", "in-flight", "verify", "done"]);
+
+  // A mutation attempt against the exported binding must not have corrupted
+  // this module's own (private) derivation state — the board still renders
+  // all five stage columns correctly.
+  const board = deriveBoard(state({ processes: [proc({ id: "a", currentStep: "execute" })] }));
+  assert.equal(board.columns.length, 5);
+  assert.deepEqual(board.columns.map((c) => c.stage), ["backlog", "planning", "in-flight", "verify", "done"]);
+});
+
+test("BOARD_STAGE_LABEL is frozen: external key mutation/deletion throws and never corrupts board derivation", () => {
+  const mutable = BOARD_STAGE_LABEL as unknown as Record<string, string>;
+  assert.throws(() => { mutable.backlog = "Hacked"; }, TypeError);
+  assert.throws(() => { delete mutable.backlog; }, TypeError);
+  assert.equal(BOARD_STAGE_LABEL.backlog, "Backlog");
+
+  const board = deriveBoard(state({ processes: [proc({ id: "a" })] }));
+  assert.equal(board.columns.find((c) => c.stage === "backlog")?.label, "Backlog");
 });

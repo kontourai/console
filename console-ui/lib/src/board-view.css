@@ -1,0 +1,219 @@
+/*
+ * #230 BoardView styles — the published `@kontourai/console-ui` `./board.css`
+ * export. Scoped to the pure BoardView component only (its own drill-down
+ * panel, `.board-drilldown*`, stays app-only CSS in the bundled Console app's
+ * styles.css since BoardDrilldown is not part of the published component).
+ *
+ * Every color/spacing value below is a direct `@kontourai/ui` design token
+ * (`--k-*`) so a host page only needs to load `@kontourai/ui/tokens.css` +
+ * `@kontourai/ui/themes.css` (already required to mount any `@kontourai/ui`
+ * primitive) — no dependency on the Console app's own local `--panel`/`--line`
+ * alias layer, which is app-internal and not shipped with this package.
+ */
+
+.board-section {
+  display: block;
+}
+
+/* Head row: eyebrow + title on the left, item-count receipt on the right.
+   Component-scoped (not the app's global .section-head/.section-label/
+   .receipt) so BoardView never depends on the host's own typography CSS. */
+.board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.board-eyebrow {
+  margin: 0;
+  color: var(--k-brand);
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.board-title {
+  margin: 0;
+  font-family: var(--k-font-display);
+  font-size: clamp(1rem, 1.6vw, 1.35rem);
+  font-weight: 600;
+  color: var(--k-text);
+}
+
+.board-receipt {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.board-columns {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(220px, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.board-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  padding: 10px;
+}
+
+.board-column-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--k-line);
+}
+
+.board-column-label {
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--k-text-muted);
+}
+
+.board-column-count {
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  color: var(--k-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stage accent: a hairline top edge encoding progression cool → active → done. */
+.board-column-backlog { border-top: 2px solid var(--k-text-faint); }
+.board-column-planning { border-top: 2px solid var(--k-active); }
+.board-column-in-flight { border-top: 2px solid var(--k-brand); }
+.board-column-verify { border-top: 2px solid var(--k-caution, var(--k-active)); }
+.board-column-done { border-top: 2px solid var(--k-positive); }
+
+.board-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-column-empty {
+  margin: 6px 0 2px;
+  color: var(--k-text-faint);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--k-panel-raised);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+}
+
+.board-card-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--k-text);
+  overflow-wrap: anywhere;
+}
+
+.board-card-step {
+  margin: 0;
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  color: var(--k-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.board-card-progress {
+  block-size: 4px;
+  background: var(--k-line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.board-card-progress-fill {
+  display: block;
+  block-size: 100%;
+  background: var(--k-brand);
+}
+
+.board-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  color: var(--k-text-faint);
+}
+
+.board-card-gate { font-variant-numeric: tabular-nums; }
+.board-card-gate-passed { color: var(--k-positive); }
+.board-card-gate-blocked { color: var(--k-negative); }
+
+.board-card-time {
+  margin-inline-start: auto;
+  color: var(--k-text-faint);
+}
+
+/* #236: blockedReason — an operator-facing sentence for a blocked/needs_input/
+ * review_pending card, so a stalled interactive session reads as actionable. */
+.board-card-blocked-reason {
+  margin: 0;
+  color: var(--k-negative);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.board-card:has(.board-card-button) {
+  padding: 0;
+}
+
+.board-card-button {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  text-align: start;
+  padding: 10px;
+  background: none;
+  border: none;
+  border-radius: var(--k-radius-sm);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.board-card-button:hover {
+  background: color-mix(in oklab, var(--k-panel-raised) 80%, var(--k-brand) 20%);
+}
+
+.board-card-button.selected {
+  outline: 1px solid var(--k-brand);
+  outline-offset: -1px;
+}
+
+.board-card-button:focus-visible {
+  outline: 2px solid var(--k-brand);
+  outline-offset: -1px;
+}

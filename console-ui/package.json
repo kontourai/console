@@ -1,22 +1,49 @@
 {
   "name": "@kontourai/console-ui",
   "version": "0.0.0",
-  "private": true,
+  "description": "Kontour Console React app, and the host-mountable board/timeline/fleet view components it is built from.",
   "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/console.git",
+    "directory": "console-ui"
+  },
+  "main": "dist-lib/index.js",
+  "types": "dist-lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist-lib/index.d.ts",
+      "import": "./dist-lib/index.js"
+    },
+    "./board.css": "./lib/src/board-view.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist-lib",
+    "lib/src/board-view.css",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:lib && tsc -b && vite build",
+    "build:lib": "npm run build --workspace @kontourai/console-core --if-present && tsc -p tsconfig.lib.json",
+    "prepack": "npm run build:lib",
+    "prepare": "npm run build:lib",
     "test": "node --import tsx --test test/*.ts",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc -b --noEmit && tsc -p tsconfig.lib.json --noEmit",
     "preview": "vite preview"
   },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
   "dependencies": {
-    "@kontourai/console-core": "file:../console-core",
-    "@kontourai/ui": "^1.1.0",
-    "@xyflow/react": "^12.11.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "recharts": "^3.9.2"
+    "@kontourai/console-core": "0.2.0",
+    "@kontourai/ui": "^1.1.0"
   },
   "devDependencies": {
     "@kontourai/flow": "^1.4.0",
@@ -25,6 +52,10 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "@xyflow/react": "^12.11.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "recharts": "^3.9.2",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3",
     "vite": "^7.2.6"
