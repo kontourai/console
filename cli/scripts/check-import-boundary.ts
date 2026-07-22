@@ -13,6 +13,12 @@ const repositoryRoot = resolve(packageRoot, "..");
 const permittedConsoleCore = new Set([
   "@kontourai/console-core/product-capability-descriptor",
   "@kontourai/console-core/product-capability-descriptor/node",
+  // console#232/C5's standalone runner binds against the C4 intent-binding
+  // contract (resolveIntentBinding/HostIntentBinding/intentBindingFromCommand)
+  // to build a HostIntentBinding whose execute delegates to a resolved
+  // product bin. Scoped to this one subpath, not the whole console-core
+  // barrel, matching the descriptor entrypoints above.
+  "@kontourai/console-core/intent-binding",
 ]);
 const deniedExact = new Set([
   "@kontourai/console",

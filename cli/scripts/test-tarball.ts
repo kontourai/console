@@ -93,14 +93,20 @@ function assertPackedCli(project: string): string {
 function assertPackedCore(project: string): void {
   const installed = join(project, "node_modules/@kontourai/console-core");
   const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8")) as { exports?: Record<string, unknown> };
-  for (const subpath of ["./product-capability-descriptor", "./product-capability-descriptor/node"])
+  // "./intent-binding" (console#232/C5's standalone runner dependency) is
+  // asserted alongside the descriptor subpaths so a CLI-only/tag-retry
+  // publish can never ship against a Core tarball that is missing the
+  // export the runner requires at its own module-load time (2026-07-20
+  // security review, finding 4).
+  for (const subpath of ["./product-capability-descriptor", "./product-capability-descriptor/node", "./intent-binding"])
     assert.ok(manifest.exports?.[subpath], `packed Core is missing export ${subpath}`);
   for (const file of [
     "dist/product-capability-descriptor.js", "dist/product-capability-descriptor.d.ts",
     "dist/product-capability-descriptor-node.js", "dist/product-capability-descriptor-node.d.ts",
+    "dist/intent-binding.js", "dist/intent-binding.d.ts",
     "schemas/product-capability-descriptor.schema.json",
   ]) assert.ok(existsSync(join(installed, file)), `packed Core is missing ${file}`);
-  run("node", ["-e", "require('@kontourai/console-core/product-capability-descriptor'); require('@kontourai/console-core/product-capability-descriptor/node')"], project, { NODE_PATH: "" });
+  run("node", ["-e", "require('@kontourai/console-core/product-capability-descriptor'); require('@kontourai/console-core/product-capability-descriptor/node'); require('@kontourai/console-core/intent-binding')"], project, { NODE_PATH: "" });
 }
 
 function cliSmoke(root: string, tarballs: string[]): void {

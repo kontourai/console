@@ -21,6 +21,12 @@ export function assertExactCoreMetadata(spec: unknown, metadata: unknown): void 
   const exports = item.exports as Record<string, unknown>;
   if (!exports["./product-capability-descriptor"] || !exports["./product-capability-descriptor/node"])
     throw new Error("Core registry metadata is missing required descriptor exports");
+  // console#232/C5's standalone runner (`@kontourai/cli`) loads
+  // "@kontourai/console-core/intent-binding" at its own module-load time. A
+  // released CLI must never be paired with a published Core that lacks it
+  // (2026-07-20 security review, finding 4).
+  if (!exports["./intent-binding"])
+    throw new Error("Core registry metadata is missing the required intent-binding export");
 }
 
 if (require.main === module) {

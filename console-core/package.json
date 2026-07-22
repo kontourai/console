@@ -15,6 +15,10 @@
       "types": "./dist/product-capability-descriptor-node.d.ts",
       "default": "./dist/product-capability-descriptor-node.js"
     },
+    "./intent-binding": {
+      "types": "./dist/intent-binding.d.ts",
+      "default": "./dist/intent-binding.js"
+    },
     "./schemas/product-capability-descriptor.schema.json": {
       "default": "./schemas/product-capability-descriptor.schema.json"
     }

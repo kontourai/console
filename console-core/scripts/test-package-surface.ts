@@ -24,6 +24,7 @@ try {
   for (const path of [
     "dist/product-capability-descriptor.js", "dist/product-capability-descriptor.d.ts",
     "dist/product-capability-descriptor-node.js", "dist/product-capability-descriptor-node.d.ts",
+    "dist/intent-binding.js", "dist/intent-binding.d.ts",
     "schemas/product-capability-descriptor.schema.json",
   ]) assert.ok(paths.has(path), `packed Core missing ${path}`);
 
@@ -35,18 +36,22 @@ try {
   const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8")) as { exports: Record<string, unknown> };
   assert.ok(manifest.exports["./product-capability-descriptor"]);
   assert.ok(manifest.exports["./product-capability-descriptor/node"]);
+  assert.ok(manifest.exports["./intent-binding"]);
   assert.ok(manifest.exports["./schemas/product-capability-descriptor.schema.json"]);
-  for (const file of ["dist/product-capability-descriptor.js", "dist/product-capability-descriptor.d.ts", "dist/product-capability-descriptor-node.js", "dist/product-capability-descriptor-node.d.ts"])
+  for (const file of ["dist/product-capability-descriptor.js", "dist/product-capability-descriptor.d.ts", "dist/product-capability-descriptor-node.js", "dist/product-capability-descriptor-node.d.ts", "dist/intent-binding.js", "dist/intent-binding.d.ts"])
     assert.ok(existsSync(join(installed, file)), `installed Core missing ${file}`);
-  run("node", ["-e", "require('@kontourai/console-core/product-capability-descriptor'); require('@kontourai/console-core/product-capability-descriptor/node')"], consumer, { NODE_PATH: "" });
+  run("node", ["-e", "require('@kontourai/console-core/product-capability-descriptor'); require('@kontourai/console-core/product-capability-descriptor/node'); require('@kontourai/console-core/intent-binding')"], consumer, { NODE_PATH: "" });
   run("node", ["-e", "const schema=require('@kontourai/console-core/schemas/product-capability-descriptor.schema.json'); if (!schema.$schema || !schema.$id) process.exit(1)"], consumer, { NODE_PATH: "" });
   writeFileSync(join(consumer, "consumer.ts"), [
     "import { PRODUCT_CAPABILITY_PROTOCOL_VERSION, type ProductCapabilityDescriptor, type ProductExecutableResolutionResult } from '@kontourai/console-core/product-capability-descriptor';",
     "import { resolveLocalProductExecutable } from '@kontourai/console-core/product-capability-descriptor/node';",
+    "import { resolveIntentBinding, type HostIntentBinding } from '@kontourai/console-core/intent-binding';",
     "const descriptor: ProductCapabilityDescriptor | undefined = undefined;",
     "const result: ProductExecutableResolutionResult | undefined = undefined;",
     "const resolver: typeof resolveLocalProductExecutable = resolveLocalProductExecutable;",
-    "console.log(PRODUCT_CAPABILITY_PROTOCOL_VERSION, descriptor, result, resolver);",
+    "const bindings: HostIntentBinding[] = [];",
+    "const resolveBinding: typeof resolveIntentBinding = resolveIntentBinding;",
+    "console.log(PRODUCT_CAPABILITY_PROTOCOL_VERSION, descriptor, result, resolver, bindings, resolveBinding);",
   ].join("\n"));
   writeFileSync(join(consumer, "tsconfig.json"), JSON.stringify({ compilerOptions: { target: "ES2022", module: "Node16", moduleResolution: "Node16", strict: true, noEmit: true, skipLibCheck: true }, files: ["consumer.ts"] }, null, 2));
   run(process.execPath, [join(repositoryRoot(), "node_modules/typescript/bin/tsc"), "-p", "tsconfig.json"], consumer, { NODE_PATH: "", npm_config_offline: "true", npm_config_registry: "http://127.0.0.1:9/" });

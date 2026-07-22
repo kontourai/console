@@ -27,12 +27,21 @@ test("workflow selection entrypoint writes GitHub outputs", () => {
 });
 
 test("CLI Core registry gate accepts only exact matching compatible metadata", () => {
-  const good = { version: "0.2.0", exports: { "./product-capability-descriptor": {}, "./product-capability-descriptor/node": {} } };
+  const good = {
+    version: "0.2.0",
+    exports: { "./product-capability-descriptor": {}, "./product-capability-descriptor/node": {}, "./intent-binding": {} },
+  };
   assert.doesNotThrow(() => assertExactCoreMetadata("0.2.0", good));
   for (const spec of ["^0.2.0", "latest", "file:../core", "workspace:*", "git+https://example.test/core.git", undefined])
     assert.throws(() => assertExactCoreMetadata(spec, good), /exact semver/);
-  for (const metadata of [undefined, "bad", {}, { version: "0.1.0", exports: good.exports }, { version: "0.2.0", exports: {} }, { version: "0.2.0", exports: { "./product-capability-descriptor": {} } }])
-    assert.throws(() => assertExactCoreMetadata("0.2.0", metadata));
+  for (const metadata of [
+    undefined, "bad", {}, { version: "0.1.0", exports: good.exports }, { version: "0.2.0", exports: {} },
+    { version: "0.2.0", exports: { "./product-capability-descriptor": {} } },
+    // console#232/C5 (2026-07-20 security review, finding 4): a Core missing
+    // ONLY ./intent-binding must still fail closed, even with both
+    // descriptor exports present.
+    { version: "0.2.0", exports: { "./product-capability-descriptor": {}, "./product-capability-descriptor/node": {} } },
+  ]) assert.throws(() => assertExactCoreMetadata("0.2.0", metadata), /intent-binding|exports|Core/);
 });
 
 test("publish ordering stops before publish when Core lookup fails", async () => {
