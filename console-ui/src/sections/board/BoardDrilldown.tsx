@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FlowConsoleProjection } from "@kontourai/flow/console-contract";
 import { FlowRunPanel, asChildProjection } from "../../components/FlowRunPanel";
 import { Empty } from "@kontourai/ui/react";
-import type { BoardCard } from "../../../lib/src/board";
+import type { BoardCard } from "@kontourai/console-ui";
 
 /**
  * #178 work-item drill-down. Clicking a board card fetches that run's Flow

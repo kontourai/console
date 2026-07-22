@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { OperatingState } from "@kontourai/console-core";
-import { BOARD_SELECT_CARD_INTENT, BoardView, deriveBoard, type BoardCard, type ConsoleIntent } from "../../lib/src";
+import { BOARD_SELECT_CARD_INTENT, BoardView, deriveBoard, type BoardCard, type ConsoleIntent } from "@kontourai/console-ui";
 import { BoardDrilldown } from "./board/BoardDrilldown";
 
 /**

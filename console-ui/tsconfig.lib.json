@@ -7,9 +7,11 @@
     "jsx": "react-jsx",
     "strict": true,
     "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "dist/lib",
+    // #230 review (LOW): declarationMap/sourceMap are intentionally OFF —
+    // this package's "files" ships dist-lib only, not lib/src/*.ts(x), so
+    // emitted .map files would reference source paths absent from the
+    // published tarball (orphaned maps, 404s in a consumer's devtools).
+    "outDir": "dist-lib",
     "rootDir": "lib/src",
     "skipLibCheck": true,
     "esModuleInterop": true,

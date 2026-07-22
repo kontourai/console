@@ -19,6 +19,13 @@ import type { ConsoleIntent, IntentHandler } from "./intent.js";
  * is the same component the bundled Console app mounts (see
  * `sections/BoardSection.tsx`), which supplies `onIntent` to open its own
  * work-item drill-down — that wiring lives in the app, not in this package.
+ *
+ * Every class this component renders is styled by this package's own
+ * `./board.css` export (`lib/src/board-view.css`) — none of it depends on
+ * the bundled Console app's global `styles.css` (`.section-head`,
+ * `.section-label`, `.receipt`, bare `h2`), so a host mounting only
+ * `BoardView` + `@kontourai/ui`'s tokens/react stylesheets gets the intended
+ * look with no additional app-only CSS to guess at.
  */
 
 /** `ConsoleIntent.kind` emitted when a card is selected (readOnly — a view request, not a write). */
@@ -31,19 +38,30 @@ export interface BoardViewProps {
    *  drill-down elsewhere in the host's own UI) — purely presentational; this
    *  component does not track selection itself. */
   selectedCardId?: string | null;
+  /**
+   * Fixed reference clock (epoch ms) for rendering each card's relative
+   * "updated" time deterministically — e.g. a server-side render snapshot, or
+   * a test. Defaults to the real wall clock (`Date.now()`, read fresh on
+   * every render) when omitted, matching the app's live behavior. Every
+   * relative-time node also carries a static `dateTime` attribute (the raw
+   * ISO string), so even if a client hydrates with a different `now` than
+   * the server used, only the human-readable label text can mismatch — the
+   * machine-readable value never does.
+   */
+  now?: number;
 }
 
-export function BoardView({ operatingState, onIntent, selectedCardId = null }: BoardViewProps) {
+export function BoardView({ operatingState, onIntent, selectedCardId = null, now }: BoardViewProps) {
   const board = deriveBoard(operatingState);
 
   return (
     <section className="board-section" aria-label="Board">
-      <div className="section-head">
+      <div className="board-head">
         <div>
-          <p className="section-label">Board</p>
-          <h2>Work in flight</h2>
+          <p className="board-eyebrow">Board</p>
+          <h2 className="board-title">Work in flight</h2>
         </div>
-        <p className="receipt">
+        <p className="board-receipt">
           {board.totalCards} item{board.totalCards === 1 ? "" : "s"} in flight
         </p>
       </div>
@@ -53,7 +71,7 @@ export function BoardView({ operatingState, onIntent, selectedCardId = null }: B
       ) : (
         <div className="board-columns" role="list" aria-label="Flow stages">
           {board.columns.map((column) => (
-            <BoardStageColumn key={column.stage} column={column} selectedId={selectedCardId} onIntent={onIntent} />
+            <BoardStageColumn key={column.stage} column={column} selectedId={selectedCardId} onIntent={onIntent} now={now} />
           ))}
         </div>
       )}
@@ -64,11 +82,13 @@ export function BoardView({ operatingState, onIntent, selectedCardId = null }: B
 function BoardStageColumn({
   column,
   selectedId,
-  onIntent
+  onIntent,
+  now
 }: {
   column: BoardColumn;
   selectedId: string | null;
   onIntent?: IntentHandler;
+  now?: number;
 }) {
   return (
     <div className={`board-column board-column-${column.stage}`} role="listitem" aria-label={column.label}>
@@ -79,7 +99,7 @@ function BoardStageColumn({
       {column.cards.length > 0 ? (
         <ul className="board-cards">
           {column.cards.map((card) => (
-            <BoardCardView key={card.id} card={card} selected={card.id === selectedId} onIntent={onIntent} />
+            <BoardCardView key={card.id} card={card} selected={card.id === selectedId} onIntent={onIntent} now={now} />
           ))}
         </ul>
       ) : (
@@ -104,11 +124,13 @@ export function boardCardSelectIntent(card: BoardCard): ConsoleIntent {
 function BoardCardView({
   card,
   selected,
-  onIntent
+  onIntent,
+  now
 }: {
   card: BoardCard;
   selected: boolean;
   onIntent?: IntentHandler;
+  now?: number;
 }) {
   const pct = typeof card.percentComplete === "number" ? Math.max(0, Math.min(100, card.percentComplete)) : null;
   const meta = (
@@ -116,7 +138,14 @@ function BoardCardView({
       <p className="board-card-title" title={card.title}>{card.title}</p>
       {card.stepLabel ? <p className="board-card-step">{card.stepLabel}</p> : null}
       {pct != null ? (
-        <div className="board-card-progress" title={`${pct}%`}>
+        <div
+          className="board-card-progress"
+          role="progressbar"
+          aria-valuenow={pct}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`${pct}% complete`}
+        >
           <span className="board-card-progress-fill" style={{ width: `${pct}%` }} />
         </div>
       ) : null}
@@ -132,7 +161,11 @@ function BoardCardView({
             {card.gatesBlocked} <span aria-hidden="true">✗</span>
           </span>
         ) : null}
-        {card.updatedAt ? <span className="board-card-time">{formatRelative(card.updatedAt)}</span> : null}
+        {card.updatedAt ? (
+          <time className="board-card-time" dateTime={card.updatedAt}>
+            {formatRelative(card.updatedAt, now)}
+          </time>
+        ) : null}
       </div>
     </>
   );

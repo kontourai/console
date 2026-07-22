@@ -1,32 +1,29 @@
-import type { ConsoleRef } from "@kontourai/console-core";
+import type { ConsoleAction, ConsoleRef } from "@kontourai/console-core";
 
 /**
  * #230 intent seam: the shape a host binds to `onIntent` to receive a view's
- * user-triggered intents. Deliberately mirrors console-core's `ConsoleAction`
- * authority-descriptor fields (`kind`, `authority.product`/`authority.command`,
- * `subjectRefs`) instead of inventing a parallel vocabulary, so a future
- * authority-aware binding (the CONSENT spec, console#231) can consume the SAME
- * shape a view already emits today.
+ * user-triggered intents. Derived from console-core's own `ConsoleAction`
+ * authority-descriptor type (`Omit`+override, not a hand-mirrored copy) so
+ * this stays byte-for-byte the same shape `ConsoleAction` is and automatically
+ * picks up any future field console-core adds — `kind` is the only field
+ * overridden: `ConsoleAction.kind` is optional (some producer records omit
+ * it), but every intent this package emits always names one, so it is
+ * required here. A future authority-aware binding (the CONSENT spec,
+ * console#231) can consume this shape unchanged.
  *
  * Scope discipline: this slice only defines and wires the seam. No exported
  * view here emits a non-`readOnly` (authority-gated write) intent yet, and no
  * consumer in this repo executes one — binding an intent to real authority
  * (claim/gate/consent semantics) is console#231's job, not this package's.
  */
-export interface ConsoleIntent {
-  /** Stable identifier for this occurrence, e.g. `${kind}:${subject id}`. */
-  id: string;
+export interface ConsoleIntent extends Omit<ConsoleAction, "kind"> {
   /** What the intent represents, e.g. `"board.select-card"`. View-defined, open vocabulary — not an enum, matching every other `kind`/`status` field in console-core. */
   kind: string;
-  label?: string;
-  /** True for intents that only request a view/navigation, never a state change. */
-  readOnly?: boolean;
-  authority?: {
-    product?: string;
-    command?: string;
-  };
-  subjectRefs?: ConsoleRef[];
 }
+
+// Re-exported so a consumer can reference the console-core ref shape used by
+// `ConsoleIntent.subjectRefs` without a second import.
+export type { ConsoleRef };
 
 /**
  * A view left `onIntent`-unbound renders inert/read-only: no button, no fake

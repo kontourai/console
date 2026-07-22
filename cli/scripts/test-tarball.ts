@@ -269,19 +269,19 @@ function assertPackedConsoleUi(project: string): void {
     exports?: Record<string, unknown>;
     peerDependencies?: Record<string, string>;
   };
-  assert.equal(manifest.main, "dist/lib/index.js", "packed @kontourai/console-ui must declare its components-entry main");
-  assert.equal(manifest.types, "dist/lib/index.d.ts", "packed @kontourai/console-ui must declare its components-entry types");
+  assert.equal(manifest.main, "dist-lib/index.js", "packed @kontourai/console-ui must declare its components-entry main");
+  assert.equal(manifest.types, "dist-lib/index.d.ts", "packed @kontourai/console-ui must declare its components-entry types");
   assert.ok(manifest.exports?.["."], 'packed @kontourai/console-ui must declare a "." exports entry');
   assert.ok(manifest.exports?.["./board.css"], "packed @kontourai/console-ui must declare a ./board.css export (console#230: BoardView ships no self-imported CSS, matching @kontourai/ui's own react+styles.css split)");
   assert.ok(manifest.peerDependencies?.react, "packed @kontourai/console-ui must declare react as a peer dependency, not a bundled runtime copy");
   for (const file of [
-    "dist/lib/index.js",
-    "dist/lib/index.d.ts",
-    "dist/lib/BoardView.js",
-    "dist/lib/BoardView.d.ts",
-    "dist/lib/board.js",
-    "dist/lib/board.d.ts",
-    "dist/lib/intent.d.ts",
+    "dist-lib/index.js",
+    "dist-lib/index.d.ts",
+    "dist-lib/BoardView.js",
+    "dist-lib/BoardView.d.ts",
+    "dist-lib/board.js",
+    "dist-lib/board.d.ts",
+    "dist-lib/intent.d.ts",
     "lib/src/board-view.css",
   ]) assert.ok(existsSync(join(installed, file)), `packed @kontourai/console-ui is missing ${file}`);
 

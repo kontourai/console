@@ -36,7 +36,10 @@ test("BoardView: state in, DOM out — five stage columns, cards grouped and cou
       ]
     })
   });
+  assert.match(markup, /class="board-head"/);
+  assert.match(markup, /class="board-title"/);
   assert.match(markup, /Work in flight/);
+  assert.match(markup, /class="board-receipt"/);
   assert.match(markup, /2 items in flight/);
   assert.match(markup, /board-column-planning/);
   assert.match(markup, /Plan the survey/);
@@ -99,4 +102,41 @@ test("boardCardSelectIntent: emits a ConsoleAction-shaped, readOnly select inten
   assert.equal(intent.readOnly, true);
   assert.deepEqual(intent.authority, { product: "console", command: BOARD_SELECT_CARD_INTENT });
   assert.deepEqual(intent.subjectRefs, [{ product: "console", kind: "process", id: "run-abc", label: "Survey claim review" }]);
+});
+
+// #230 review (MEDIUM): a fixed `now` prop makes the relative-time render
+// deterministic (SSR snapshot / test), instead of silently depending on the
+// real wall clock at render time.
+test("BoardView: a fixed `now` prop renders a deterministic relative time, with a static dateTime attribute", () => {
+  const markup = render({
+    operatingState: state({
+      processes: [proc({ id: "p1", label: "Timed item", currentStep: "execute", updatedAt: "2026-07-10T12:00:00.000Z" })]
+    }),
+    now: new Date("2026-07-10T12:05:00.000Z").getTime()
+  });
+  assert.match(markup, /<time class="board-card-time" dateTime="2026-07-10T12:00:00.000Z">5m ago<\/time>/);
+});
+
+test("BoardView: omitting `now` still renders (falls back to the live wall clock)", () => {
+  const markup = render({
+    operatingState: state({
+      processes: [proc({ id: "p1", label: "Live item", currentStep: "execute", updatedAt: new Date().toISOString() })]
+    })
+  });
+  assert.match(markup, /<time class="board-card-time" dateTime="[^"]+">just now<\/time>/);
+});
+
+// #230 review (MEDIUM): the progress fill is a real progressbar, not a bare
+// decorative div — assistive tech gets value/range/label.
+test("BoardView: percentComplete renders an accessible progressbar", () => {
+  const markup = render({
+    operatingState: state({
+      processes: [proc({ id: "p1", label: "In progress", currentStep: "execute", percentComplete: 42 })]
+    })
+  });
+  assert.match(markup, /role="progressbar"/);
+  assert.match(markup, /aria-valuenow="42"/);
+  assert.match(markup, /aria-valuemin="0"/);
+  assert.match(markup, /aria-valuemax="100"/);
+  assert.match(markup, /aria-label="42% complete"/);
 });

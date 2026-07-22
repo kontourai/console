@@ -15,6 +15,41 @@
   display: block;
 }
 
+/* Head row: eyebrow + title on the left, item-count receipt on the right.
+   Component-scoped (not the app's global .section-head/.section-label/
+   .receipt) so BoardView never depends on the host's own typography CSS. */
+.board-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.board-eyebrow {
+  margin: 0;
+  color: var(--k-brand);
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.board-title {
+  margin: 0;
+  font-family: var(--k-font-display);
+  font-size: clamp(1rem, 1.6vw, 1.35rem);
+  font-weight: 600;
+  color: var(--k-text);
+}
+
+.board-receipt {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .board-columns {
   display: grid;
   grid-auto-flow: column;

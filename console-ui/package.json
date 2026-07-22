@@ -9,18 +9,18 @@
     "url": "git+https://github.com/kontourai/console.git",
     "directory": "console-ui"
   },
-  "main": "dist/lib/index.js",
-  "types": "dist/lib/index.d.ts",
+  "main": "dist-lib/index.js",
+  "types": "dist-lib/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/lib/index.d.ts",
-      "import": "./dist/lib/index.js"
+      "types": "./dist-lib/index.d.ts",
+      "import": "./dist-lib/index.js"
     },
     "./board.css": "./lib/src/board-view.css",
     "./package.json": "./package.json"
   },
   "files": [
-    "dist/lib",
+    "dist-lib",
     "lib/src/board-view.css",
     "README.md"
   ],
@@ -30,8 +30,9 @@
   "scripts": {
     "dev": "vite",
     "build": "npm run build:lib && tsc -b && vite build",
-    "build:lib": "tsc -p tsconfig.lib.json",
+    "build:lib": "npm run build --workspace @kontourai/console-core --if-present && tsc -p tsconfig.lib.json",
     "prepack": "npm run build:lib",
+    "prepare": "npm run build:lib",
     "test": "node --import tsx --test test/*.ts",
     "typecheck": "tsc -b --noEmit && tsc -p tsconfig.lib.json --noEmit",
     "preview": "vite preview"

@@ -26,15 +26,30 @@ import type { ConsoleGate, ConsoleProcess, OperatingState } from "@kontourai/con
 
 export type BoardStage = "backlog" | "planning" | "in-flight" | "verify" | "done";
 
-export const BOARD_STAGES: BoardStage[] = ["backlog", "planning", "in-flight", "verify", "done"];
-
-export const BOARD_STAGE_LABEL: Record<BoardStage, string> = {
+// #230 review (HIGH): internal derivation (deriveBoard below) reads these
+// PRIVATE, never-exported bindings, not the frozen public ones — so even if a
+// consumer somehow defeated Object.freeze on the exported copy (or a hostile
+// bundler stripped it), this module's own board projection stays correct
+// either way. `BOARD_STAGES`/`BOARD_STAGE_LABEL` below are separate, frozen
+// COPIES built from these for public consumption.
+const INTERNAL_BOARD_STAGES: readonly BoardStage[] = ["backlog", "planning", "in-flight", "verify", "done"];
+const INTERNAL_BOARD_STAGE_LABEL: Readonly<Record<BoardStage, string>> = {
   backlog: "Backlog",
   planning: "Planning",
   "in-flight": "In flight",
   verify: "Verify",
   done: "Done"
 };
+
+/**
+ * Frozen (`Object.freeze`), read-only public copies of the stage list/labels.
+ * ES modules are strict mode, so an external `BOARD_STAGES.length = 0` or
+ * `BOARD_STAGE_LABEL.backlog = "x"` throws a `TypeError` at the mutation
+ * site rather than silently succeeding and corrupting every subsequent
+ * `deriveBoard` call that shared the same live array/object.
+ */
+export const BOARD_STAGES: readonly BoardStage[] = Object.freeze([...INTERNAL_BOARD_STAGES]);
+export const BOARD_STAGE_LABEL: Readonly<Record<BoardStage, string>> = Object.freeze({ ...INTERNAL_BOARD_STAGE_LABEL });
 
 // A terminal STATUS wins outright — a released/closed item is Done regardless
 // of which step lingers.
@@ -151,9 +166,9 @@ export function deriveBoard(state: OperatingState | null | undefined): BoardMode
   const safe: OperatingState = state ?? ({} as OperatingState);
   const gateCounts = gatesByProcess(safe.gates);
 
-  const columns: BoardColumn[] = BOARD_STAGES.map((stage) => ({
+  const columns: BoardColumn[] = INTERNAL_BOARD_STAGES.map((stage) => ({
     stage,
-    label: BOARD_STAGE_LABEL[stage],
+    label: INTERNAL_BOARD_STAGE_LABEL[stage],
     cards: []
   }));
   const columnByStage = new Map(columns.map((column) => [column.stage, column]));
