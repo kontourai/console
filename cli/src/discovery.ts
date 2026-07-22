@@ -29,7 +29,14 @@ function malformed(productId: CatalogProductId, message: string): ProductCapabil
   return { code: "DESCRIPTOR_MALFORMED", severity: "error", productId, message };
 }
 
-function inertBins(value: unknown): Readonly<Record<string, string>> | undefined {
+/**
+ * Parse a package manifest's `bin` field into a bounded, closed map.
+ * Exported (also used by `./standalone-runner`, console#232/C5's TOCTOU and
+ * forged-candidate hardening — see the 2026-07-20 security review) so both
+ * modules derive candidate identity from the SAME bounded parser instead of
+ * trusting caller-supplied `bins`/`packageName` metadata.
+ */
+export function inertBins(value: unknown): Readonly<Record<string, string>> | undefined {
   if (typeof value === "string") return { kontour: value };
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const entries = Object.entries(value);
@@ -43,7 +50,13 @@ async function readJson(path: string): Promise<unknown> {
   return JSON.parse(text) as unknown;
 }
 
-async function readBoundJson(root: string, name: string): Promise<unknown> {
+/**
+ * Read a JSON file that must resolve to a real, non-symlinked file strictly
+ * beneath `root`. Exported for `./standalone-runner`'s own manifest reads
+ * (see `inertBins` above) — the same containment discipline this module
+ * already applies to a product's own `package.json`.
+ */
+export async function readBoundJson(root: string, name: string): Promise<unknown> {
   const path = join(root, name);
   const status = await lstat(path);
   if (!status.isFile() || status.isSymbolicLink()) throw new Error("unsafe package metadata");

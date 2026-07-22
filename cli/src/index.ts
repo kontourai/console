@@ -33,10 +33,14 @@ export {
 } from "./install-policy";
 export { buildRouterOutput, renderRouterOutput } from "./output";
 export { runCli, type CliDependencies, type CliIo } from "./cli";
+// Note: `DelegateFn` and `__TEST_ONLY_withDelegateOverride` are deliberately
+// NOT re-exported here (2026-07-20 security review, finding 3) — the public
+// `@kontourai/cli` entry point never exposes a delegate-injection seam; the
+// only production execution path is the real `delegateProduct`.
 export {
   createStandaloneRunner,
   resolveStandaloneProductBinding,
-  type DelegateFn,
+  StandaloneRunnerExecutionError,
   type StandaloneBindingError,
   type StandaloneIntentHandler,
   type StandaloneProductBindingOptions,
