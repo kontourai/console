@@ -19,8 +19,8 @@
  * candidate root whose OWN `package.json` manifest — read fresh from disk,
  * never the caller's assertion about it — supplies the identity and bin map
  * used to resolve it. `delegateProduct` (`./delegate`) always spawns argv
- * arrays with `shell: false`; the ONLY production execution path from this
- * module goes through it (see the TEST-ONLY injection seam note below).
+ * arrays with `shell: false`; it is the ONLY execution path this module ever
+ * calls — see finding 2 in the review log below.
  * `createStandaloneRunner` enforces the SAME strict `confirm(...) === true`
  * consent gate `@kontourai/console-ui`'s `bindIntentHandler` enforces
  * (mirrored here, not imported, because this workspace does not depend on
@@ -63,11 +63,84 @@
  * 3. `StandaloneProductBindingOptions` (the public options type) has no
  *    delegate-injection field: a custom delegate cannot be trusted to
  *    preserve `delegateProduct`'s no-shell, argv-array-only guarantee, so
- *    the only production execution path is the real `delegateProduct`.
- *    `__TEST_ONLY_withDelegateOverride` (below) exists solely for this
- *    workspace's own tests and is never re-exported from `./index` (the
- *    package's public entry point) or reachable through the package's
- *    `exports` map.
+ *    the only production execution path is the real `delegateProduct`. A
+ *    TEST-ONLY delegate-injection seam exists solely in
+ *    `cli/test/standalone-runner-test-support.ts` — a module OUTSIDE
+ *    `cli/src` (`tsconfig.build.json`'s `rootDir`/`include` never sees it,
+ *    and `package.json`'s `files` never lists `test`), so it is never
+ *    compiled into `dist/` or published in the npm tarball.
+ *
+ * --- 2026-07-22 confirmation follow-up review (3 further HIGH findings) ---
+ *
+ * 4. (mutable-object reuse defeated finding 2's own argv copy) The `execute`
+ *    closure re-resolved a command's executable/argv by reading `command`
+ *    and `descriptor` BY REFERENCE — the caller's own live objects
+ *    (`validateProductCapabilityDescriptor` returns the identical object it
+ *    was given, never a copy). A caller who mutated a bound command's
+ *    `argv` (or `sideEffect`/`authority`) IN PLACE after binding changed
+ *    what a subsequent `confirm(...) === true` (or even a `"never"`-
+ *    confirmation binding's own re-invocation) would execute — e.g. binding
+ *    a `confirmation: "never"` "status" command and then mutating its argv
+ *    to `["cancel"]` ran `cancel` with no consent check at all. Fixed by
+ *    deep-cloning-and-freezing (`deepFreezeClone`, using `structuredClone`
+ *    — the descriptor is plain JSON-shaped data) the FULL validated
+ *    descriptor immediately after validation, before anything else reads
+ *    it (`planStandaloneProductBinding`). Every downstream read — the
+ *    command lookup, the confirmation-contradiction check, the bind-time
+ *    feasibility resolution, `intentBindingFromCommand`, and the `execute`
+ *    closure's own TOCTOU re-resolution — reads exclusively from that
+ *    frozen, independent snapshot. `candidateRoots` is snapshotted
+ *    (`Object.freeze([...candidateRoots])`) the same way. Post-binding
+ *    mutation of the caller's original descriptor/command objects has zero
+ *    effect on what a binding does from that point forward.
+ * 5. (test-delegate still reachable from production) `__TEST_ONLY_delegate`
+ *    was read via a runtime property lookup on the public `options`
+ *    argument (`(options as Internal...).__TEST_ONLY_delegate`) — reachable
+ *    by ANY JS caller of the PUBLIC `resolveStandaloneProductBinding`
+ *    regardless of what the TS type declared, with zero need to import
+ *    anything special. Worse, the helper that constructed that bypass
+ *    (`__TEST_ONLY_withDelegateOverride`) shipped IN packaged `dist`,
+ *    reachable even by a determined caller who never imports it normally
+ *    (a deep, absolute-path `require`-style load resolved via
+ *    `require.resolve('@kontourai/cli')/..`, which bypasses the package `exports` map — that
+ *    map only restricts specifier-based resolution). Fixed by removing
+ *    every delegate-accepting code path from this module ENTIRELY:
+ *    `StandaloneProductBindingOptions` has never had (and still does not
+ *    have) a delegate field, `resolveStandaloneProductBinding`'s
+ *    implementation now calls the real `delegateProduct` as a hardcoded
+ *    import — never anything sourced from `options` — and there is no
+ *    property read of `options` beyond the typed `delegateOptions` field.
+ *    The delegate-accepting composition step
+ *    (validated-plan + delegate -> `execute`) is a small, PRIVATE,
+ *    module-scope-only function (`buildExecute`) that is never exported —
+ *    not even internally — so no amount of deep-`require`ing packaged
+ *    `dist` can reach a delegate-accepting call in this module. The
+ *    TEST-ONLY equivalent lives in `cli/test/standalone-runner-test-support.ts`
+ *    (excluded from `dist`/the npm tarball, see finding 3 above) and
+ *    duplicates that same ~10-line composition step against this module's
+ *    exported, delegate-FREE `planStandaloneProductBinding`/
+ *    `resolveExecutableForCommand` internals, rather than sharing any
+ *    delegate-parameterized function with production.
+ * 6. (TOCTOU is not, and cannot be, fully atomic) The immediately-before-
+ *    spawn re-resolution (finding 2) shrinks the window between "this file
+ *    is verified safe" and "this file is opened by the OS for exec" to the
+ *    time between an `fs.realpath`/`fs.stat` call returning and
+ *    `child_process.spawn`'s underlying `execve` call — but it does not,
+ *    and cannot, close that window to zero. Node's `child_process` module
+ *    has no `fexecve`/`posix_spawn`-with-verified-fd primitive: it always
+ *    spawns BY PATH, so an attacker who can swap the file (or an ancestor
+ *    directory) AT THAT EXACT INSTANT is not caught by any check this
+ *    module — or any pure-JS module — can perform. This is disclosed, not
+ *    silently accepted: see "Accepted residual risk: TOCTOU is
+ *    mitigated, not eliminated" in
+ *    `docs/specs/intent-binding-consent.md` for the full threat model.
+ *    In short — exploiting this residual window requires an attacker who
+ *    ALREADY has write access to the product's own installed binary (or
+ *    its containing directory) on the user's own machine, at the precise
+ *    instant of spawn: that is a pre-existing local compromise of that
+ *    product's install, not a capability this runner grants. The runner
+ *    never expands what an attacker with that level of access could
+ *    already do by installing/replacing the product binary directly.
  */
 
 import { realpath } from "node:fs/promises";
@@ -99,39 +172,19 @@ export type StandaloneProductBindingResult<TIntent extends BindableIntent = Bind
   | { ok: true; binding: HostIntentBinding<TIntent> }
   | { ok: false; error: StandaloneBindingError; diagnostics?: readonly ProductCapabilityDiagnostic[] };
 
-/** The delegate signature `delegateProduct` satisfies. Only used internally and by the TEST-ONLY override below — never part of the public options a production caller can set. */
+/**
+ * The delegate signature `delegateProduct` satisfies. Type-only — erased at
+ * compile time, so exporting this costs nothing at runtime — kept here so
+ * the (unpackaged) TEST-ONLY module can type its own injected delegate
+ * without duplicating this signature.
+ */
 export type DelegateFn = (executable: string, argv: readonly string[], options?: DelegateOptions) => Promise<number>;
 
 export interface StandaloneProductBindingOptions {
   readonly delegateOptions?: DelegateOptions;
 }
 
-/** @internal not exported from `./index`; carries the TEST-ONLY delegate override attached by `__TEST_ONLY_withDelegateOverride`. */
-interface InternalStandaloneProductBindingOptions extends StandaloneProductBindingOptions {
-  readonly __TEST_ONLY_delegate?: DelegateFn;
-}
-
-/**
- * TEST-ONLY delegate injection (finding 3, 2026-07-20 security review).
- *
- * NEVER import this from production code. `StandaloneProductBindingOptions`
- * — the type a normal caller's `options` argument is checked against — has
- * no delegate field on purpose: a substitute delegate could ignore the
- * resolved executable/argv, shell out, or mutate shared argv, defeating
- * `delegateProduct`'s no-shell guarantee. This helper exists solely so this
- * workspace's OWN tests can assert what a resolved binding WOULD run without
- * actually spawning a process. It is intentionally not re-exported from
- * `./index` (the package's public entry point).
- */
-export function __TEST_ONLY_withDelegateOverride(
-  options: StandaloneProductBindingOptions,
-  delegate: DelegateFn,
-): StandaloneProductBindingOptions {
-  const withOverride: InternalStandaloneProductBindingOptions = { ...options, __TEST_ONLY_delegate: delegate };
-  return withOverride;
-}
-
-/** Raised by a produced `execute` when the executable cannot be re-verified immediately before spawn (TOCTOU fail-closed — finding 2). */
+/** Raised by a produced `execute` when the executable cannot be re-verified immediately before spawn (TOCTOU fail-closed — finding 2; residual window documented above as finding 6). */
 export class StandaloneRunnerExecutionError extends Error {
   readonly diagnostics: readonly ProductCapabilityDiagnostic[];
 
@@ -140,6 +193,31 @@ export class StandaloneRunnerExecutionError extends Error {
     this.name = "StandaloneRunnerExecutionError";
     this.diagnostics = diagnostics;
   }
+}
+
+/**
+ * Deep-clone-and-freeze `value` (via `structuredClone`, safe here because
+ * every value this module ever passes through it is plain JSON-shaped data
+ * — no functions, no cyclic references). Every nested object/array is
+ * frozen too, not just the top level, so no downstream code can mutate a
+ * nested field (e.g. `command.authority`) even if it holds only a
+ * top-level reference. Used to build an execution-time snapshot that is
+ * fully independent of a caller's own, potentially-still-mutable
+ * descriptor object (finding 4, 2026-07-22 review).
+ */
+function deepFreezeClone<T>(value: T): T {
+  const clone = structuredClone(value);
+  const seen = new Set<unknown>();
+  const freeze = (node: unknown): void => {
+    if (node === null || typeof node !== "object" || seen.has(node)) return;
+    seen.add(node);
+    Object.freeze(node);
+    for (const key of Object.getOwnPropertyNames(node)) {
+      freeze((node as Record<string, unknown>)[key]);
+    }
+  };
+  freeze(clone);
+  return clone;
 }
 
 /**
@@ -173,11 +251,22 @@ async function verifiedCandidateFromRoot(root: string): Promise<LocalProductPack
  * Resolve one command's executable path/argv against a set of candidate
  * ROOT directories, deriving every candidate's identity fresh from disk
  * (`verifiedCandidateFromRoot`) and applying `resolveLocalProductExecutable`'s
- * own containment/symlink checks against the CURRENT filesystem state. This
- * is called once at bind time (feasibility only) and again, unconditionally,
- * inside the produced `execute` immediately before delegating (finding 2).
+ * own containment/symlink checks against the CURRENT filesystem state.
+ *
+ * Exported (internal — never re-exported from `./index`) so the TEST-ONLY,
+ * unpackaged `cli/test/standalone-runner-test-support.ts` can perform the
+ * IDENTICAL re-resolution production's own `execute` closure performs,
+ * without this module ever exporting anything that accepts a delegate
+ * (finding 5, 2026-07-22 review). This function only ever resolves a path
+ * from disk — it has no capability to execute anything.
+ *
+ * Called once at bind time (feasibility only, via `planStandaloneProductBinding`)
+ * and again, unconditionally, immediately before every `execute` call
+ * (finding 2 — TOCTOU; the residual, non-zero window between that
+ * re-verification and the OS actually opening the file for exec is
+ * documented as finding 6 above and in `docs/specs/intent-binding-consent.md`).
  */
-async function resolveExecutableForCommand(
+export async function resolveExecutableForCommand(
   descriptor: ProductCapabilityDescriptor,
   command: ProductCommandDeclaration,
   candidateRoots: readonly string[],
@@ -195,11 +284,26 @@ async function resolveExecutableForCommand(
   return { ok: true, executablePath: resolved.value.executablePath, argv: [...resolved.value.argvPrefix, ...command.argv] };
 }
 
+/** An immutable, execution-time-safe snapshot of everything a binding's `execute` reads (finding 4, 2026-07-22 review). */
+export interface StandaloneBindingPlan {
+  readonly descriptor: ProductCapabilityDescriptor;
+  readonly command: ProductCommandDeclaration;
+  readonly candidateRoots: readonly string[];
+}
+
+export type StandaloneBindingPlanResult =
+  | { ok: true; plan: StandaloneBindingPlan }
+  | { ok: false; error: StandaloneBindingError; diagnostics?: readonly ProductCapabilityDiagnostic[] };
+
 /**
- * Resolve ONE `HostIntentBinding` for a standalone host: given a descriptor
- * and the command path it declares, resolve that command's executable
- * against a set of candidate package ROOT directories, and produce an
- * `execute` that re-resolves and delegates to the resolved bin.
+ * Validate, snapshot, and resolve everything a standalone binding needs —
+ * EXCEPT which delegate function actually executes it. Shared, delegate-free
+ * core reused by both production's `resolveStandaloneProductBinding` (below,
+ * hardcoded to `delegateProduct`) and the TEST-ONLY, unpackaged
+ * `cli/test/standalone-runner-test-support.ts` (finding 5, 2026-07-22
+ * review) — both build their own tiny `execute` composition against the
+ * IDENTICAL validated, frozen plan this function produces, so test coverage
+ * can never silently drift from what production actually validates/resolves.
  *
  * This never fabricates a command or a binding:
  * - `descriptor-invalid` — the descriptor itself fails
@@ -210,33 +314,35 @@ async function resolveExecutableForCommand(
  *   `confirmation: "never"`. A state-mutating command that also claims it
  *   needs no confirmation is malformed or hostile; it is rejected rather
  *   than trusted (finding 1c).
- * - `command-not-found` / `authority-mismatch` — the same provenance checks
- *   `intentBindingFromCommand` (`@kontourai/console-core`) already enforces:
- *   the command must be an actual member of `descriptor.commands`, and its
- *   `authority.productId` must match `descriptor.product.id`.
+ * - `command-not-found` — no command in the (frozen, snapshotted)
+ *   descriptor has this exact `path`.
  * - `executable-unresolved` — no candidate root's OWN manifest (read fresh
  *   from disk — never the caller's assertion about it, finding 1b) declares
- *   a bin that resolves to a real, contained file. No binding is produced in
+ *   a bin that resolves to a real, contained file. No plan is produced in
  *   this case either; there is no fallback, guess, or partial resolution
  *   (never-authority invariant).
  *
- * The produced `execute` re-resolves the executable from scratch
- * immediately before delegating (finding 2 — TOCTOU) and always calls the
- * real `delegateProduct` (finding 3) with the resolved executable path and a
- * freshly-copied argv array — never a shell string.
+ * The descriptor is deep-cloned-and-frozen (`deepFreezeClone`) BEFORE
+ * anything else reads it, so post-return mutation of the caller's original
+ * descriptor/command objects has zero effect on the returned plan or on
+ * anything built from it (finding 4).
  */
-export async function resolveStandaloneProductBinding<TIntent extends BindableIntent = BindableIntent>(
+export async function planStandaloneProductBinding(
   descriptor: ProductCapabilityDescriptor,
   commandPath: readonly string[],
   candidateRoots: readonly string[],
-  options: StandaloneProductBindingOptions = {},
-): Promise<StandaloneProductBindingResult<TIntent>> {
+): Promise<StandaloneBindingPlanResult> {
   const validated = validateProductCapabilityDescriptor(descriptor);
   if (!validated.ok) return { ok: false, error: "descriptor-invalid", diagnostics: validated.diagnostics };
-  const trustedDescriptor = validated.descriptor;
+
+  // Snapshot BEFORE any further read: nothing below this line — including
+  // whatever `execute` closure a caller eventually builds from this plan —
+  // ever reads the caller's live, mutable descriptor/command objects again.
+  const frozenDescriptor = deepFreezeClone(validated.descriptor);
+  const frozenRoots = Object.freeze([...candidateRoots]);
 
   const joined = commandPath.join(" ");
-  const command = trustedDescriptor.commands.find((candidate) => candidate.path.join(" ") === joined);
+  const command = frozenDescriptor.commands.find((candidate) => candidate.path.join(" ") === joined);
   if (!command) return { ok: false, error: "command-not-found" };
 
   const mutates = command.sideEffect === "write-local" || command.sideEffect === "write-external";
@@ -244,27 +350,72 @@ export async function resolveStandaloneProductBinding<TIntent extends BindableIn
     return { ok: false, error: "confirmation-contradiction" };
   }
 
-  // Bind-time feasibility check only. `execute` below never reuses this
-  // result — it re-resolves unconditionally immediately before delegating.
-  const feasibility = await resolveExecutableForCommand(trustedDescriptor, command, candidateRoots);
+  // Bind-time feasibility check only. The plan's consumer must re-resolve
+  // unconditionally immediately before delegating (finding 2).
+  const feasibility = await resolveExecutableForCommand(frozenDescriptor, command, frozenRoots);
   if (!feasibility.ok) return { ok: false, error: "executable-unresolved", diagnostics: feasibility.diagnostics };
 
-  const delegateOptions = options.delegateOptions;
-  const testDelegate = (options as InternalStandaloneProductBindingOptions).__TEST_ONLY_delegate;
-  const execute = async (): Promise<void> => {
-    const fresh = await resolveExecutableForCommand(trustedDescriptor, command, candidateRoots);
+  return { ok: true, plan: { descriptor: frozenDescriptor, command, candidateRoots: frozenRoots } };
+}
+
+/**
+ * Build an `execute` from a validated plan and a delegate. PRIVATE and
+ * NEVER exported — not even internally — so there is no code path anywhere
+ * in this module's packaged output that accepts a delegate other than the
+ * hardcoded `delegateProduct` `resolveStandaloneProductBinding` passes
+ * below (finding 5, 2026-07-22 review). The TEST-ONLY, unpackaged
+ * `cli/test/standalone-runner-test-support.ts` duplicates this same ~10
+ * lines rather than importing it, precisely so this function never needs
+ * to be exported.
+ */
+function buildExecute<TIntent extends BindableIntent>(
+  plan: StandaloneBindingPlan,
+  delegate: DelegateFn,
+  delegateOptions: DelegateOptions | undefined,
+): (intent: TIntent) => Promise<void> {
+  return async () => {
+    const fresh = await resolveExecutableForCommand(plan.descriptor, plan.command, plan.candidateRoots);
     if (!fresh.ok) {
       throw new StandaloneRunnerExecutionError(
         "The resolved product executable could not be re-verified immediately before execution.",
         fresh.diagnostics,
       );
     }
-    const delegate = testDelegate ?? delegateProduct;
     // Defensive copy: never hand a shared/mutable argv array to a delegate.
     await delegate(fresh.executablePath, [...fresh.argv], delegateOptions);
   };
+}
 
-  return intentBindingFromCommand<TIntent>(trustedDescriptor, commandPath, execute);
+/**
+ * Resolve ONE `HostIntentBinding` for a standalone host: given a descriptor
+ * and the command path it declares, resolve that command's executable
+ * against a set of candidate package ROOT directories, and produce an
+ * `execute` that re-resolves and delegates to the resolved bin.
+ *
+ * See `planStandaloneProductBinding` above for the full validation/error
+ * contract this delegates to. The only thing this function adds is wiring
+ * the validated plan to the real `delegateProduct` — hardcoded, never
+ * read from `options` or anywhere else a caller could influence
+ * (finding 5, 2026-07-22 review: `StandaloneProductBindingOptions` has
+ * never had, and still does not have, a delegate field of any kind).
+ *
+ * The produced `execute` re-resolves the executable from scratch
+ * immediately before delegating (finding 2 — TOCTOU, residual window
+ * documented as finding 6 above) and always calls the real
+ * `delegateProduct` with the resolved executable path and a freshly-copied
+ * argv array — never a shell string.
+ */
+export async function resolveStandaloneProductBinding<TIntent extends BindableIntent = BindableIntent>(
+  descriptor: ProductCapabilityDescriptor,
+  commandPath: readonly string[],
+  candidateRoots: readonly string[],
+  options: StandaloneProductBindingOptions = {},
+): Promise<StandaloneProductBindingResult<TIntent>> {
+  const planned = await planStandaloneProductBinding(descriptor, commandPath, candidateRoots);
+  if (!planned.ok) return planned;
+
+  const execute = buildExecute<TIntent>(planned.plan, delegateProduct, options.delegateOptions);
+  return intentBindingFromCommand<TIntent>(planned.plan.descriptor, commandPath, execute);
 }
 
 type BoundResolution<TIntent extends BindableIntent> = Extract<IntentBindingResolution<TIntent>, { bound: true }>;

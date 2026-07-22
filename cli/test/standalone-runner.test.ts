@@ -7,12 +7,12 @@ import test from "node:test";
 
 import type { ProductCapabilityDescriptor } from "@kontourai/console-core/product-capability-descriptor";
 import {
-  __TEST_ONLY_withDelegateOverride,
   createStandaloneRunner,
   resolveStandaloneProductBinding,
   StandaloneRunnerExecutionError,
-  type DelegateFn,
+  type StandaloneProductBindingOptions,
 } from "../src/standalone-runner";
+import { resolveStandaloneProductBindingForTest, type DelegateFn } from "./standalone-runner-test-support";
 
 const fixtures = resolve(fileURLToPath(new URL("./fixtures/packages", import.meta.url)));
 
@@ -68,23 +68,19 @@ function recordingDelegate(): { delegate: DelegateFn; calls: Array<{ executable:
   return { delegate, calls };
 }
 
-function withDelegate(delegate: DelegateFn) {
-  return __TEST_ONLY_withDelegateOverride({}, delegate);
-}
-
 /**
  * `execute` now re-resolves the executable from disk (real fs I/O, finding
  * 2's TOCTOU fix) immediately before delegating, so a fixed short sleep
  * after triggering a runner is not a safe bound under system I/O
  * contention. Poll for the expected observable effect instead.
  */
-async function waitFor(predicate: () => boolean, timeoutMs = 5000): Promise<void> {
+async function waitFor(predicate: () => boolean | Promise<boolean>, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (predicate()) return;
+    if (await predicate()) return;
     await new Promise((r) => setTimeout(r, 5));
   }
-  if (!predicate()) throw new Error("timed out waiting for condition");
+  if (!(await predicate())) throw new Error("timed out waiting for condition");
 }
 
 test("resolveStandaloneProductBinding: resolves a confirmation:never command and delegates to the resolved product bin", async () => {
@@ -92,7 +88,7 @@ test("resolveStandaloneProductBinding: resolves a confirmation:never command and
   const root = await fixtureRoot("flow");
   const { delegate, calls } = recordingDelegate();
 
-  const result = await resolveStandaloneProductBinding(descriptor, ["status"], [root], withDelegate(delegate));
+  const result = await resolveStandaloneProductBindingForTest(descriptor, ["status"], [root], delegate);
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.binding.product, "flow");
@@ -113,7 +109,7 @@ test("createStandaloneRunner: a user-request command never delegates until confi
   const root = await fixtureRoot("flow");
   const { delegate, calls } = recordingDelegate();
 
-  const result = await resolveStandaloneProductBinding(descriptor, ["cancel"], [root], withDelegate(delegate));
+  const result = await resolveStandaloneProductBindingForTest(descriptor, ["cancel"], [root], delegate);
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.binding.confirmation, "user-request");
@@ -299,7 +295,7 @@ test("finding 2: a path swapped between binding and a delayed confirm:true does 
   const root = await fixtureRoot("flow");
   const { delegate, calls } = recordingDelegate();
 
-  const result = await resolveStandaloneProductBinding(descriptor, ["cancel"], [root], withDelegate(delegate));
+  const result = await resolveStandaloneProductBindingForTest(descriptor, ["cancel"], [root], delegate);
   assert.equal(result.ok, true);
   if (!result.ok) return;
 
@@ -324,4 +320,81 @@ test("finding 2: a path swapped between binding and a delayed confirm:true does 
 
   assert.equal(calls.length, 0, "the swapped/escaping target must never be spawned");
   assert.ok(executeError instanceof StandaloneRunnerExecutionError, "re-verification failure is surfaced, not silently swallowed");
+});
+
+// --- 2026-07-22 confirmation follow-up review regression tests ---
+
+test("finding 4: mutable-object reuse — post-bind mutation of the caller's own command does not change what executes", async () => {
+  const descriptor = flowDescriptor();
+  const root = await fixtureRoot("flow");
+  const { delegate, calls } = recordingDelegate();
+
+  // The caller's OWN, still-mutable command object — `flowDescriptor()`
+  // never freezes anything, exactly like a real host's descriptor.
+  const statusCommand = descriptor.commands.find((c) => c.path.join(" ") === "status");
+  assert.ok(statusCommand);
+  assert.equal(statusCommand!.authority.confirmation, "never");
+
+  const result = await resolveStandaloneProductBindingForTest(descriptor, ["status"], [root], delegate);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.binding.confirmation, "never");
+
+  // Mutate the bound command's argv, sideEffect, and confirmation IN PLACE
+  // after binding. Pre-fix, `execute` re-derived argv from this exact live
+  // object at call time, so this would run "cancel" under the "status"
+  // binding's already-fixed confirmation:"never" gate — a write command
+  // executed with NO consent check at all.
+  const mutableArgv = statusCommand!.argv as string[];
+  mutableArgv.length = 0;
+  mutableArgv.push("cancel");
+  (statusCommand as unknown as { sideEffect: string }).sideEffect = "write-local";
+  (statusCommand!.authority as unknown as { confirmation: string }).confirmation = "user-request";
+
+  const runner = createStandaloneRunner([result.binding]);
+  runner(intent("flow", "status"));
+  await waitFor(() => calls.length > 0);
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(
+    calls[0].argv,
+    ["status"],
+    "the bound execute must run the argv snapshot captured at bind time, never a post-bind mutation of the caller's live command object",
+  );
+});
+
+test("finding 5: a caller-supplied __TEST_ONLY_delegate property on the PUBLIC options has zero runtime effect", async () => {
+  const descriptor = flowDescriptor();
+  const root = await fixtureRoot("flow");
+  const recordFile = join(root, "record.jsonl");
+
+  let spyCalls = 0;
+  // An adversarial JS caller of the PUBLIC `resolveStandaloneProductBinding`
+  // — no special import, just an extra property `StandaloneProductBindingOptions`
+  // has never declared. The cast simulates what a plain (non-TypeScript, or
+  // TS-bypassing) caller can do with zero extra effort.
+  const maliciousOptions = {
+    delegateOptions: { env: { ...process.env, KONTOUR_RECORD_FILE: recordFile }, stdio: "ignore" },
+    __TEST_ONLY_delegate: async () => { spyCalls += 1; return 0; },
+  } as unknown as StandaloneProductBindingOptions;
+
+  const result = await resolveStandaloneProductBinding(descriptor, ["status"], [root], maliciousOptions);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+
+  const runner = createStandaloneRunner([result.binding]);
+  runner(intent("flow", "status"));
+
+  await waitFor(async () => {
+    try {
+      return (await readFile(recordFile, "utf8")).trim().length > 0;
+    } catch {
+      return false;
+    }
+  });
+
+  const recorded = JSON.parse((await readFile(recordFile, "utf8")).trim()) as { product: string; argv: string[] };
+  assert.equal(recorded.product, "flow", "the REAL delegateProduct must have spawned the real fixture bin");
+  assert.deepEqual(recorded.argv, ["status"]);
+  assert.equal(spyCalls, 0, "the injected __TEST_ONLY_delegate property must never be read or called by production code");
 });
