@@ -33,3 +33,13 @@ export {
 } from "./install-policy";
 export { buildRouterOutput, renderRouterOutput } from "./output";
 export { runCli, type CliDependencies, type CliIo } from "./cli";
+export {
+  createStandaloneRunner,
+  resolveStandaloneProductBinding,
+  type DelegateFn,
+  type StandaloneBindingError,
+  type StandaloneIntentHandler,
+  type StandaloneProductBindingOptions,
+  type StandaloneProductBindingResult,
+  type StandaloneRunnerOptions,
+} from "./standalone-runner";
