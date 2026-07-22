@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { classifyBoardStage, deriveBoard, runIdFromProcessId, BOARD_STAGES } from "../src/sections/board/board";
+import { classifyBoardStage, deriveBoard, runIdFromProcessId, BOARD_STAGES } from "../lib/src/board";
 import type { OperatingState, ConsoleProcess } from "@kontourai/console-core";
 
 function proc(p: Partial<ConsoleProcess> & { id: string }): ConsoleProcess {
@@ -142,4 +142,22 @@ test("deriveBoard on empty/undefined state yields five empty columns, zero total
   assert.equal(board.columns.length, 5);
   assert.equal(board.totalCards, 0);
   assert.ok(board.columns.every((c) => c.cards.length === 0));
+});
+
+// #236: blockedReason carries through onto the card unchanged, so a stalled
+// interactive session (needs_input/review_pending) is actionable, not a bare
+// status string.
+test("deriveBoard carries blockedReason through onto the card", () => {
+  const board = deriveBoard(state({
+    processes: [proc({ id: "p1", status: "needs_input", blockedReason: "Waiting on a design decision from the requester." })]
+  }));
+  const card = board.columns.flatMap((c) => c.cards).find((c) => c.id === "p1");
+  assert.equal(card?.blockedReason, "Waiting on a design decision from the requester.");
+  assert.equal(card?.stage, "in-flight");
+});
+
+test("deriveBoard leaves blockedReason undefined when the process has none", () => {
+  const board = deriveBoard(state({ processes: [proc({ id: "p1", currentStep: "execute" })] }));
+  const card = board.columns.flatMap((c) => c.cards).find((c) => c.id === "p1");
+  assert.equal(card?.blockedReason, undefined);
 });

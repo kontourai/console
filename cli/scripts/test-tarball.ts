@@ -22,7 +22,11 @@ function runCombined(command: string, args: string[], cwd: string, env: NodeJS.P
     cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env },
   });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} exited ${result.status}: ${result.stderr}`);
+  if (result.status !== 0) {
+    // tsc writes diagnostics to stdout, not stderr; include both so a failure
+    // here is diagnosable from this error alone.
+    throw new Error(`${command} exited ${result.status}: ${result.stdout}${result.stderr}`);
+  }
   return `${result.stdout}${result.stderr}`;
 }
 
@@ -238,6 +242,112 @@ console.log(proof.length);
   assert.equal(output.trim(), "", `isolated tsc consumer of the packed @kontourai/console tarball reported errors:\n${output}`);
 }
 
+// #230: the published `@kontourai/console-ui` components entry
+// (`console-ui/lib/src/index.ts`) is a SEPARATE npm identity from the root
+// `@kontourai/console` library entry checked above — its consumer is a host
+// app mounting `BoardView`, not a Node service `require()`-ing an emitter.
+// This is the package-exports resolution proof console#230 calls for,
+// extending this file's existing tarball-smoke pattern rather than
+// duplicating it (packThirdParty/stageForPack/installOffline are already
+// exactly what a peer-dependency-bearing React component package needs).
+const CONSOLE_UI_EXPORTS = [
+  "BoardView",
+  "boardCardSelectIntent",
+  "BOARD_SELECT_CARD_INTENT",
+  "deriveBoard",
+  "classifyBoardStage",
+  "runIdFromProcessId",
+  "BOARD_STAGES",
+  "BOARD_STAGE_LABEL",
+] as const;
+
+function assertPackedConsoleUi(project: string): void {
+  const installed = join(project, "node_modules/@kontourai/console-ui");
+  const manifest = JSON.parse(readFileSync(join(installed, "package.json"), "utf8")) as {
+    main?: string;
+    types?: string;
+    exports?: Record<string, unknown>;
+    peerDependencies?: Record<string, string>;
+  };
+  assert.equal(manifest.main, "dist/lib/index.js", "packed @kontourai/console-ui must declare its components-entry main");
+  assert.equal(manifest.types, "dist/lib/index.d.ts", "packed @kontourai/console-ui must declare its components-entry types");
+  assert.ok(manifest.exports?.["."], 'packed @kontourai/console-ui must declare a "." exports entry');
+  assert.ok(manifest.exports?.["./board.css"], "packed @kontourai/console-ui must declare a ./board.css export (console#230: BoardView ships no self-imported CSS, matching @kontourai/ui's own react+styles.css split)");
+  assert.ok(manifest.peerDependencies?.react, "packed @kontourai/console-ui must declare react as a peer dependency, not a bundled runtime copy");
+  for (const file of [
+    "dist/lib/index.js",
+    "dist/lib/index.d.ts",
+    "dist/lib/BoardView.js",
+    "dist/lib/BoardView.d.ts",
+    "dist/lib/board.js",
+    "dist/lib/board.d.ts",
+    "dist/lib/intent.d.ts",
+    "lib/src/board-view.css",
+  ]) assert.ok(existsSync(join(installed, file)), `packed @kontourai/console-ui is missing ${file}`);
+
+  // ESM-only package (console-ui's manifest declares "type": "module"): resolve
+  // via import(), not require().
+  const checkNames = `const names = ${JSON.stringify(CONSOLE_UI_EXPORTS)}; for (const name of names) { if (!(name in lib)) throw new Error("missing export: " + name); }`;
+  const importOutput = runCombined(
+    "node",
+    ["--input-type=module", "-e", `import * as lib from "@kontourai/console-ui"; ${checkNames} console.log("import-ok");`],
+    project,
+    { NODE_PATH: "", npm_config_offline: "true" },
+  );
+  assert.match(importOutput, /import-ok/, "import('@kontourai/console-ui') did not resolve the documented components-entry exports");
+}
+
+// Isolated declaration-graph proof (mirrors assertPackedConsoleLibraryTypes):
+// a TS consumer compiling ONLY against the packed tarball's own installed
+// dependencies must resolve BoardView's props (OperatingState, ConsoleIntent)
+// with real JSX types, not just a runtime shape check above.
+function assertPackedConsoleUiTypes(project: string): void {
+  for (const typesPackage of ["@types/react", "@types/react-dom", "csstype"]) {
+    cpSync(join(repositoryRoot, "node_modules", typesPackage), join(project, "node_modules", typesPackage), { recursive: true });
+  }
+
+  const typesCheckDir = join(project, "console-ui-types-check");
+  mkdirSync(typesCheckDir, { recursive: true });
+  writeFileSync(join(typesCheckDir, "consumer.tsx"), `import type { OperatingState } from "@kontourai/console-core";
+import { BoardView, type BoardViewProps, type ConsoleIntent, deriveBoard } from "@kontourai/console-ui";
+
+const state: OperatingState = { processes: [] };
+const onIntent = (intent: ConsoleIntent): void => {
+  console.log(intent.kind, intent.readOnly, intent.authority?.command);
+};
+const props: BoardViewProps = { operatingState: state, onIntent };
+const element = <BoardView {...props} />;
+const board = deriveBoard(state);
+console.log(element, board.totalCards);
+`);
+  writeFileSync(join(typesCheckDir, "tsconfig.json"), JSON.stringify({
+    compilerOptions: {
+      module: "esnext",
+      moduleResolution: "bundler",
+      target: "es2022",
+      lib: ["ES2022", "DOM"],
+      jsx: "react-jsx",
+      strict: true,
+      noEmit: true,
+      skipLibCheck: false,
+    },
+    include: ["consumer.tsx"],
+  }, null, 2));
+
+  const tsc = join(repositoryRoot, "node_modules/.bin/tsc");
+  const output = runCombined(tsc, ["-p", join(typesCheckDir, "tsconfig.json")], project, { NODE_PATH: "" });
+  assert.equal(output.trim(), "", `isolated tsc consumer of the packed @kontourai/console-ui tarball reported errors:\n${output}`);
+}
+
+function consoleUiLibrarySmoke(root: string, tarballs: string[]): void {
+  const project = join(root, "console-ui-project");
+  const cache = join(root, "offline-cache-console-ui");
+  run("npm", ["init", "-y"], project);
+  installOffline(project, tarballs, cache);
+  assertPackedConsoleUi(project);
+  assertPackedConsoleUiTypes(project);
+}
+
 function legacyConsoleSmoke(root: string, rootTarball: string, dependencyTarballs: string[]): void {
   const project = join(root, "legacy-project");
   const cache = join(root, "offline-cache-legacy");
@@ -264,6 +374,7 @@ function main(): void {
   makeDirectory(staging);
   makeDirectory(join(root, "cli-project"));
   makeDirectory(join(root, "legacy-project"));
+  makeDirectory(join(root, "console-ui-project"));
   // Third-party packages packed from this repo's own installed node_modules
   // copies (published-package content only, no dev source) so the offline
   // installs below can resolve @kontourai/console's real dependency tree
@@ -303,8 +414,21 @@ function main(): void {
       "require-from-string",
     ].map(packThirdParty);
     legacyConsoleSmoke(root, rootConsole, [consoleCore, telemetry, jose, ...flowDependencyTree]);
+    // #230: @kontourai/console-ui's components entry declares react/react-dom
+    // as peers (a host app provides its own copy) and @kontourai/ui as a real
+    // dependency — packed straight from this repo's own installed copies, the
+    // same pattern as the flowDependencyTree above.
+    const consoleUi = pack(join(repositoryRoot, "console-ui"), packs);
+    const reactPeerTree = ["react", "react-dom", "scheduler", "@kontourai/ui"].map(packThirdParty);
+    let consoleUiFailure: unknown;
+    try {
+      consoleUiLibrarySmoke(root, [consoleUi, consoleCore, ...reactPeerTree]);
+    } catch (error) {
+      consoleUiFailure = error;
+    }
     if (cliFailure) throw cliFailure;
-    process.stdout.write(`Tarball smoke passed: ${basename(cli)}, three product fixtures, and ${basename(rootConsole)}.\n`);
+    if (consoleUiFailure) throw consoleUiFailure;
+    process.stdout.write(`Tarball smoke passed: ${basename(cli)}, three product fixtures, ${basename(consoleUi)}, and ${basename(rootConsole)}.\n`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

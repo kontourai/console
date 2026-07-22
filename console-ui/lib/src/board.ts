@@ -16,6 +16,12 @@ import type { ConsoleGate, ConsoleProcess, OperatingState } from "@kontourai/con
  * mapping). Rather than imply a live count that would silently read zero in
  * production, live presence waits on a verified cross-producer id mapping,
  * alongside the Me/Team filter (per-user identity #98/#159).
+ *
+ * #230: this module is part of the published `@kontourai/console-ui` library
+ * entry (`lib/src/index.ts`) — a pure, framework-level projection with no
+ * fetching and no React dependency, so it is equally usable from the host-
+ * mountable `BoardView` component and from the bundled Console app's own
+ * `sections/BoardSection.tsx` wrapper (same source, no fork).
  */
 
 export type BoardStage = "backlog" | "planning" | "in-flight" | "verify" | "done";
@@ -95,6 +101,10 @@ export interface BoardCard {
   gatesPassed: number;
   gatesBlocked: number;
   updatedAt?: string;
+  /** #236: why the underlying process is blocked/needs_input/review_pending,
+   *  carried through unchanged so a stalled interactive session reads as an
+   *  actionable card, not a bare status string. */
+  blockedReason?: string;
 }
 
 /**
@@ -161,7 +171,8 @@ export function deriveBoard(state: OperatingState | null | undefined): BoardMode
       percentComplete: process.percentComplete,
       gatesPassed: gates.passed,
       gatesBlocked: gates.blocked,
-      updatedAt: process.updatedAt
+      updatedAt: process.updatedAt,
+      blockedReason: process.blockedReason
     });
   }
 
