@@ -87,6 +87,98 @@ test("bindIntentHandler: confirm() returning/resolving true executes the bound h
   assert.deepEqual(calls, [emitted]);
 });
 
+async function flushMicrotasks(): Promise<void> {
+  // gateOnConfirm's Promise.resolve(outcome).then(...) may need more than
+  // one microtask tick to settle when `outcome` is itself a promise (e.g.
+  // an async confirm()). Yield a few ticks to be safe rather than relying
+  // on exactly one.
+  for (let i = 0; i < 4; i += 1) {
+    await Promise.resolve();
+  }
+}
+
+test("bindIntentHandler: strict-true consent — 'yes', 1, and {} must NOT execute a confirmation-gated intent", async () => {
+  for (const nonTrueTruthy of ["yes", 1, {}]) {
+    const calls: unknown[] = [];
+    const bindings: HostIntentBinding<ConsoleIntent>[] = [
+      { product: "flow", command: "cancel", sideEffect: "write-local", confirmation: "user-request", execute: (i) => calls.push(i) }
+    ];
+    const handler = bindIntentHandler(bindings, { confirm: () => nonTrueTruthy });
+
+    handler(intent("flow", "cancel"));
+    await flushMicrotasks();
+
+    assert.deepEqual(calls, [], `confirm() returning ${JSON.stringify(nonTrueTruthy)} must not execute`);
+  }
+});
+
+test("bindIntentHandler: strict-true consent — 0, '', null, undefined, and false must NOT execute a confirmation-gated intent", async () => {
+  for (const falsy of [0, "", null, undefined, false]) {
+    const calls: unknown[] = [];
+    const bindings: HostIntentBinding<ConsoleIntent>[] = [
+      { product: "flow", command: "cancel", sideEffect: "write-local", confirmation: "operator-request", execute: (i) => calls.push(i) }
+    ];
+    const handler = bindIntentHandler(bindings, { confirm: () => falsy });
+
+    handler(intent("flow", "cancel"));
+    await flushMicrotasks();
+
+    assert.deepEqual(calls, [], `confirm() returning ${JSON.stringify(falsy)} must not execute`);
+  }
+});
+
+test("bindIntentHandler: strict-true consent — only the literal boolean true executes", async () => {
+  const calls: ConsoleIntent[] = [];
+  const bindings: HostIntentBinding<ConsoleIntent>[] = [
+    { product: "flow", command: "cancel", sideEffect: "write-local", confirmation: "user-request", execute: (i) => calls.push(i) }
+  ];
+  const handler = bindIntentHandler(bindings, { confirm: () => true });
+
+  const emitted = intent("flow", "cancel");
+  handler(emitted);
+  await flushMicrotasks();
+
+  assert.deepEqual(calls, [emitted]);
+});
+
+test("bindIntentHandler: a synchronous confirm() throw never executes — onConsentError observes it, no propagation", () => {
+  const calls: unknown[] = [];
+  const errors: unknown[] = [];
+  const bindings: HostIntentBinding<ConsoleIntent>[] = [
+    { product: "flow", command: "cancel", sideEffect: "write-local", confirmation: "user-request", execute: (i) => calls.push(i) }
+  ];
+  const boom = new Error("confirm blew up synchronously");
+  const handler = bindIntentHandler(bindings, {
+    confirm: () => { throw boom; },
+    onConsentError: (_i, _r, error) => errors.push(error)
+  });
+
+  // Must not throw out of the handler itself.
+  assert.doesNotThrow(() => handler(intent("flow", "cancel")));
+
+  assert.deepEqual(calls, []);
+  assert.deepEqual(errors, [boom]);
+});
+
+test("bindIntentHandler: a rejected confirm() promise never executes — onConsentError observes it, no unhandled rejection", async () => {
+  const calls: unknown[] = [];
+  const errors: unknown[] = [];
+  const bindings: HostIntentBinding<ConsoleIntent>[] = [
+    { product: "flow", command: "cancel", sideEffect: "write-local", confirmation: "operator-request", execute: (i) => calls.push(i) }
+  ];
+  const boom = new Error("confirm rejected asynchronously");
+  const handler = bindIntentHandler(bindings, {
+    confirm: async () => { throw boom; },
+    onConsentError: (_i, _r, error) => errors.push(error)
+  });
+
+  handler(intent("flow", "cancel"));
+  await flushMicrotasks();
+
+  assert.deepEqual(calls, []);
+  assert.deepEqual(errors, [boom]);
+});
+
 test("bindIntentHandler: never-authority invariant — two hosts binding the same command under different products stay isolated", () => {
   const consoleCalls: unknown[] = [];
   const flowCalls: unknown[] = [];

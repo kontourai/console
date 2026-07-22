@@ -25,7 +25,6 @@
 import type {
   ProductCapabilityDescriptor,
   ProductCommandConfirmation,
-  ProductCommandDeclaration,
   ProductCommandSideEffect
 } from "./product-capability-descriptor";
 
@@ -98,6 +97,13 @@ export type IntentBindingResolution<TIntent extends BindableIntent = BindableInt
  * host did not declare a binding for always resolves `bound: false`, and the
  * result never carries an `execute` field in that case (never-authority
  * invariant — see `docs/specs/intent-binding-consent.md`).
+ *
+ * NOTE: this function trusts the `(product, command)` labels on each
+ * `HostIntentBinding` the caller supplies — it has no way to verify a
+ * binding's `product`/`command`/`sideEffect`/`confirmation` actually came
+ * from the named product's own descriptor. That provenance guarantee is
+ * `intentBindingFromCommand`'s job (below): prefer it over hand-authoring a
+ * `HostIntentBinding` whenever a validated descriptor is available.
  */
 export function resolveIntentBinding<TIntent extends BindableIntent>(
   intent: TIntent,
@@ -136,27 +142,73 @@ export function resolveIntentBinding<TIntent extends BindableIntent>(
   };
 }
 
+export type IntentBindingFromCommandError =
+  /** No command in `descriptor.commands` has this exact `path`. A binding is
+   *  never produced for a command that is not an actual member of the
+   *  supplied descriptor — this constructor never accepts a free-floating
+   *  command object from anywhere else. */
+  | "command-not-found"
+  /** The looked-up command's `authority.productId` disagrees with
+   *  `descriptor.product.id`. A validated descriptor
+   *  (`validateProductCapabilityDescriptor`) can never reach this state —
+   *  it rejects that mismatch as `DESCRIPTOR_AUTHORITY_MISMATCH` — but this
+   *  constructor re-checks it at binding time so an unvalidated or
+   *  hand-assembled descriptor object can never launder one product's
+   *  authority under another product's label. */
+  | "authority-mismatch";
+
+export type IntentBindingFromCommandResult<TIntent extends BindableIntent = BindableIntent> =
+  | { ok: true; binding: HostIntentBinding<TIntent> }
+  | { ok: false; error: IntentBindingFromCommandError };
+
 /**
- * Convenience constructor that derives a `HostIntentBinding` from a validated
- * `ProductCapabilityDescriptor` command declaration — the same descriptor
- * family the Kontour CLI router negotiates (`docs/specs/kontour-cli-router.md`).
- * `command` follows that path convention: space-joined `path` segments
- * (`["workflow","status"]` -> `"workflow status"`), matching the join
+ * Derive a `HostIntentBinding` from ONE command belonging to a
+ * `ProductCapabilityDescriptor` — the same descriptor family the Kontour CLI
+ * router negotiates (`docs/specs/kontour-cli-router.md`). Callers identify
+ * the command by its `path` (space-joined, matching the join
  * `validateProductCapabilityDescriptor`'s own diagnostics use for
- * `commandPath`. A host publishing both a CLI descriptor and a UI binding
- * for the same command declares its authority/side-effect/confirmation
- * policy exactly once and reuses it for both surfaces.
+ * `commandPath`, e.g. `["workflow","status"]`) — never by passing a command
+ * object directly — so this function can look the command up INSIDE the
+ * supplied descriptor's own `commands` array and prove two things before it
+ * will produce a binding:
+ *
+ *   1. **Membership**: the command is an actual entry of
+ *      `descriptor.commands`, not an unrelated object that merely has the
+ *      right shape (e.g. a command declaration copied from a different
+ *      product's descriptor).
+ *   2. **Authority match**: that command's own `authority.productId` equals
+ *      `descriptor.product.id` — the same invariant
+ *      `validateProductCapabilityDescriptor` enforces
+ *      (`DESCRIPTOR_AUTHORITY_MISMATCH`), re-checked here because this
+ *      function's `descriptor` argument is not guaranteed to have passed
+ *      through that validator first.
+ *
+ * Either check failing returns `{ ok: false, error }` and produces NO
+ * binding — a host cannot mint a binding that claims one product's
+ * authority using metadata that actually belongs to a different product.
  */
 export function intentBindingFromCommand<TIntent extends BindableIntent>(
-  descriptor: Pick<ProductCapabilityDescriptor, "product">,
-  command: ProductCommandDeclaration,
+  descriptor: ProductCapabilityDescriptor,
+  commandPath: readonly string[],
   execute: (intent: TIntent) => void | Promise<void>
-): HostIntentBinding<TIntent> {
+): IntentBindingFromCommandResult<TIntent> {
+  const joined = commandPath.join(" ");
+  const command = descriptor.commands.find((candidate) => candidate.path.join(" ") === joined);
+  if (!command) {
+    return { ok: false, error: "command-not-found" };
+  }
+  if (command.authority.productId !== descriptor.product.id) {
+    return { ok: false, error: "authority-mismatch" };
+  }
+
   return {
-    product: descriptor.product.id,
-    command: command.path.join(" "),
-    sideEffect: command.sideEffect,
-    confirmation: command.authority.confirmation,
-    execute
+    ok: true,
+    binding: {
+      product: descriptor.product.id,
+      command: joined,
+      sideEffect: command.sideEffect,
+      confirmation: command.authority.confirmation,
+      execute
+    }
   };
 }

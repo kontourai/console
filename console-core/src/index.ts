@@ -52,6 +52,8 @@ export {
 export type {
   BindableIntent,
   HostIntentBinding,
+  IntentBindingFromCommandError,
+  IntentBindingFromCommandResult,
   IntentBindingResolution,
   IntentBindingUnboundReason
 } from "./intent-binding";

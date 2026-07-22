@@ -94,15 +94,15 @@ test("resolveIntentBinding: malformed consent metadata on the matched binding fa
   assert.deepEqual(result, { bound: false, reason: "invalid-consent-metadata", product: "flow", command: "cancel" });
 });
 
-test("intentBindingFromCommand: derives product/command/sideEffect/confirmation from a validated descriptor command, unchanged", async () => {
+test("intentBindingFromCommand: derives product/command/sideEffect/confirmation from a command actually IN the descriptor, unchanged", async () => {
   const descriptor = await readFixture("flow");
-  const cancelCommand = descriptor.commands.find((c) => c.path.join(" ") === "cancel");
-  assert.ok(cancelCommand, "flow fixture must declare a cancel command");
 
   const execute = () => {};
-  const binding = intentBindingFromCommand(descriptor, cancelCommand!, execute);
+  const result = intentBindingFromCommand(descriptor, ["cancel"], execute);
 
-  assert.deepEqual(binding, {
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  assert.deepEqual(result.binding, {
     product: "flow",
     command: "cancel",
     sideEffect: "write-local",
@@ -112,10 +112,10 @@ test("intentBindingFromCommand: derives product/command/sideEffect/confirmation 
 
   // The derived binding round-trips through resolution exactly like a
   // hand-authored one.
-  const result = resolveIntentBinding(intent("flow", "cancel"), [binding]);
-  assert.equal(result.bound, true);
-  if (!result.bound) throw new Error("unreachable");
-  assert.equal(result.execute, execute);
+  const resolution = resolveIntentBinding(intent("flow", "cancel"), [result.binding]);
+  assert.equal(resolution.bound, true);
+  if (!resolution.bound) throw new Error("unreachable");
+  assert.equal(resolution.execute, execute);
 });
 
 test("intentBindingFromCommand: a multi-segment command path joins with a single space, matching descriptor diagnostics convention", async () => {
@@ -123,9 +123,52 @@ test("intentBindingFromCommand: a multi-segment command path joins with a single
   const multiSegment = descriptor.commands.find((c) => c.path.length > 1);
   assert.ok(multiSegment, "flow-agents fixture must declare a multi-segment command for this assertion to be meaningful");
 
-  const binding = intentBindingFromCommand(descriptor, multiSegment!, () => {});
-  assert.equal(binding.command, multiSegment!.path.join(" "));
-  assert.ok(binding.command.includes(" "));
+  const result = intentBindingFromCommand(descriptor, multiSegment!.path, () => {});
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  assert.equal(result.binding.command, multiSegment!.path.join(" "));
+  assert.ok(result.binding.command.includes(" "));
+});
+
+test("intentBindingFromCommand: a command path not present in the descriptor produces NO binding", async () => {
+  const descriptor = await readFixture("flow");
+
+  const result = intentBindingFromCommand(descriptor, ["does-not-exist"], () => {});
+  assert.deepEqual(result, { ok: false, error: "command-not-found" });
+});
+
+test("cross-product laundering invariant: a command whose authority.productId differs from the descriptor's product is rejected — no binding produced", async () => {
+  const flow = await readFixture("flow");
+  const cancelCommand = flow.commands.find((c) => c.path.join(" ") === "cancel");
+  assert.ok(cancelCommand, "flow fixture must declare a cancel command");
+
+  // Reproduces the reported probe: a 'flow'-labeled descriptor whose
+  // command array smuggles in a command claiming SURFACE authority (e.g. a
+  // corrupted or hand-assembled descriptor that never passed
+  // validateProductCapabilityDescriptor, which would otherwise reject this
+  // as DESCRIPTOR_AUTHORITY_MISMATCH). intentBindingFromCommand must not
+  // trust descriptor.product.id merely because the command is positionally
+  // present in descriptor.commands.
+  const launderedDescriptor: ProductCapabilityDescriptor = {
+    ...flow,
+    commands: [
+      ...flow.commands,
+      {
+        ...cancelCommand!,
+        path: ["destroy"],
+        authority: { kind: "product", productId: "surface", confirmation: "never" }
+      }
+    ]
+  };
+
+  const result = intentBindingFromCommand(launderedDescriptor, ["destroy"], () => {});
+  assert.deepEqual(result, { ok: false, error: "authority-mismatch" });
+
+  // And the legitimate 'flow'-authority commands on the same (otherwise
+  // laundered) descriptor object are unaffected — this is a per-command
+  // check, not a whole-descriptor poison.
+  const legitimate = intentBindingFromCommand(launderedDescriptor, ["cancel"], () => {});
+  assert.equal(legitimate.ok, true);
 });
 
 test("read-only, never-confirmation bindings (e.g. console's own board.select-card) resolve bound with confirmation 'never'", () => {
