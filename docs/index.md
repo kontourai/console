@@ -28,6 +28,10 @@ description: Suite-level operating plane for Kontour. Claim status, process stat
     <strong>Kontour CLI Router</strong>
     <span>Explicit install and product-root usage, offline delegation, nested Flow/Flow Agents ownership, and legacy Console migration.</span>
   </a>
+  <a class="doc-card" href="specs/intent-binding-consent.html">
+    <strong>Intent Binding And Consent Policy</strong>
+    <span>How a host binds console-ui component intents to product-owned execution authority, inert-when-unbound rendering, and the consent policy for a bound side-effecting intent.</span>
+  </a>
   <a class="doc-card" href="deployment/hosted-console.html">
     <strong>Hosted Console</strong>
     <span>How a hosted deployment composes the base Console with deployment-owned infrastructure and environment mapping.</span>

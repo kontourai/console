@@ -49,3 +49,10 @@ export {
   validateProductCapabilityDescriptor,
   negotiateProductCapabilityDescriptors
 } from "./product-capability-descriptor";
+export type {
+  BindableIntent,
+  HostIntentBinding,
+  IntentBindingResolution,
+  IntentBindingUnboundReason
+} from "./intent-binding";
+export { resolveIntentBinding, intentBindingFromCommand } from "./intent-binding";
