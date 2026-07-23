@@ -47,21 +47,51 @@ export interface WorkerFleetSectionProps {
    * (lib/src/BoardView.tsx) for the injectable case.
    */
   now?: number;
+  /**
+   * Controlled count-filter (console#252): when provided (non-`undefined`,
+   * `null` is a valid "no filter" value), the header's active bucket filter
+   * is driven by the parent (so it can sync to the URL — e.g. `?filter=`)
+   * instead of this component's own state. Omit both `filter`/`onFilterChange`
+   * to keep the original uncontrolled behavior (e.g. existing renderToStatic-
+   * Markup tests, which never click).
+   */
+  filter?: FleetBucket | null;
+  onFilterChange?: (next: FleetBucket | null) => void;
+  /** Controlled archive-open toggle — same controlled/uncontrolled pairing as `filter`. */
+  archiveOpen?: boolean;
+  onArchiveOpenChange?: (next: boolean) => void;
 }
 
-export function WorkerFleetSection({ state, now }: WorkerFleetSectionProps) {
+export function WorkerFleetSection({
+  state,
+  now,
+  filter: controlledFilter,
+  onFilterChange,
+  archiveOpen: controlledArchiveOpen,
+  onArchiveOpenChange,
+}: WorkerFleetSectionProps) {
   const [mountedNow] = useState(() => Date.now());
   const clock = now ?? mountedNow;
   const cards = useMemo(() => deriveFleetCards(state, clock), [state, clock]);
   const counts = useMemo(() => deriveFleetCounts(cards), [cards]);
   const grid = useMemo(() => partitionFleet(cards), [cards]);
-  const [filter, setFilter] = useState<FleetBucket | null>(null);
-  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [internalFilter, setInternalFilter] = useState<FleetBucket | null>(null);
+  const [internalArchiveOpen, setInternalArchiveOpen] = useState(false);
+  const filter = controlledFilter !== undefined ? controlledFilter : internalFilter;
+  const archiveOpen = controlledArchiveOpen !== undefined ? controlledArchiveOpen : internalArchiveOpen;
 
   const visible = filter ? grid.main.filter((card) => card.bucket === filter) : grid.main;
 
   function toggleFilter(bucket: FleetBucket) {
-    setFilter((current) => (current === bucket ? null : bucket));
+    const next = filter === bucket ? null : bucket;
+    if (onFilterChange) onFilterChange(next);
+    else setInternalFilter(next);
+  }
+
+  function toggleArchiveOpen() {
+    const next = !archiveOpen;
+    if (onArchiveOpenChange) onArchiveOpenChange(next);
+    else setInternalArchiveOpen(next);
   }
 
   return (
@@ -80,7 +110,7 @@ export function WorkerFleetSection({ state, now }: WorkerFleetSectionProps) {
         <button
           type="button"
           className={`wf-count wf-count-archived${archiveOpen ? " is-active" : ""}`}
-          onClick={() => setArchiveOpen((open) => !open)}
+          onClick={toggleArchiveOpen}
           aria-expanded={archiveOpen}
           aria-controls="wf-archive"
         >
@@ -104,7 +134,7 @@ export function WorkerFleetSection({ state, now }: WorkerFleetSectionProps) {
       {/* "N archived" — not "N completed": the archive also holds failed/cancelled/
           abandoned work, which never completed (console#251 review finding 3). */}
       <div id="wf-archive" className="wf-archive">
-        <button type="button" className="wf-archive-toggle" onClick={() => setArchiveOpen((open) => !open)} aria-expanded={archiveOpen}>
+        <button type="button" className="wf-archive-toggle" onClick={toggleArchiveOpen} aria-expanded={archiveOpen}>
           {archiveOpen ? "Hide archive" : "Show archive"} · {grid.archived.length} archived
         </button>
         {archiveOpen ? (

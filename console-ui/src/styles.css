@@ -448,8 +448,10 @@ h2 {
   flex-wrap: nowrap;
 }
 
-.view-tabs button {
+.view-tabs a {
   position: relative;
+  display: inline-flex;
+  align-items: center;
   min-height: 40px;
   padding: 0 20px;
   flex: 0 0 auto;
@@ -458,6 +460,7 @@ h2 {
   font-size: var(--k-text-md);
   font-weight: 500;
   text-transform: none;
+  text-decoration: none;
   background: transparent;
   border: 0;
   border-bottom: 2px solid transparent;
@@ -466,11 +469,11 @@ h2 {
   transition: color 0.15s, border-color 0.15s;
 }
 
-.view-tabs button:hover {
+.view-tabs a:hover {
   color: var(--text);
 }
 
-.view-tabs button.active {
+.view-tabs a.active {
   color: var(--text);
   border-bottom-color: var(--accent);
   background: transparent;

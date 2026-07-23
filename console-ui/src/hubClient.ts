@@ -204,29 +204,64 @@ function wireEventSource(source: EventSource, streamUrl: string, handlers: HubEv
   };
 }
 
+// console#252: unlike EventSource (which the browser auto-reconnects natively
+// after an "error" — see wireEventSource's status handling above), the raw
+// fetch+ReadableStream path used for token/tenant auth has no built-in retry.
+// A dropped/idle-closed stream previously went permanently dark until the
+// caller tore down and recreated the connection (e.g. a hubUrl/auth change).
+// This now retries with capped exponential backoff, resetting to the base
+// delay after every successful (re)connect, and stops cleanly once `close()`
+// has been called.
+const FETCH_STREAM_RECONNECT_BASE_MS = 1000;
+const FETCH_STREAM_RECONNECT_MAX_MS = 15000;
+
 function connectFetchStream(streamUrl: string, handlers: HubEventHandlers, auth: HubAuthOptions): HubConnection {
   const controller = new AbortController();
   let closed = false;
-  fetch(streamUrl, {
-    headers: {
-      ...authHeaders(auth),
-      accept: "text/event-stream"
-    },
-    signal: controller.signal
-  }).then(async (response) => {
-    if (!response.ok || !response.body) throw new Error(`Event stream failed with HTTP ${response.status}`);
-    handlers.onStatus("connected");
-    handlers.onOpen?.();
-    await readSseStream(response.body, handlers, () => closed);
-  }).catch((error) => {
+  let attempt = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function attemptConnect(): void {
     if (closed) return;
-    handlers.onStatus("error");
-    handlers.onError(error instanceof Error ? error.message : `Event stream unavailable at ${streamUrl}`);
-  });
+    fetch(streamUrl, {
+      headers: {
+        ...authHeaders(auth),
+        accept: "text/event-stream"
+      },
+      signal: controller.signal
+    }).then(async (response) => {
+      if (closed) return;
+      if (!response.ok || !response.body) throw new Error(`Event stream failed with HTTP ${response.status}`);
+      attempt = 0; // a successful connect resets the backoff
+      handlers.onStatus("connected");
+      handlers.onOpen?.();
+      await readSseStream(response.body, handlers, () => closed);
+      // The read loop returned because the stream body ended — a drop (idle
+      // proxy/hub restart), not necessarily our own close(). Reconnect unless
+      // we were the ones who closed it.
+      if (!closed) reconnect();
+    }).catch((error) => {
+      if (closed) return;
+      handlers.onStatus("error");
+      handlers.onError(error instanceof Error ? error.message : `Event stream unavailable at ${streamUrl}`);
+      reconnect();
+    });
+  }
+
+  function reconnect(): void {
+    if (closed) return;
+    handlers.onStatus("connecting");
+    const delay = Math.min(FETCH_STREAM_RECONNECT_BASE_MS * 2 ** attempt, FETCH_STREAM_RECONNECT_MAX_MS);
+    attempt += 1;
+    retryTimer = setTimeout(attemptConnect, delay);
+  }
+
+  attemptConnect();
 
   return {
     close() {
       closed = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
       controller.abort();
       handlers.onStatus("disconnected");
     }

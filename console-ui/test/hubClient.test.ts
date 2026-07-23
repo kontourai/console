@@ -9,6 +9,11 @@ import {
   postRecord
 } from "../src/hubClient";
 
+// console#252: reconnect-on-drop coverage for the fetch+ReadableStream path
+// (token/tenant auth — EventSource is not usable there since it can't send an
+// Authorization header). Unlike EventSource, which browsers reconnect
+// natively, this path previously went permanently dark on any drop.
+
 type FetchCall = {
   url: string;
   init?: RequestInit;
@@ -237,6 +242,64 @@ test("connectHubEvents delegates to the canonical stream and ignores malformed S
     console.warn = originalWarn;
   }
 });
+
+test("connectFetchStream (token auth) reconnects with backoff after the stream ends, and stops once closed", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const fetchCalls: string[] = [];
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    fetchCalls.push(String(input));
+    return Promise.resolve(immediatelyEndingStreamResponse());
+  }) as typeof fetch;
+
+  const statuses: string[] = [];
+  const connection = connectStream(
+    "http://127.0.0.1:3737",
+    {
+      onStatus: (status) => statuses.push(status),
+      onState: () => undefined,
+      onRecordAccepted: () => undefined,
+      onError: () => undefined
+    },
+    { token: "secret-token" }
+  );
+
+  await flushMicrotasks();
+  assert.equal(fetchCalls.length, 1, "connects once immediately");
+  assert.deepEqual(statuses, ["connecting", "connected", "connecting"], "the ended stream schedules a reconnect");
+
+  await t.mock.timers.tick(1000);
+  await flushMicrotasks();
+  assert.equal(fetchCalls.length, 2, "retries after the first backoff window (1000ms)");
+  assert.deepEqual(statuses.slice(-2), ["connected", "connecting"]);
+
+  await t.mock.timers.tick(2000);
+  await flushMicrotasks();
+  assert.equal(fetchCalls.length, 3, "backoff doubles for the second retry (2000ms)");
+
+  connection.close();
+  await t.mock.timers.tick(60_000);
+  await flushMicrotasks();
+  assert.equal(fetchCalls.length, 3, "close() stops further reconnect attempts");
+  assert.equal(statuses.at(-1), "disconnected");
+});
+
+function immediatelyEndingStreamResponse(): Response {
+  return {
+    ok: true,
+    status: 200,
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      }
+    })
+  } as unknown as Response;
+}
+
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 5; i += 1) {
+    await Promise.resolve();
+  }
+}
 
 function installFetch(responses: Response[]): FetchCall[] {
   const calls: FetchCall[] = [];

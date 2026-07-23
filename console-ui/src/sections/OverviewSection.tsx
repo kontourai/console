@@ -8,6 +8,7 @@ import {
   type AttentionKind,
 } from "./environment/derive";
 import { WorkerFleetSection } from "./WorkerFleetSection";
+import type { FleetBucket } from "./workers/derive";
 import { HappeningNowSection } from "./HappeningNowSection";
 import { FleetSection } from "./FleetSection";
 import { CostSection } from "./CostSection";
@@ -41,6 +42,17 @@ interface OverviewSectionProps {
    * (e.g. a test). Defaults to the real wall clock when omitted.
    */
   now?: number;
+  /**
+   * Controlled fleet count-filter + archive-open state (console#252): lifted
+   * up to App so `/` and `/archive` (plus `?filter=`) can drive and reflect
+   * the WorkerFleetSection header, making a filtered/archived fleet view
+   * shareable and reload-safe. Omit to fall back to WorkerFleetSection's own
+   * uncontrolled state.
+   */
+  fleetFilter?: FleetBucket | null;
+  onFleetFilterChange?: (next: FleetBucket | null) => void;
+  fleetArchiveOpen?: boolean;
+  onFleetArchiveOpenChange?: (next: boolean) => void;
 }
 
 // Present-tense, operator-facing framing for each attention kind: a severity tone (drives the
@@ -64,7 +76,17 @@ const KIND_PRESENTATION: Record<
 // timestamp at all — see workers/derive.ts for the root cause).
 const PROCESS_ATTENTION_KINDS = new Set<AttentionKind>(["paused-run", "long-running-process"]);
 
-export function OverviewSection({ state, telemetry, liveStatus, onOpen, now }: OverviewSectionProps) {
+export function OverviewSection({
+  state,
+  telemetry,
+  liveStatus,
+  onOpen,
+  now,
+  fleetFilter,
+  onFleetFilterChange,
+  fleetArchiveOpen,
+  onFleetArchiveOpenChange,
+}: OverviewSectionProps) {
   const health = useMemo(() => deriveHealthCounts(state), [state]);
   const attention = useMemo(
     () => deriveAttentionItems(state, telemetry).filter((item) => !PROCESS_ATTENTION_KINDS.has(item.kind)),
@@ -74,7 +96,14 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen, now }: O
   return (
     <div className="overview">
       {/* ── ① The fleet — every worker, at a glance (console#251) ─────────────────── */}
-      <WorkerFleetSection state={state} now={now} />
+      <WorkerFleetSection
+        state={state}
+        now={now}
+        filter={fleetFilter}
+        onFilterChange={onFleetFilterChange}
+        archiveOpen={fleetArchiveOpen}
+        onArchiveOpenChange={onFleetArchiveOpenChange}
+      />
 
       {/* ── ② Needs you — non-process triage (blocked gates, stale claims, quiet sources) ─ */}
       <section className="ov-section">
