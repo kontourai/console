@@ -19,17 +19,30 @@ import { BoardDrilldown } from "./board/BoardDrilldown";
  * `/run/:id` route — a card's id is the underlying process id (board.ts),
  * matching the route's `:id` segment 1:1. Omitting both props keeps the
  * original uncontrolled behavior.
+ *
+ * console#253: the drill-down now opens for ANY non-null `selectedId` — not
+ * only ids that resolve to a rendered board card — so a `/run/:id` deep link
+ * whose process has left the current operating state (completed and pruned,
+ * or simply a stale/bad id) shows an honest "not found" panel instead of
+ * silently rendering nothing (BoardDrilldown / deriveRunDetail own that
+ * distinction). `state` is passed straight through so the drill-down's own
+ * stage/gate/timeline derivation re-runs on every SSE-driven re-render, with
+ * no separate fetch or local cache to go stale.
  */
 export function BoardSection({
   state,
   fetchProjection,
   selectedId: controlledSelectedId,
   onSelectedIdChange,
+  now,
 }: {
   state: OperatingState;
   fetchProjection?: (runId: string) => Promise<unknown | null>;
   selectedId?: string | null;
   onSelectedIdChange?: (id: string | null) => void;
+  /** Fixed reference clock (epoch ms) for the drill-down's freshness/relative-
+   *  time rendering — e.g. a test. Defaults to the live wall clock. */
+  now?: number;
 }) {
   const board = useMemo(() => deriveBoard(state), [state]);
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
@@ -41,7 +54,10 @@ export function BoardSection({
   }
 
   // Keep the selected card in sync with the latest projection (its stage/gates
-  // may change); drop it if the work item leaves the board entirely.
+  // may change); a card that has left the board entirely (e.g. via #253's
+  // /run/:id deep link to a stale id) simply has no card here — the highlight
+  // prop below tolerates that, and BoardDrilldown renders its own honest
+  // "not found" state independent of whether a card was found.
   const selectedCard: BoardCard | null = selectedId
     ? board.columns.flatMap((column) => column.cards).find((card) => card.id === selectedId) ?? null
     : null;
@@ -57,9 +73,16 @@ export function BoardSection({
         operatingState={state}
         onIntent={fetchProjection ? handleIntent : undefined}
         selectedCardId={selectedCard?.id ?? null}
+        now={now}
       />
-      {selectedCard && fetchProjection ? (
-        <BoardDrilldown card={selectedCard} fetchProjection={fetchProjection} onClose={() => setSelectedId(null)} />
+      {selectedId && fetchProjection ? (
+        <BoardDrilldown
+          processId={selectedId}
+          state={state}
+          fetchProjection={fetchProjection}
+          onClose={() => setSelectedId(null)}
+          now={now}
+        />
       ) : null}
     </>
   );

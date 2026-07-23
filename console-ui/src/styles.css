@@ -3555,3 +3555,211 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
   font-size: 0.76rem;
   font-style: italic;
 }
+
+/* ── #253 Run drill-in: stage strip, gate history, timeline slice ─────────── */
+
+.run-detail {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.run-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-detail-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.run-detail-blocked {
+  margin: 0;
+  color: var(--warn);
+  font-size: 0.85rem;
+}
+
+.run-detail-source-refs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.run-detail-source-refs a {
+  color: var(--cyan);
+  font-size: 0.8rem;
+  text-decoration: underline dotted;
+}
+
+.run-detail-time {
+  font-family: var(--k-font-mono);
+  font-size: 0.75rem;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.run-detail-time-raw {
+  font-style: italic;
+  text-decoration: underline dotted var(--dim);
+}
+
+.run-detail-time-unknown {
+  font-style: italic;
+}
+
+.run-detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.run-detail-empty {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+/* Stage strip: a compact horizontal stepper honoring completed/current/pending
+ * (either the board's five-stage vocabulary, or a matching run's real Flow
+ * step topology — see deriveRunDetail.ts). */
+.run-stage-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.run-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 96px;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--dim);
+  border-radius: var(--radius);
+}
+
+.run-stage-completed {
+  border-top-color: var(--good);
+  opacity: 0.75;
+}
+
+.run-stage-current {
+  border-top-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.run-stage-pending {
+  border-top-color: var(--dim);
+  opacity: 0.55;
+}
+
+.run-stage-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.run-stage-status {
+  font-family: var(--k-font-mono);
+  font-size: 0.65rem;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Gate history: clickable, ordered newest-first — the click-path #255's trust
+ * panel lands on. */
+.run-gate-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-gate-entry {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.run-gate-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.run-gate-link:hover {
+  border-color: var(--line-hot);
+  background: var(--dark-row, var(--panel-2));
+}
+
+.run-gate-label {
+  flex: 1;
+  font-size: 0.85rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.run-gate-time {
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+/* Recent timeline slice */
+.run-timeline-slice {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-timeline-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  font-size: 0.8rem;
+}
+
+.run-timeline-entry strong {
+  color: var(--text);
+}
+
+.run-timeline-entry span:not(.run-timeline-time) {
+  flex: 1;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.run-timeline-time {
+  font-family: var(--k-font-mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+  white-space: nowrap;
+}
