@@ -1,6 +1,7 @@
 import React from "react";
 import { StatusBadge, Badge, Empty } from "@kontourai/ui/react";
 import { formatRelative } from "../../utils/format";
+import { SourceRefLinks } from "../../components/SourceRefLinks";
 import type { RunDetail, RunGateEntry, RunStageOutcome } from "./deriveRunDetail";
 
 const FRESHNESS_LABEL: Record<RunDetail["freshness"], string> = {
@@ -48,17 +49,7 @@ function RunHeaderExtras({ detail, now }: { detail: RunDetail; now: number }) {
         <RunActivityTime detail={detail} now={now} />
       </div>
       {detail.blockedReason ? <p className="run-detail-blocked">{detail.blockedReason}</p> : null}
-      {detail.sourceOfTruthRefs.length > 0 ? (
-        <ul className="run-detail-source-refs" aria-label="Source of truth">
-          {detail.sourceOfTruthRefs.map((ref) => (
-            <li key={ref.url}>
-              <a href={ref.url} target="_blank" rel="noopener noreferrer">
-                {ref.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <SourceRefLinks refs={detail.sourceOfTruthRefs} className="run-detail-source-refs" />
     </div>
   );
 }

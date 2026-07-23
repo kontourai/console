@@ -508,7 +508,11 @@ test("deriveRunDetail: a missing updatedAt is honestly 'unknown' freshness, neve
   assert.equal(detail!.display, "none");
 });
 
-// ── console#253 review finding 6: sourceOfTruthRefs URL scheme allow-list ────
+// ── console#256: sourceOfTruthRefs now delegates to the shared
+// utils/sourceRefs.ts deriveSourceRefs (see sourceRefs.test.ts for the full
+// edge-case suite: ordering, malformed entries, no-url-no-anchor, unsafe
+// scheme rejection). These integration-level tests just confirm
+// deriveRunDetail actually wires the process record through to it. ────────
 
 test("deriveRunDetail: sourceOfTruthRefs is empty when the process carries none", () => {
   const detail = deriveRunDetail(state({ processes: [proc({ id: "run-1" })] }), "run-1", NOW);
@@ -516,58 +520,21 @@ test("deriveRunDetail: sourceOfTruthRefs is empty when the process carries none"
   assert.deepEqual(detail!.sourceOfTruthRefs, []);
 });
 
-test("deriveRunDetail: sourceOfTruthRefs renders entries with a real https URL, skips entries without one", () => {
+test("deriveRunDetail: sourceOfTruthRefs carries a real https URL through, and rejects an unsafe javascript: scheme (XSS probe) while still keeping its honest label", () => {
   const withRefs = {
     id: "run-1",
     sourceOfTruthRefs: [
-      { label: "Work item", url: "https://example.test/work/123" },
-      { id: "no-url-here" },
+      { kind: "work-item", id: "work-item-123", label: "Work item", url: "https://example.test/work/123" },
+      { kind: "assignment-branch", id: "branch-evil", label: "evil", url: "javascript:alert(1)" },
       "not even an object",
     ],
   } as unknown as ConsoleProcess;
   const detail = deriveRunDetail(state({ processes: [withRefs] }), "run-1", NOW);
   assert.ok(detail);
-  assert.deepEqual(detail!.sourceOfTruthRefs, [{ label: "Work item", url: "https://example.test/work/123" }]);
-});
-
-test("deriveRunDetail: sourceOfTruthRefs rejects unsafe URL schemes (javascript:, data:) even when present (XSS probe)", () => {
-  const withRefs = {
-    id: "run-1",
-    sourceOfTruthRefs: [
-      { label: "evil", url: "javascript:alert(1)" },
-      { label: "evil-data", url: "data:text/html,<script>alert(1)</script>" },
-      { label: "good", url: "https://example.test/safe" },
-    ],
-  } as unknown as ConsoleProcess;
-  const detail = deriveRunDetail(state({ processes: [withRefs] }), "run-1", NOW);
-  assert.ok(detail);
-  assert.deepEqual(detail!.sourceOfTruthRefs, [{ label: "good", url: "https://example.test/safe" }]);
-});
-
-test("deriveRunDetail: sourceOfTruthRefs accepts both https: and http: URLs", () => {
-  const withRefs = {
-    id: "run-1",
-    sourceOfTruthRefs: [
-      { label: "Secure", url: "https://example.test/x" },
-      { label: "Local dev", url: "http://intranet.local/y" },
-    ],
-  } as unknown as ConsoleProcess;
-  const detail = deriveRunDetail(state({ processes: [withRefs] }), "run-1", NOW);
-  assert.ok(detail);
   assert.deepEqual(detail!.sourceOfTruthRefs, [
-    { label: "Secure", url: "https://example.test/x" },
-    { label: "Local dev", url: "http://intranet.local/y" },
+    { kind: "work-item", label: "Work item", url: "https://example.test/work/123" },
+    { kind: "assignment-branch", label: "evil" },
   ]);
-});
-
-test("deriveRunDetail: sourceOfTruthRefs rejects an unparsable URL string honestly (never a broken href)", () => {
-  const withRefs = {
-    id: "run-1",
-    sourceOfTruthRefs: [{ label: "broken", url: "not a url at all" }],
-  } as unknown as ConsoleProcess;
-  const detail = deriveRunDetail(state({ processes: [withRefs] }), "run-1", NOW);
-  assert.ok(detail);
-  assert.deepEqual(detail!.sourceOfTruthRefs, []);
 });
 
 // ── run header basics ─────────────────────────────────────────────────────────

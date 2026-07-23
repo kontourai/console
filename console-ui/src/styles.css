@@ -3584,19 +3584,57 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
   font-size: 0.85rem;
 }
 
-.run-detail-source-refs {
+/* Shared source-of-truth ref chips (console#256) — SourceRefLinks.tsx. Every
+   caller's own className (run-detail-source-refs / wf-card-source-refs) adds
+   layout on top of this base; the chip/link/text rules are shared so a
+   work-item chip looks identical on a fleet card and in the run detail. */
+.source-ref-links {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
-.run-detail-source-refs a {
+.source-ref-chip {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.source-ref-link {
   color: var(--cyan);
   font-size: 0.8rem;
   text-decoration: underline dotted;
+}
+
+.source-ref-text {
+  font-family: var(--k-font-mono);
+  font-size: 0.75rem;
+  color: var(--dim);
+  background: var(--k-neutral-soft, rgba(111, 128, 149, 0.14));
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.run-detail-source-refs {
+  gap: 10px;
+}
+
+.wf-card-source-refs {
+  margin: var(--k-space-2) 0 0;
+}
+
+.wf-card-source-refs .source-ref-chip {
+  overflow: hidden;
+}
+
+.wf-card-source-refs .source-ref-link,
+.wf-card-source-refs .source-ref-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .run-detail-time {
