@@ -81,3 +81,95 @@ test("BoardSection: omitting selectedId/onSelectedIdChange keeps the original un
   assert.match(markup, /Uncontrolled worker/);
   assert.doesNotMatch(markup, /board-drilldown/);
 });
+
+// console#253 review finding 1 (probe): a stage matching the pipeline's own
+// currentStageId must be marked as the run's current position (aria-current)
+// even when that stage's own status is "blocked" — not silently un-marked.
+test("BoardSection: a pipeline stage's own currentStageId gets aria-current even when its status is 'blocked'", () => {
+  const markup = render({
+    state: state({
+      processes: [proc({ id: "run-abc", label: "Blocked run" })],
+      pipeline: {
+        runId: "run-abc",
+        runLabel: "",
+        runStatus: "running",
+        edges: [],
+        currentStageId: "build",
+        stages: [
+          { id: "plan", label: "plan", order: 0, status: "passed", gates: [] },
+          { id: "build", label: "build", order: 1, status: "blocked", gates: [] },
+        ],
+      } as unknown as OperatingState["pipeline"],
+    }),
+    fetchProjection: neverResolves,
+    selectedId: "run-abc",
+    now: FIXED_NOW,
+  });
+  assert.match(markup, /aria-current="step"/);
+  // Exactly one stage carries it, and it is the blocked "build" stage — not
+  // silently dropped just because the position isn't "passed"/"current".
+  assert.equal((markup.match(/aria-current="step"/g) || []).length, 1);
+  const buildMatch = markup.match(/<li class="run-stage[^"]*"[^>]*>[^]*?build[^]*?<\/li>/);
+  assert.ok(buildMatch);
+  assert.match(buildMatch![0], /aria-current="step"/);
+});
+
+// console#253 review finding 2 (probe): a failed run's earlier board columns
+// must never render the green-check "completed" outcome.
+test("BoardSection: a failed run's earlier stages render 'earlier', never 'completed'", () => {
+  const markup = render({
+    state: state({ processes: [proc({ id: "run-1", label: "Failed run", status: "failed", currentStep: "verify" })] }),
+    fetchProjection: neverResolves,
+    selectedId: "run-1",
+    now: FIXED_NOW,
+  });
+  assert.match(markup, /run-stage-earlier/);
+  assert.doesNotMatch(markup, /run-stage-completed/);
+});
+
+// console#253 review finding 6 (probe): an XSS-style sourceOfTruthRefs URL
+// must never render as a live href.
+test("BoardSection: a javascript: sourceOfTruthRefs URL is never rendered as a link (XSS probe)", () => {
+  const withRefs = {
+    id: "run-1",
+    label: "Run with an unsafe link",
+    sourceOfTruthRefs: [{ label: "evil", url: "javascript:alert(1)" }],
+  } as unknown as ConsoleProcess;
+  const markup = render({
+    state: state({ processes: [withRefs] }),
+    fetchProjection: neverResolves,
+    selectedId: "run-1",
+    now: FIXED_NOW,
+  });
+  assert.doesNotMatch(markup, /javascript:/);
+});
+
+// console#253 review finding 7 (probe): a truthy-but-unparsable gate/timeline
+// timestamp must never render as an invalid <time dateTime="not-a-date">.
+test("BoardSection: a gate with a garbage updatedAt renders it as raw text, never an invalid <time dateTime>", () => {
+  const markup = render({
+    state: state({
+      processes: [proc({ id: "run-1", label: "Run with a garbage gate timestamp" })],
+      gates: [{ id: "g1", label: "Odd gate", status: "waiting", processRef: { id: "run-1" }, updatedAt: "not-a-date" } as OperatingState["gates"] extends (infer T)[] ? T : never],
+    }),
+    fetchProjection: neverResolves,
+    selectedId: "run-1",
+    now: FIXED_NOW,
+  });
+  assert.doesNotMatch(markup, /dateTime="not-a-date"/);
+  assert.match(markup, />not-a-date</);
+});
+
+test("BoardSection: a timeline item with a garbage occurredAt renders it as raw text, never an invalid <time dateTime>", () => {
+  const markup = render({
+    state: state({
+      processes: [proc({ id: "run-1", label: "Run with a garbage timeline timestamp" })],
+      timeline: [{ id: "t1", type: "process.started", occurredAt: "not-a-date", subjectRef: { id: "run-1" } } as OperatingState["timeline"] extends (infer T)[] ? T : never],
+    }),
+    fetchProjection: neverResolves,
+    selectedId: "run-1",
+    now: FIXED_NOW,
+  });
+  assert.doesNotMatch(markup, /dateTime="not-a-date"/);
+  assert.match(markup, />not-a-date</);
+});

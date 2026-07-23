@@ -120,16 +120,19 @@ test("direct-loading /run/:id shows the stage strip with the current stage highl
   await expect(page.locator(".board-drilldown")).toContainText("run checkout-banner");
 
   // Stage strip: five board stages, "In flight" (matching the process's
-  // execute step) is the highlighted current one, backlog/planning are
-  // completed, verify/done are still pending.
+  // execute step) is the highlighted current one. backlog/planning are the
+  // neutral "earlier" (this run is still active — classifyBoardStage has no
+  // gate evidence that they actually completed, console#253 review finding
+  // 2), verify/done are still pending.
   const stages = page.locator(".run-stage-strip .run-stage");
   await expect(stages).toHaveCount(5);
   const current = page.locator(".run-stage-current");
   await expect(current).toHaveCount(1);
   await expect(current).toContainText("In flight");
   await expect(current).toHaveAttribute("aria-current", "step");
-  await expect(page.locator(".run-stage-completed")).toHaveCount(2);
+  await expect(page.locator(".run-stage-earlier")).toHaveCount(2);
   await expect(page.locator(".run-stage-pending")).toHaveCount(2);
+  await expect(page.locator(".run-stage-completed")).toHaveCount(0);
 
   // Gate history: only the gate scoped to THIS run appears (the unrelated
   // gate targeting a different process is excluded), with a real /gate/:id

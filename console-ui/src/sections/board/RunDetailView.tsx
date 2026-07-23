@@ -1,13 +1,22 @@
 import React from "react";
 import { StatusBadge, Badge, Empty } from "@kontourai/ui/react";
 import { formatRelative } from "../../utils/format";
-import type { RunDetail, RunGateEntry } from "./deriveRunDetail";
+import type { RunDetail, RunGateEntry, RunStageOutcome } from "./deriveRunDetail";
 
 const FRESHNESS_LABEL: Record<RunDetail["freshness"], string> = {
   fresh: "fresh",
   idle: "idle",
   stalled: "stalled",
   unknown: "no activity data",
+};
+
+const STAGE_OUTCOME_LABEL: Record<RunStageOutcome, string> = {
+  completed: "completed",
+  earlier: "earlier",
+  current: "current",
+  blocked: "blocked",
+  failed: "failed",
+  pending: "pending",
 };
 
 /**
@@ -79,11 +88,11 @@ function RunStageStrip({ detail }: { detail: RunDetail }) {
       {detail.stages.map((stage) => (
         <li
           key={stage.id}
-          className={`run-stage run-stage-${stage.state}`}
-          aria-current={stage.state === "current" ? "step" : undefined}
+          className={`run-stage run-stage-${stage.outcome}${stage.current ? " run-stage-position-current" : ""}`}
+          aria-current={stage.current ? "step" : undefined}
         >
           <span className="run-stage-label">{stage.label}</span>
-          <span className="run-stage-status">{stage.state}</span>
+          <span className="run-stage-status">{STAGE_OUTCOME_LABEL[stage.outcome]}</span>
         </li>
       ))}
     </ol>
@@ -103,11 +112,7 @@ function RunGateHistory({ gates, now }: { gates: RunGateEntry[]; now: number }) 
               <a href={gate.href} className="run-gate-link">
                 <span className="run-gate-label">{gate.label}</span>
                 <Badge value={gate.status} />
-                {gate.updatedAt ? (
-                  <time className="run-gate-time" dateTime={gate.updatedAt}>{formatRelative(gate.updatedAt, now)}</time>
-                ) : (
-                  <span className="run-gate-time run-detail-time-unknown">no activity recorded</span>
-                )}
+                <TimeOrRaw value={gate.updatedAt} now={now} className="run-gate-time" emptyLabel="no activity recorded" />
               </a>
             </li>
           ))}
@@ -131,11 +136,7 @@ function RunTimelineSlice({ detail, now }: { detail: RunDetail; now: number }) {
               <li key={item.id} className="run-timeline-entry">
                 <strong>{item.type || "event"}</strong>
                 <span>{item.summary || item.subjectRef?.label || item.subjectRef?.id || item.id}</span>
-                {when ? (
-                  <time className="run-timeline-time" dateTime={when}>{formatRelative(when, now)}</time>
-                ) : (
-                  <span className="run-timeline-time run-detail-time-unknown">no timestamp</span>
-                )}
+                <TimeOrRaw value={when} now={now} className="run-timeline-time" emptyLabel="no timestamp" />
               </li>
             );
           })}
@@ -143,4 +144,28 @@ function RunTimelineSlice({ detail, now }: { detail: RunDetail; now: number }) {
       )}
     </section>
   );
+}
+
+function isParsableTimestamp(value: string): boolean {
+  return !Number.isNaN(Date.parse(value));
+}
+
+/**
+ * console#253 review finding 7: a truthy-but-invalid timestamp string (e.g.
+ * a garbage `updatedAt` on a gate/timeline record — neither field goes
+ * through `classifyActivity`'s own parse guard the way the header's
+ * `RunActivityTime` does) must never render an invalid `<time
+ * dateTime="not-a-date">` — same parse-before-render discipline as
+ * `classifyActivity`. A present-but-unparsable value still renders as plain
+ * text (never silently dropped, never a fabricated relative time); only a
+ * genuinely missing value falls back to `emptyLabel`.
+ */
+function TimeOrRaw({ value, now, className, emptyLabel }: { value?: string; now: number; className: string; emptyLabel: string }) {
+  if (value && isParsableTimestamp(value)) {
+    return <time className={className} dateTime={value}>{formatRelative(value, now)}</time>;
+  }
+  if (value) {
+    return <span className={`${className} run-detail-time-raw`}>{value}</span>;
+  }
+  return <span className={`${className} run-detail-time-unknown`}>{emptyLabel}</span>;
 }

@@ -3627,9 +3627,13 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
   font-size: 0.85rem;
 }
 
-/* Stage strip: a compact horizontal stepper honoring completed/current/pending
- * (either the board's five-stage vocabulary, or a matching run's real Flow
- * step topology — see deriveRunDetail.ts). */
+/* Stage strip: a compact horizontal stepper over the run's `outcome` per
+ * stage (either the board's five-stage vocabulary, or a matching run's real
+ * Flow step topology — see deriveRunDetail.ts), with the run's CURRENT
+ * POSITION marked independently via `.run-stage-position-current` (console#253
+ * review finding 1: a stage can be both the current position AND carry a
+ * blocked/failed outcome — e.g. stuck on a failing gate — so the position
+ * ring must render regardless of the outcome color below it). */
 .run-stage-strip {
   display: flex;
   flex-wrap: wrap;
@@ -3657,14 +3661,36 @@ button.glance-stat:hover { border-color: var(--k-line-strong); }
   opacity: 0.75;
 }
 
+/* "earlier": a predecessor of the run's current position under the
+ * board-vocabulary fallback, WITHOUT gate evidence that it actually
+ * completed (console#253 review finding 2) — neutral, not a green check. */
+.run-stage-earlier {
+  border-top-color: var(--dim);
+  opacity: 0.65;
+}
+
 .run-stage-current {
   border-top-color: var(--accent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.run-stage-blocked {
+  border-top-color: var(--warn);
+}
+
+.run-stage-failed {
+  border-top-color: var(--bad);
 }
 
 .run-stage-pending {
   border-top-color: var(--dim);
   opacity: 0.55;
+}
+
+/* The run's current POSITION — independent of outcome color (see comment
+ * above); a blocked/failed stage that is ALSO the current position gets
+ * both its outcome color AND this ring. */
+.run-stage-position-current {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 
 .run-stage-label {
