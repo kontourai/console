@@ -24,6 +24,7 @@
     "console-inspect": "console-server/dist/bin/console-inspect.js",
     "kontour-flow-bridge": "console-server/dist/bin/kontour-flow-bridge.js",
     "kontour-process-bridge": "console-server/dist/bin/kontour-process-bridge.js",
+    "kontour-trust-bridge": "console-server/dist/bin/kontour-trust-bridge.js",
     "console-db-migrate": "console-server/dist/bin/console-db-migrate.js"
   },
   "main": "console-server/dist/src/console-foundation/index.js",
@@ -54,7 +55,7 @@
     "test:browser": "playwright test",
     "smoke:ui:hosted": "node scripts/hosted-ui-smoke.mjs",
     "test:dev-local": "node --import tsx --test scripts/dev-local.test.ts scripts/publish-npm-policy.test.ts scripts/check-release-package-versions.test.ts",
-    "test:release-policy": "node --import tsx scripts/check-lock-integrity.ts && node --import tsx --test scripts/check-lock-integrity.test.ts scripts/npm-release-policy.test.ts scripts/release-please-generation.test.ts scripts/publish-npm-policy.test.ts scripts/check-release-package-versions.test.ts",
+    "test:release-policy": "node --import tsx scripts/check-lock-integrity.ts && node --import tsx --test scripts/check-lock-integrity.test.ts scripts/npm-release-policy.test.ts scripts/release-please-generation.test.ts scripts/publish-npm-policy.test.ts scripts/check-release-package-versions.test.ts scripts/bin-manifest.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontourai/console-core run typecheck && npm --workspace @kontourai/cli run typecheck && npm --workspace @kontourai/console-server run typecheck && npm --workspace @kontourai/console-ui run typecheck",
     "check:content-boundary": "node --import tsx scripts/check-content-boundary.ts",
     "check:release-package-versions": "node --import tsx scripts/check-release-package-versions.ts",

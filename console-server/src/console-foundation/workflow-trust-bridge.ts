@@ -255,6 +255,35 @@ function canonicalDigest(fields: Record<string, string>): string {
   return crypto.createHash("sha256").update(JSON.stringify(ordered)).digest("hex");
 }
 
+/**
+ * Recursively canonical JSON serialization for digest inputs (console#254
+ * review MED finding 3). `JSON.stringify` alone preserves whatever key order
+ * the SOURCE object happens to carry at every nesting depth; the Surface
+ * trust report this bridge digests is a deeply nested, producer-controlled
+ * object (`payload`, individual `claim`/`evidence` records), so two
+ * semantically-identical reports that merely differ in NESTED key order
+ * (e.g. re-derived by a different Surface build, or re-serialized by a JSON
+ * library with different key-insertion order) would otherwise digest to
+ * DIFFERENT bytes -- a spurious new event id for a meaningless reorder, and a
+ * spurious real one dropped as a false "duplicate" the other way. Sorting
+ * object keys at every depth closes that gap; array ELEMENT ORDER is
+ * preserved (arrays are ordered data, not a set of keys to normalize).
+ */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(canonicalizeValue(value));
+}
+
+function canonicalizeValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalizeValue);
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const ordered: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) ordered[key] = canonicalizeValue(record[key]);
+    return ordered;
+  }
+  return value;
+}
+
 function isValidRef(value: unknown): value is WorkflowTrustProjectionRef {
   if (!isRecord(value)) return false;
   return isNonEmptyString(value.product) && isNonEmptyString(value.kind) && isNonEmptyString(value.id);
@@ -308,6 +337,24 @@ function validateTrustEntryShape(
   if (!isRecord(flowAgentsExtension) || !isNonEmptyString(flowAgentsExtension.task_slug)) {
     return { ok: false, reason: `${entryLabel}.extensions["flow-agents"].task_slug must be a non-empty string` };
   }
+  // console#254 review MED finding 4: workflow-process-bridge.ts derives its
+  // qualified workflow subject id from `entry.subjectRef.id` (console#254),
+  // so THIS bridge must use the exact same basis for the two bridges' gate/
+  // process events to land on the same board card. `extensions["flow-agents"]
+  // .task_slug` is a SEPARATE field the producer also sets from the same
+  // underlying workflow directory -- normally identical, but a mismatched
+  // envelope (a producer bug, a hand-edited fixture) would otherwise let this
+  // bridge silently key off the WRONG value and split one workflow into two
+  // board cards with no warning. Require them to agree; a mismatch is
+  // ambiguous identity, not a value to guess between, so the whole entry is
+  // skipped (fail-safe) rather than picking one field over the other.
+  const subjectRefId = (value.subjectRef as WorkflowTrustProjectionRef).id;
+  if (flowAgentsExtension.task_slug !== subjectRefId) {
+    return {
+      ok: false,
+      reason: `${entryLabel}.subjectRef.id ('${subjectRefId}') does not match extensions["flow-agents"].task_slug ('${flowAgentsExtension.task_slug}') -- ambiguous workflow identity, skipping to avoid silently splitting one workflow into two board cards`,
+    };
+  }
   return { ok: true, entry: value as unknown as WorkflowTrustProjectionEntry };
 }
 
@@ -317,7 +364,8 @@ interface TrustReportClaimLike {
   updatedAt?: string;
   fieldOrBehavior?: string;
   claimType?: string;
-  freshness?: { asOf?: string };
+  /** Surface's `ClaimFreshness` (report.d.ts): `asOf` is required, `expiresAt` and `stale` are its other fields. Typed loosely here since this bridge relays it opaquely. */
+  freshness?: { asOf?: string; expiresAt?: string; stale?: boolean; [key: string]: unknown };
 }
 
 interface TrustReportEvidenceLike {
@@ -332,14 +380,39 @@ function reportGeneratedAt(payload: Record<string, unknown>): string | undefined
   return isNonEmptyString(payload.generatedAt) ? payload.generatedAt : undefined;
 }
 
-function reportClaims(payload: Record<string, unknown>): TrustReportClaimLike[] {
-  return (Array.isArray(payload.claims) ? payload.claims : []).filter((item: unknown): item is TrustReportClaimLike =>
-    isRecord(item) && isNonEmptyString(item.id));
+/**
+ * Filters `payload.claims` to well-formed records, warning on -- not
+ * silently dropping (console#254 review MED finding 5) -- any entry missing
+ * a non-empty string `id`. The rest of the translate pipeline is a per-item,
+ * fail-safe filter (a malformed sibling never aborts the batch); a SILENT
+ * drop here would defeat that contract's whole point of surfacing what was
+ * skipped and why.
+ */
+function reportClaims(payload: Record<string, unknown>, entryLabel: string, warnings: string[]): TrustReportClaimLike[] {
+  const raw = Array.isArray(payload.claims) ? payload.claims : [];
+  const claims: TrustReportClaimLike[] = [];
+  raw.forEach((item: unknown, index: number) => {
+    if (isRecord(item) && isNonEmptyString(item.id)) {
+      claims.push(item as unknown as TrustReportClaimLike);
+      return;
+    }
+    warnings.push(`${entryLabel}: payload.claims[${index}] is not a well-formed claim record (missing a non-empty string id) -- skipping it`);
+  });
+  return claims;
 }
 
-function reportEvidence(payload: Record<string, unknown>): TrustReportEvidenceLike[] {
-  return (Array.isArray(payload.evidence) ? payload.evidence : []).filter((item: unknown): item is TrustReportEvidenceLike =>
-    isRecord(item) && isNonEmptyString(item.id) && isNonEmptyString(item.claimId));
+/** Same fail-safe, warn-not-silent-drop treatment as `reportClaims` (console#254 review MED finding 5) for `payload.evidence`. */
+function reportEvidence(payload: Record<string, unknown>, entryLabel: string, warnings: string[]): TrustReportEvidenceLike[] {
+  const raw = Array.isArray(payload.evidence) ? payload.evidence : [];
+  const evidence: TrustReportEvidenceLike[] = [];
+  raw.forEach((item: unknown, index: number) => {
+    if (isRecord(item) && isNonEmptyString(item.id) && isNonEmptyString(item.claimId)) {
+      evidence.push(item as unknown as TrustReportEvidenceLike);
+      return;
+    }
+    warnings.push(`${entryLabel}: payload.evidence[${index}] is not a well-formed evidence record (missing a non-empty string id/claimId) -- skipping it`);
+  });
+  return evidence;
 }
 
 /** The scope-qualified "workflow" subject id BOTH this bridge and workflow-process-bridge.ts derive for the same workflow (console#254) -- see workflow-subject-identity.ts. */
@@ -425,12 +498,18 @@ function translateTrustEntry(
   warnings: string[],
   events: ConsoleEventRecord[],
 ): void {
-  const taskSlug = entry.extensions["flow-agents"].task_slug;
+  // console#254 review MED finding 4: `subjectRef.id` is the SINGLE basis for
+  // workflow identity (matches workflow-process-bridge.ts) -- validated equal
+  // to `extensions["flow-agents"].task_slug` in `validateTrustEntryShape`
+  // above, so either field would do here, but using `subjectRef.id`
+  // consistently (rather than switching bases between validation and
+  // translation) keeps this function's identity source obviously singular.
+  const taskSlug = entry.subjectRef.id;
   const entryLabel = `trusts (${entry.id})`;
   const payload = entry.payload;
   const reportAt = reportGeneratedAt(payload) ?? envelope.generatedAt;
-  const claims = reportClaims(payload);
-  const evidence = reportEvidence(payload);
+  const claims = reportClaims(payload, entryLabel, warnings);
+  const evidence = reportEvidence(payload, entryLabel, warnings);
   const claimsById = new Map(claims.map((claim) => [claim.id, claim]));
   const workflowSubjectId = qualifiedWorkflowId(envelope, taskSlug);
 
@@ -458,7 +537,7 @@ function translateTrustEntry(
       })
       .map((claimId) => surfaceClaimRef(envelope, taskSlug, claimId));
     const gateEvidenceRefs = candidate.evidenceIds.map((evidenceId) => surfaceEvidenceRef(envelope, taskSlug, evidenceId));
-    events.push(gateOpenedEvent(envelope, entry, taskSlug, candidate, scopeLabel, reportAt, gateClaimRefs, gateEvidenceRefs, workflowSubjectId));
+    events.push(gateEnrichedEvent(envelope, entry, taskSlug, candidate, scopeLabel, reportAt, gateClaimRefs, gateEvidenceRefs, workflowSubjectId));
   });
 
   claims.forEach((claim, index) => {
@@ -473,10 +552,18 @@ function translateTrustEntry(
   });
 
   evidence.forEach((item, index) => {
-    if (!claimsById.has(item.claimId)) {
+    const claimKnown = claimsById.has(item.claimId);
+    // console#254 review MED finding 5: an orphan evidence record (its
+    // `claimId` does not match any claim actually IN the report) must not
+    // get a claim ref pointing at a claim that does not exist -- that ref
+    // would be a FABRICATED cross-product link, not a relay of anything
+    // Surface actually asserted. Attach the evidence without a claim ref
+    // instead; the warning below is the honest record of what happened.
+    const claimRefs = claimKnown ? [surfaceClaimRef(envelope, taskSlug, item.claimId)] : [];
+    if (!claimKnown) {
       warnings.push(`${entryLabel}: payload.evidence[${index}] (${item.id}) references unknown claim id '${item.claimId}' -- attaching without a claim ref`);
     }
-    events.push(evidenceAttachedEvent(envelope, entry, taskSlug, item, scopeLabel, reportAt));
+    events.push(evidenceAttachedEvent(envelope, entry, taskSlug, item, scopeLabel, reportAt, claimRefs));
   });
 }
 
@@ -488,6 +575,24 @@ function surfaceEvidenceRef(envelope: WorkflowTrustProjectionEnvelope, taskSlug:
   return { product: "surface", kind: "evidence", id: qualifiedEvidenceId(envelope, taskSlug, evidenceId), label: evidenceId };
 }
 
+/**
+ * console#254 review MED finding 7 (accepted, self-healing intermediate
+ * state, not a defect): if this bridge's `process.progressed` event folds
+ * BEFORE workflow-process-bridge.ts's own `process.started`/`process.*`
+ * event for the same workflow ever has (a plausible stream-order outcome --
+ * the two bridges' events are independently produced and merged by the
+ * caller, not sequenced against each other), `upsertProcess` creates a
+ * DEGRADED process card: no `status`, since this event's `after` never sets
+ * one, and `state.processes` has no prior entry to inherit one from. This is
+ * deliberately NOT special-cased away -- dropping this event's trustReport/
+ * refs until a process event arrives first would LOSE data outright under
+ * replay (there is no "wait and retry" in a pure fold), which is worse than
+ * a transient statusless card. Once workflow-process-bridge.ts's own event
+ * folds (in either order, since both upsert by the SAME qualified subject
+ * id), the card is fully repaired: status/currentStep populate and
+ * trustReport/refs already there are retained, not overwritten. See
+ * workflow-trust-bridge.test.ts's degraded-then-repaired regression test.
+ */
 function processProgressedEvent(
   envelope: WorkflowTrustProjectionEnvelope,
   entry: WorkflowTrustProjectionEntry,
@@ -503,7 +608,13 @@ function processProgressedEvent(
     subjectId,
     kind: "process",
     reportGeneratedAt: occurredAt,
-    content: JSON.stringify(entry.payload),
+    content: canonicalJson(entry.payload),
+    // console#254 review LOW finding 8: sourceOfTruthRefs is emitted in
+    // `payload.after` but was previously absent from the digest -- a
+    // refs-only change (a work-item/assignment ref added or removed with the
+    // report otherwise byte-identical) re-derived the SAME id and silently
+    // deduped away, never folding. Canonicalized the same way as content.
+    sourceOfTruthRefs: canonicalJson(sourceOfTruthRefs),
   });
   return {
     schema: "kontour.console.event",
@@ -528,7 +639,7 @@ function processProgressedEvent(
   } as unknown as ConsoleEventRecord;
 }
 
-function gateOpenedEvent(
+function gateEnrichedEvent(
   envelope: WorkflowTrustProjectionEnvelope,
   entry: WorkflowTrustProjectionEntry,
   taskSlug: string,
@@ -543,16 +654,23 @@ function gateOpenedEvent(
   const digest = canonicalDigest({
     subjectId,
     kind: "gate",
-    claimIds: JSON.stringify([...gateAssociation.claimIds].sort()),
-    evidenceIds: JSON.stringify([...gateAssociation.evidenceIds].sort()),
+    claimIds: canonicalJson([...gateAssociation.claimIds].sort()),
+    evidenceIds: canonicalJson([...gateAssociation.evidenceIds].sort()),
     reportGeneratedAt: occurredAt,
-    content: JSON.stringify(entry.payload),
+    content: canonicalJson(entry.payload),
   });
   return {
     schema: "kontour.console.event",
     version: "0.1",
     id: `evt-trustbridge-gate-${digest}`,
-    type: "gate.opened",
+    // console#254 review HIGH finding 1: `gate.enriched`, NOT `gate.opened` --
+    // this bridge relays evidence/claim ASSOCIATIONS, never a computed
+    // verdict. `gate.opened`'s type-derived status fallback in
+    // current-operating-state.ts's `statusFromGateEvent` would otherwise
+    // silently materialize a fabricated "waiting" status on the folded gate
+    // even though `after.status` is deliberately never set below. See the
+    // dedicated `gate.enriched` fold case (current-operating-state.ts).
+    type: "gate.enriched",
     occurredAt,
     producer: {
       id: "workflow-trust-bridge",
@@ -590,11 +708,23 @@ function claimStatusChangedEvent(
   const digest = canonicalDigest({
     subjectId,
     occurredAt,
-    content: JSON.stringify(claim),
+    content: canonicalJson(claim),
   });
   const after: Record<string, unknown> = { status: claim.status };
-  if (claim.freshness && isNonEmptyString(claim.freshness.asOf)) {
-    after.freshness = { lastCheckedAt: claim.freshness.asOf };
+  if (claim.freshness) {
+    // console#254 review MED finding 6: `after.freshness.lastCheckedAt` is
+    // Console's OWN claim-freshness vocabulary -- current-operating-state.ts's
+    // `upsertClaim` reads `after.freshness.lastCheckedAt` to derive
+    // `lastVerifiedAt`, so it is set here ADDITIVELY (from `asOf`) to keep
+    // that existing fold path working, NOT as a substitute for Surface's own
+    // freshness fact. `after.surfaceFreshness` carries Surface's
+    // `ClaimFreshness` object (`asOf`/`expiresAt`/`stale`) completely
+    // VERBATIM, so `stale` (previously dropped entirely) and `expiresAt`
+    // survive the relay unchanged.
+    after.surfaceFreshness = claim.freshness;
+    if (isNonEmptyString(claim.freshness.asOf)) {
+      after.freshness = { lastCheckedAt: claim.freshness.asOf };
+    }
   }
   return {
     schema: "kontour.console.event",
@@ -626,13 +756,14 @@ function evidenceAttachedEvent(
   item: TrustReportEvidenceLike,
   scopeLabel: string,
   fallbackOccurredAt: string,
+  claimRefs: ReturnType<typeof surfaceClaimRef>[],
 ): ConsoleEventRecord {
   const occurredAt = isNonEmptyString(item.observedAt) ? item.observedAt : fallbackOccurredAt;
   const subjectId = qualifiedEvidenceId(envelope, taskSlug, item.id);
   const digest = canonicalDigest({
     subjectId,
     occurredAt,
-    content: JSON.stringify(item),
+    content: canonicalJson(item),
   });
   return {
     schema: "kontour.console.event",
@@ -650,7 +781,10 @@ function evidenceAttachedEvent(
     correlationId: `corr-workflow-trust-${qualifiedWorkflowId(envelope, taskSlug)}`,
     sequence: 1,
     payload: {
-      refs: [surfaceClaimRef(envelope, taskSlug, item.claimId)],
+      // console#254 review MED finding 5: NO fallback ref-fabrication here --
+      // an orphan evidence record (unknown claimId) is passed an EMPTY
+      // claimRefs by the caller, never a ref pointing at a nonexistent claim.
+      refs: claimRefs,
       summary: item.excerptOrSummary || `Evidence '${item.id}' attached`,
     },
   } as unknown as ConsoleEventRecord;

@@ -204,10 +204,56 @@ test("a trust entry with NO gate associations still delivers the report on the p
 
 // ── AC: Surface stays authority -- never a fabricated verdict ──────────────
 
-test("gate events never assert a pass/fail status -- Surface's own claim statuses are relayed on the claims plane, not recomputed onto the gate", () => {
+test("gate events are typed gate.enriched (not gate.opened) and never assert a pass/fail status in the emitted payload", () => {
   const { events } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(checkoutBannerTrust));
-  const gateEvent = events.find((event: any) => event.type === "gate.opened");
+  const gateEvent = events.find((event: any) => event.type === "gate.enriched");
+  assert.ok(gateEvent, "expected a gate.enriched event");
+  assert.equal(events.some((event: any) => event.type === "gate.opened"), false);
   assert.equal((gateEvent!.payload as any).after.status, undefined);
+});
+
+test("console#254 review HIGH finding 1 regression: the emitted gate.enriched event's status-less payload does NOT materialize gates[].status on the FOLDED state (the exact hole a payload-only check misses)", () => {
+  const { events } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(checkoutBannerTrust));
+  const state = buildCurrentOperatingState([{ relativePath: "gate-enriched-fold.jsonl", events }]);
+
+  assert.equal(state.gates.length, 1);
+  const gate = state.gates[0] as any;
+  // The critical assertion: NOT "waiting" (the gate.opened type-derived
+  // fallback the fold used to apply), NOT any other fabricated verdict --
+  // status must be entirely ABSENT (compactObject drops undefined keys).
+  assert.equal("status" in gate, false, `expected no status key on the folded gate, got ${JSON.stringify(gate.status)}`);
+  assert.equal(gate.evidenceRefs.length, 1);
+  assert.equal(gate.expectationRefs.length, 1);
+});
+
+test("console#254 review HIGH finding 1 regression: trust-only fold -> gate exists with evidenceRefs and NO status; a REAL gate.passed event then folds status=passed, refs retained", () => {
+  const { events: trustEvents } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(checkoutBannerTrust));
+  const trustOnlyState = buildCurrentOperatingState([{ relativePath: "trust-only.jsonl", events: trustEvents }]);
+  const trustOnlyGate = trustOnlyState.gates[0] as any;
+  assert.equal("status" in trustOnlyGate, false);
+  assert.equal(trustOnlyGate.evidenceRefs.length, 1);
+
+  const gateId = trustOnlyGate.id;
+  const realGatePassed = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-real-flow-gate-passed",
+    type: "gate.passed",
+    occurredAt: "2026-07-21T09:00:00Z",
+    producer: { id: "flow-bridge", product: "flow", name: "flow bridge" },
+    scope: DEFAULT_TRUST_SCOPE,
+    subject: { product: "flow-agents", kind: "gate", id: gateId, label: "tests-evidence" },
+    payload: { after: { status: "passed" }, summary: "Gate passed for real" },
+  };
+
+  const repairedState = buildCurrentOperatingState([{ relativePath: "trust-then-real-gate.jsonl", events: [...trustEvents, realGatePassed] }]);
+  assert.equal(repairedState.gates.length, 1);
+  const repairedGate = repairedState.gates[0] as any;
+  assert.equal(repairedGate.status, "passed");
+  // Evidence/expectation refs the trust bridge attached are RETAINED, not
+  // clobbered by the later real gate.passed event.
+  assert.equal(repairedGate.evidenceRefs.length, 1);
+  assert.equal(repairedGate.expectationRefs.length, 1);
 });
 
 // ── AC: fail-safe per-entry / per-sub-record validation ────────────────────
@@ -241,6 +287,98 @@ test("a malformed gate association is skipped with a warning; the entry's other 
   assert.equal(state.claims.length, 1);
   assert.equal(state.evidence.length, 1);
 });
+
+// ── console#254 review MED finding 4: identity basis mismatch ──────────────
+
+test("subjectRef.id and extensions[flow-agents].task_slug disagreeing is treated as ambiguous identity -- warn + skip the WHOLE entry, never a silent split", () => {
+  const mismatched = trustEntry("checkout-banner", {
+    subjectRef: { product: "flow-agents", kind: "workflow", id: "demo", label: "demo" },
+    // extensions.task_slug left as "checkout-banner" from trustEntry("checkout-banner") -- deliberately disagreeing with subjectRef.id above.
+  });
+  const validEntry = trustEntry("pricing-audit");
+  const { events, warnings } = translateWorkflowTrustProjectionEnvelope(trustEnvelope([mismatched, validEntry]));
+
+  assert.match(warnings.join("\n"), /subjectRef\.id \('demo'\) does not match extensions\["flow-agents"\]\.task_slug \('checkout-banner'\)/);
+  const state = buildCurrentOperatingState([{ relativePath: "mismatched-identity.jsonl", events }]);
+  // No board card at all for either "demo" or "checkout-banner" from the
+  // mismatched entry -- ONLY the valid sibling's card exists. A mismatch
+  // must never silently split one workflow into two cards keyed by
+  // different bases.
+  assert.equal(state.processes.length, 1);
+  assert.equal(state.processes[0].id, qualifiedWorkflowId("pricing-audit"));
+  assert.equal(state.processes.some((process: any) => process.id === qualifiedWorkflowId("demo")), false);
+  assert.equal(state.processes.some((process: any) => process.id === qualifiedWorkflowId("checkout-banner")), false);
+});
+
+// ── console#254 review MED finding 5: orphan/malformed evidence ────────────
+
+test("orphan evidence (claimId not present among the report's claims) attaches WITHOUT a fabricated claim ref, and warns", () => {
+  const orphanReport = trustReport("orphan-evidence-workflow");
+  (orphanReport as any).evidence.push({
+    id: "ev-orphan",
+    claimId: "claim-does-not-exist",
+    evidenceType: "test_output",
+    method: "validation",
+    sourceRef: "orphan-evidence-workflow/evidence.json",
+    excerptOrSummary: "orphan evidence",
+    observedAt: "2026-07-20T10:04:00Z",
+    collectedBy: "flow-agents/workflow-sidecar",
+    passing: true,
+  });
+  const entry = trustEntry("orphan-evidence-workflow", { payload: orphanReport });
+  const { events, warnings } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(entry));
+
+  assert.match(warnings.join("\n"), /payload\.evidence\[1\] \(ev-orphan\) references unknown claim id 'claim-does-not-exist' -- attaching without a claim ref/);
+  const orphanEvent = events.find((event: any) => event.type === "evidence.attached" && event.subject.label === "orphan evidence");
+  assert.ok(orphanEvent, "expected an evidence.attached event for the orphan record");
+  assert.deepEqual((orphanEvent!.payload as any).refs, [], "orphan evidence must not carry a ref to a nonexistent claim");
+
+  const state = buildCurrentOperatingState([{ relativePath: "orphan-evidence.jsonl", events }]);
+  const orphanEvidence = state.evidence.find((item: any) => item.summary === "orphan evidence") as any;
+  assert.ok(orphanEvidence, "orphan evidence should still appear on the evidence plane");
+  assert.equal(orphanEvidence.claimRefs, undefined, "compactObject drops the empty claimRefs array -- no fabricated ref");
+});
+
+test("a malformed evidence record (missing id/claimId) is dropped with a warning, not silently", () => {
+  const malformedEvidenceReport = trustReport("malformed-evidence-workflow");
+  (malformedEvidenceReport as any).evidence.push({ excerptOrSummary: "no id or claimId here" });
+  const entry = trustEntry("malformed-evidence-workflow", { payload: malformedEvidenceReport });
+  const { events, warnings } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(entry));
+
+  assert.match(warnings.join("\n"), /payload\.evidence\[1\] is not a well-formed evidence record \(missing a non-empty string id\/claimId\) -- skipping it/);
+  // Only the well-formed evidence record (index 0) is emitted.
+  assert.equal(events.filter((event: any) => event.type === "evidence.attached").length, 1);
+});
+
+test("a malformed claim record (missing id) is dropped with a warning, not silently", () => {
+  const malformedClaimReport = trustReport("malformed-claim-workflow");
+  (malformedClaimReport as any).claims.push({ status: "verified" });
+  const entry = trustEntry("malformed-claim-workflow", { payload: malformedClaimReport });
+  const { events, warnings } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(entry));
+
+  assert.match(warnings.join("\n"), /payload\.claims\[1\] is not a well-formed claim record \(missing a non-empty string id\) -- skipping it/);
+  assert.equal(events.filter((event: any) => event.type === "claim.status.changed").length, 1);
+});
+
+// ── console#254 review MED finding 6: freshness relayed verbatim ───────────
+
+test("claim freshness (asOf, expiresAt, stale) survives the relay verbatim under a clearly-named key, additive lastCheckedAt for the existing fold path", () => {
+  const freshReport = trustReport("freshness-workflow");
+  (freshReport as any).claims[0].freshness = { asOf: "2026-07-20T11:58:00Z", expiresAt: "2026-07-27T11:58:00Z", stale: true };
+  const entry = trustEntry("freshness-workflow", { payload: freshReport });
+  const { events } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(entry));
+
+  const claimEvent = events.find((event: any) => event.type === "claim.status.changed");
+  const after = (claimEvent!.payload as any).after;
+  assert.deepEqual(after.surfaceFreshness, { asOf: "2026-07-20T11:58:00Z", expiresAt: "2026-07-27T11:58:00Z", stale: true });
+  assert.equal(after.freshness.lastCheckedAt, "2026-07-20T11:58:00Z");
+
+  const state = buildCurrentOperatingState([{ relativePath: "freshness.jsonl", events }]);
+  const claim = state.claims[0] as any;
+  assert.deepEqual(claim.surfaceFreshness, { asOf: "2026-07-20T11:58:00Z", expiresAt: "2026-07-27T11:58:00Z", stale: true });
+  assert.equal(claim.lastVerifiedAt, "2026-07-20T11:58:00Z");
+});
+
 
 test("readWorkflowTrustProjectionEnvelope rejects a structurally malformed envelope (missing producer.product / scope.id)", () => {
   const dir = mkdtempSync(join(tmpdir(), "workflow-trust-envelope-malformed-"));
@@ -333,6 +471,123 @@ test("changed evidence (report content advances) re-derives NEW ids on the next 
   const state = buildCurrentOperatingState([{ relativePath: "workflow-trust-bridge-advance.jsonl", events: sink.records }]);
   assert.equal(state.processes.length, 1);
   assert.equal((state.claims[0] as any).status, "disputed");
+});
+
+// ── console#254 review MED finding 3: canonical (order-independent) digest ─
+
+function reorderKeysDeep(value: any): any {
+  if (Array.isArray(value)) return value.map(reorderKeysDeep);
+  if (value && typeof value === "object") {
+    const reordered: Record<string, unknown> = {};
+    // Insert keys in REVERSE order -- a meaningless nested key-order change,
+    // not a content change.
+    for (const key of Object.keys(value).reverse()) reordered[key] = reorderKeysDeep(value[key]);
+    return reordered;
+  }
+  return value;
+}
+
+test("reordering nested keys in the report (same content, different key insertion order) produces IDENTICAL event ids", () => {
+  const original = trustEntry("canonical-workflow");
+  const reordered = trustEntry("canonical-workflow", { payload: reorderKeysDeep(original.payload) });
+  assert.notDeepEqual(Object.keys(reordered.payload), Object.keys(original.payload), "sanity: the reordered payload's top-level key order actually differs");
+  assert.deepEqual(reordered.payload, original.payload, "sanity: the reordered payload is still deep-equal (same content)");
+
+  const { events: originalEvents } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(original));
+  const { events: reorderedEvents } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(reordered));
+
+  assert.equal(originalEvents.length, reorderedEvents.length);
+  const originalIds = originalEvents.map((event: any) => event.id).sort();
+  const reorderedIds = reorderedEvents.map((event: any) => event.id).sort();
+  assert.deepEqual(reorderedIds, originalIds, "a meaningless nested key reorder must not change any event id");
+});
+
+test("a genuinely different report (not just reordered) produces DIFFERENT event ids", () => {
+  const original = trustEntry("canonical-diff-workflow");
+  const changedReport = trustReport("canonical-diff-workflow");
+  (changedReport as any).claims[0].status = "disputed";
+  const changed = trustEntry("canonical-diff-workflow", { payload: changedReport });
+
+  const { events: originalEvents } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(original));
+  const { events: changedEvents } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(changed));
+
+  const originalClaimEvent = originalEvents.find((event: any) => event.type === "claim.status.changed");
+  const changedClaimEvent = changedEvents.find((event: any) => event.type === "claim.status.changed");
+  assert.notEqual(changedClaimEvent!.id, originalClaimEvent!.id);
+});
+
+// ── console#254 review MED finding 7: trust-first fold is a self-healing intermediate state ──
+
+test("trust-first fold creates a DEGRADED (statusless) process card; a LATER process-bridge event fully repairs it, retaining the trustReport", () => {
+  const { events: trustEvents } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(checkoutBannerTrust));
+  const degradedState = buildCurrentOperatingState([{ relativePath: "trust-first.jsonl", events: trustEvents }]);
+  assert.equal(degradedState.processes.length, 1);
+  const degradedProcess = degradedState.processes[0] as any;
+  // Documented, accepted intermediate state: no status/currentStep yet, but
+  // the trust data is NOT lost while waiting for the process event.
+  assert.equal(degradedProcess.status, undefined);
+  assert.equal(degradedProcess.currentStep, undefined);
+  assert.deepEqual(degradedProcess.trustReport, checkoutBannerTrust.payload);
+
+  const processEnvelope = {
+    schema: "kontour.console.projection",
+    version: "0.1",
+    generatedAt: "2026-07-20T12:00:00Z",
+    scope: DEFAULT_TRUST_SCOPE,
+    producer: { id: "flow-agents-process", product: "flow-agents" },
+    derivedFrom: {
+      mode: "direct_snapshot",
+      eventHistory: "unavailable",
+      directSnapshot: {
+        id: "flow-agents-process:repo:flow-agents",
+        emittedAt: "2026-07-20T12:00:00Z",
+        producer: { id: "flow-agents-process", product: "flow-agents" },
+        reason: "workflow-process projection is derived from local workflow state/handoff sidecars",
+        sourceRef: { product: "flow-agents", kind: "workflow-process", id: ".kontourai/flow-agents/*/state.json", label: "Local workflow state sidecars" },
+      },
+    },
+    processes: [{
+      id: "process.workflow.checkout-banner.a1b2c3d4",
+      family: "workflow",
+      nonAuthority: true,
+      subjectRef: { product: "flow-agents", kind: "workflow", id: "checkout-banner", label: "checkout-banner" },
+      sourceRef: { product: "flow-agents", kind: "workflow-state", id: "checkout-banner", label: "checkout-banner/state.json" },
+      summary: "verifying",
+      status: "running",
+      extensions: {
+        "flow-agents": { task_slug: "checkout-banner", workflow_status: "verifying", phase: "verify", next_action_status: "continue", updated_at: "2026-07-20T11:59:00Z", source_path: "checkout-banner/state.json" },
+      },
+    }],
+  };
+  const { events: processEvents } = translateWorkflowProcessProjectionEnvelope(processEnvelope);
+
+  const repairedState = buildCurrentOperatingState([{ relativePath: "trust-first-then-process.jsonl", events: [...trustEvents, ...processEvents] }]);
+  assert.equal(repairedState.processes.length, 1, "still ONE process, not a duplicate");
+  const repairedProcess = repairedState.processes[0] as any;
+  assert.equal(repairedProcess.status, "running");
+  assert.equal(repairedProcess.currentStep, "verify");
+  // The trust data attached while the card was degraded is RETAINED, not lost.
+  assert.deepEqual(repairedProcess.trustReport, checkoutBannerTrust.payload);
+});
+
+// ── console#254 review LOW finding 8: sourceOfTruthRefs is digest-significant ──
+
+test("a sourceOfTruthRefs-only change (report otherwise byte-identical) re-derives a NEW process event id, not a dedupe-away", () => {
+  const withoutRefs = trustEntry("source-of-truth-workflow", { sourceOfTruthRefs: [] });
+  const withRefs = trustEntry("source-of-truth-workflow", {
+    sourceOfTruthRefs: [
+      { product: "github", kind: "work-item", id: "github:kontourai/flow-agents#254", label: "github:kontourai/flow-agents#254", url: "https://github.com/kontourai/flow-agents/issues/254", sourcePath: "source-of-truth-workflow/state.json" },
+    ],
+  });
+  // Same payload (report) in both -- ONLY sourceOfTruthRefs differs.
+  assert.deepEqual(withoutRefs.payload, withRefs.payload);
+
+  const { events: withoutRefsEvents } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(withoutRefs));
+  const { events: withRefsEvents } = translateWorkflowTrustProjectionEnvelope(trustEnvelope(withRefs));
+
+  const withoutRefsProcessEvent = withoutRefsEvents.find((event: any) => event.type === "process.progressed");
+  const withRefsProcessEvent = withRefsEvents.find((event: any) => event.type === "process.progressed");
+  assert.notEqual(withRefsProcessEvent!.id, withoutRefsProcessEvent!.id, "a refs-only change must re-derive a new event id, not dedupe away");
 });
 
 // ── AC: scope-collision distinctness ────────────────────────────────────────
