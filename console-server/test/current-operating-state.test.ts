@@ -554,3 +554,78 @@ test("flow.pipeline.snapshot absent leaves operatingState.pipeline undefined", (
   const state = buildCurrentOperatingState([]);
   assert.equal(state.pipeline, undefined);
 });
+
+// ── console#254 review HIGH finding 1: gate.enriched (association-only, no status fallback) ──
+
+test("gate.enriched upserts evidenceRefs/expectationRefs WITHOUT materializing a status -- unlike gate.opened's type-derived fallback", () => {
+  const enrichedEvent = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-gate-enriched-1",
+    type: "gate.enriched",
+    occurredAt: "2026-07-20T12:00:00Z",
+    producer: { id: "workflow-trust-bridge", product: "flow-agents", name: "flow-agents workflow-trust bridge" },
+    scope: { kind: "repo", id: "flow-agents" },
+    subject: { product: "flow-agents", kind: "gate", id: "gate-under-test" },
+    payload: {
+      after: { processRef: { product: "flow-agents", kind: "workflow", id: "workflow-under-test" } },
+      refs: [
+        { product: "surface", kind: "claim", id: "claim-under-test" },
+        { product: "surface", kind: "evidence", id: "evidence-under-test" },
+      ],
+      summary: "association only, no verdict",
+    },
+  };
+
+  const state = buildCurrentOperatingState([enrichedEvent]);
+  assert.equal(state.gates.length, 1);
+  const gate = state.gates[0] as any;
+  assert.equal("status" in gate, false, "gate.enriched must never materialize a status via the type-derived fallback");
+  assert.equal(gate.evidenceRefs.length, 1);
+  assert.equal(gate.evidenceRefs[0].id, "evidence-under-test");
+  assert.equal(gate.expectationRefs.length, 1);
+  assert.equal(gate.expectationRefs[0].id, "claim-under-test");
+
+  // Contrast: the EXISTING gate.opened case still applies its documented
+  // type-derived "waiting" fallback -- gate.enriched is a DELIBERATE, scoped
+  // opt-out for association-only producers, not a change to gate.opened's
+  // existing contract.
+  const openedEvent = { ...enrichedEvent, id: "evt-gate-opened-contrast", type: "gate.opened", subject: { ...enrichedEvent.subject, id: "gate-contrast" } };
+  const contrastState = buildCurrentOperatingState([openedEvent]);
+  assert.equal((contrastState.gates[0] as any).status, "waiting");
+});
+
+test("gate.enriched retains an EXISTING status set by a prior real gate event -- it never clears a status, only never fabricates one from nothing", () => {
+  const realOpened = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-real-gate-opened",
+    type: "gate.opened",
+    occurredAt: "2026-07-20T11:00:00Z",
+    producer: { id: "flow-bridge", product: "flow", name: "flow bridge" },
+    scope: { kind: "repo", id: "flow-agents" },
+    subject: { product: "flow-agents", kind: "gate", id: "gate-retain-status" },
+    payload: { after: {}, summary: "gate opened for real" },
+  };
+  const laterEnriched = {
+    schema: "kontour.console.event",
+    version: "0.1",
+    id: "evt-gate-enriched-retain",
+    type: "gate.enriched",
+    occurredAt: "2026-07-20T12:00:00Z",
+    producer: { id: "workflow-trust-bridge", product: "flow-agents", name: "flow-agents workflow-trust bridge" },
+    scope: { kind: "repo", id: "flow-agents" },
+    subject: { product: "flow-agents", kind: "gate", id: "gate-retain-status" },
+    payload: {
+      after: {},
+      refs: [{ product: "surface", kind: "evidence", id: "evidence-retain-status" }],
+      summary: "association only",
+    },
+  };
+
+  const state = buildCurrentOperatingState([realOpened, laterEnriched]);
+  assert.equal(state.gates.length, 1);
+  const gate = state.gates[0] as any;
+  assert.equal(gate.status, "waiting", "the real gate.opened's status must survive a later gate.enriched association-only event");
+  assert.equal(gate.evidenceRefs.length, 1);
+});

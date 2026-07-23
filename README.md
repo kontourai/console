@@ -48,6 +48,7 @@ console-inspect            # inspect the current directory
 kontour serve              # start the local hub on 127.0.0.1:3737
 kontour-flow-bridge --help # bridge local Flow runs into the hub
 kontour-process-bridge --help # bridge flow-agents workflow-process projections into the hub
+kontour-trust-bridge --help # bridge flow-agents workflow-trust projections into the hub
 ```
 
 The `@kontourai/console` package's `kontour serve` entry point remains behaviorally compatible but is deprecated in favor of `@kontourai/cli` and `kontour console serve`. It will not be removed before Console 3.0; it remains a direct Console bin and does not proxy through the router.
@@ -56,7 +57,7 @@ The `@kontourai/console` package's `kontour serve` entry point remains behaviora
 
 ## Published packages
 
-- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, `kontour-flow-bridge`, and `kontour-process-bridge` bins.
+- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, `kontour-flow-bridge`, `kontour-process-bridge`, and `kontour-trust-bridge` bins.
 - `@kontourai/console-core` — shared record and process-flow shapes.
 - `@kontourai/cli` — the offline-first suite router (`kontour` bin) for Flow, Flow Agents, and Console product delegation.
 - `@kontourai/telemetry` — the canonical telemetry contract: event/pricing shapes, versioned pricing registry, and OpenTelemetry GenAI mapping, consumed by `@kontourai/console`.
@@ -83,6 +84,16 @@ Point the Console UI at the hub and the operating plane follows your actual gate
 npx --package @kontourai/console kontour serve             # hub on 127.0.0.1:3737
 npx --package @kontourai/console kontour-process-bridge \
   --watch                                                        # follow live workflow-process projections
+```
+
+## Bridge a flow-agents workflow-trust projection
+
+`kontour-trust-bridge` reads flow-agents' local workflow-trust projection envelopes (`.kontourai/console/projections/<producer>/*.json`, written by the `flow-agents-console-trust-projection` CLI, flow-agents#891) and delivers them to a hub as Console gate/process/claim/evidence events — read-only over the envelope files, content-addressed event ids, idempotent re-runs. Surface's own `buildTrustReport` output is relayed verbatim (never recomputed): claim status/freshness, evidence, and gate-scoped evidence associations render on the board without Console ever asserting a trust verdict of its own:
+
+```sh
+npx --package @kontourai/console kontour serve           # hub on 127.0.0.1:3737
+npx --package @kontourai/console kontour-trust-bridge \
+  --watch                                                      # follow live workflow-trust projections
 ```
 
 ## See it locally

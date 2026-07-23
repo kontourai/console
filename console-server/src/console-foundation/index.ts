@@ -879,6 +879,7 @@ function safeErrorMessage(error: unknown): string {
 const emitter = require("./emitter");
 const flowBridge = require("./flow-bridge");
 const workflowProcessBridge = require("./workflow-process-bridge");
+const workflowTrustBridge = require("./workflow-trust-bridge");
 const surfaceClaimHelper = require("./surface-claim-helper");
 const flowProcessHelper = require("./flow-process-helper");
 const currentOperatingState = require("./current-operating-state");
@@ -951,6 +952,13 @@ module.exports = {
   readWorkflowProcessProjectionEnvelope: workflowProcessBridge.readWorkflowProcessProjectionEnvelope,
   isWorkflowProcessProjectionEnvelope: workflowProcessBridge.isWorkflowProcessProjectionEnvelope,
   DEFAULT_WORKFLOW_PROCESS_PROJECTION_ROOT: workflowProcessBridge.DEFAULT_WORKFLOW_PROCESS_PROJECTION_ROOT,
+  bridgeWorkflowTrustProjection: workflowTrustBridge.bridgeWorkflowTrustProjection,
+  buildWorkflowTrustBridgeSink: workflowTrustBridge.buildWorkflowTrustBridgeSink,
+  discoverWorkflowTrustProjections: workflowTrustBridge.discoverWorkflowTrustProjections,
+  translateWorkflowTrustProjectionEnvelope: workflowTrustBridge.translateWorkflowTrustProjectionEnvelope,
+  readWorkflowTrustProjectionEnvelope: workflowTrustBridge.readWorkflowTrustProjectionEnvelope,
+  isWorkflowTrustProjectionEnvelope: workflowTrustBridge.isWorkflowTrustProjectionEnvelope,
+  DEFAULT_WORKFLOW_TRUST_PROJECTION_ROOT: workflowTrustBridge.DEFAULT_WORKFLOW_TRUST_PROJECTION_ROOT,
   surfaceClaimStateToProjection: surfaceClaimHelper.surfaceClaimStateToProjection,
   surfaceFreshnessTransitionToEvent: surfaceClaimHelper.surfaceFreshnessTransitionToEvent,
   flowProcessStateToProjection: flowProcessHelper.flowProcessStateToProjection,
@@ -997,6 +1005,31 @@ export type {
   WorkflowProcessProjectionRef,
   WorkflowProcessProjectionScope,
 } from "./workflow-process-bridge";
+
+// console#254: workflow-trust bridge -- flow-agents workflow-trust projection
+// envelope (flow-agents#891) -> kontour.console.event, folded through the same
+// buildCurrentOperatingState path. Same dual-source pattern as the
+// workflow-process bridge re-exports above.
+export {
+  bridgeWorkflowTrustProjection,
+  buildWorkflowTrustBridgeSink,
+  discoverWorkflowTrustProjections,
+  isWorkflowTrustProjectionEnvelope,
+  readWorkflowTrustProjectionEnvelope,
+  translateWorkflowTrustProjectionEnvelope,
+  DEFAULT_WORKFLOW_TRUST_PROJECTION_ROOT,
+} from "./workflow-trust-bridge";
+export type {
+  WorkflowTrustBridgeDelivery,
+  WorkflowTrustBridgeSinkConfig,
+  WorkflowTrustGateAssociation,
+  WorkflowTrustProjectionDiscovery,
+  WorkflowTrustProjectionEntry,
+  WorkflowTrustProjectionEnvelope,
+  WorkflowTrustProjectionRef,
+  WorkflowTrustProjectionScope,
+  WorkflowTrustSourceOfTruthRef,
+} from "./workflow-trust-bridge";
 
 // Producer integration surface (#71). These names are provided at RUNTIME by
 // the `module.exports = {...}` literal above (which reassigns the module object,

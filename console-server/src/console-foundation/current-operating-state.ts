@@ -321,6 +321,17 @@ function applyEvent(state: MutableReplayState, event: ConsoleEventRecord | Conso
     case "gate.routed_back":
       upsertGate(state, event, subject, refs, after);
       break;
+    // console#254 review HIGH finding 1: a dedicated event type for
+    // ASSOCIATION-ONLY gate producers (Surface trust reporting has no native
+    // "gate" concept and never computes a Flow-style pass/fail/open verdict
+    // for one -- see workflow-trust-bridge.ts's `gateEnrichedEvent`). Routed
+    // through the SAME `upsertGate` upsert pattern (evidenceRefs/
+    // expectationRefs still fold identically) but with the type-derived
+    // status fallback explicitly disabled, so relaying evidence associations
+    // can never fabricate a status Surface itself never asserted.
+    case "gate.enriched":
+      upsertGate(state, event, subject, refs, after, { applyTypeStatusFallback: false });
+      break;
     case "claim.freshness.changed":
     case "claim.reverification.completed":
     case "claim.status.changed":
@@ -443,7 +454,22 @@ function isBlockedLikeProcessStatus(status: unknown): boolean {
   return typeof status === "string" && BLOCKED_LIKE_PROCESS_STATUSES.has(status);
 }
 
-function upsertGate(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch): void {
+interface UpsertGateOptions {
+  /**
+   * When false, `statusFromGateEvent`'s type-derived status fallback is
+   * skipped entirely (console#254 review HIGH finding 1): an
+   * ASSOCIATION-ONLY producer -- one that relays evidence/expectation refs
+   * for a gate without ever computing a pass/fail/open verdict itself (e.g.
+   * flow-agents' workflow-trust bridge, `gate.enriched` below) -- must not
+   * have this fold SILENTLY MATERIALIZE a fabricated "waiting" status just
+   * because its event type happens to share the gate.* upsert path. Default
+   * true preserves the existing gate.opened/passed/failed/routed_back
+   * behavior unchanged.
+   */
+  applyTypeStatusFallback?: boolean;
+}
+
+function upsertGate(state: MutableReplayState, event: ConsoleEventRecord, subject: CrossProductRef, refs: CrossProductRef[], after: ReplayPatch, options: UpsertGateOptions = {}): void {
   const existing: ReplayObject = state.gates.get(subject.id) || {
     id: subject.id,
     label: subject.label,
@@ -453,13 +479,15 @@ function upsertGate(state: MutableReplayState, event: ConsoleEventRecord, subjec
     updatedAt: event.occurredAt
   };
 
+  const applyTypeStatusFallback = options.applyTypeStatusFallback !== false;
+  const typeStatus = applyTypeStatusFallback ? statusFromGateEvent(event.type) : undefined;
   const next: ReplayObject = {
     ...existing,
     ...after,
     id: subject.id,
     label: subject.label || existing.label,
     sourceRef: subject,
-    status: after.status || statusFromGateEvent(event.type) || existing.status,
+    status: after.status || typeStatus || existing.status,
     processRef: after.processRef || existing.processRef || processRefFromScope(subject.scope),
     updatedAt: event.occurredAt || existing.updatedAt
   };
