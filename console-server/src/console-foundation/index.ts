@@ -92,6 +92,7 @@ export {
   assertConsoleRuntimeConfig,
   redactConsoleRuntimeConfig,
   resolveConsoleRuntimeConfig,
+  resolveTelemetryRetentionDays,
   resolveTelemetryStorageAdapter
 } from "./config";
 export type {
@@ -922,6 +923,7 @@ module.exports = {
   assertConsoleRuntimeConfig: config.assertConsoleRuntimeConfig,
   redactConsoleRuntimeConfig: config.redactConsoleRuntimeConfig,
   resolveConsoleRuntimeConfig: config.resolveConsoleRuntimeConfig,
+  resolveTelemetryRetentionDays: config.resolveTelemetryRetentionDays,
   resolveTelemetryStorageAdapter: config.resolveTelemetryStorageAdapter,
   createTelemetryRepository: telemetry.createTelemetryRepository,
   createTelemetryStore: telemetry.createTelemetryStore,

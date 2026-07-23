@@ -30,7 +30,7 @@ import type {
   TelemetryUsageBreakdown,
   ValidationIssue
 } from "./types";
-import { resolveTelemetryStorageAdapter } from "./config";
+import { resolveTelemetryRetentionDays, resolveTelemetryStorageAdapter } from "./config";
 import { costForModel } from "./telemetry-pricing";
 
 const MAX_JSONL_LINES_PER_FILE = 5000;
@@ -108,6 +108,7 @@ export interface TelemetryRepositoryConfig {
   adapterName: TelemetryStorageAdapterName;
   databaseUrl?: string;
   sqlClient?: ConsoleSqlClient;
+  retentionDays?: number;
 }
 
 export function createTelemetryStore(options: ConsoleHubServerOptions = {}): TelemetryStore {
@@ -130,6 +131,7 @@ export function createTelemetryStore(options: ConsoleHubServerOptions = {}): Tel
   const descriptorPaths = options.telemetryDescriptorPaths || parseCsv(process.env.CONSOLE_TELEMETRY_DESCRIPTOR_PATHS);
   const telemetryDatabaseUrl = options.telemetryDatabaseUrl || process.env.CONSOLE_DATABASE_URL || process.env.CONSOLE_TELEMETRY_DATABASE_URL;
   const adapterName = resolveTelemetryStorageAdapter(options);
+  const retentionDays = resolveTelemetryRetentionDays(options);
   // The serve bin passes no SQL client; hosted mode requires a postgres
   // adapter, so construct one from the configured URL when possible.
   const needsSqlClient = adapterName === "postgres" || adapterName === "sql";
@@ -139,7 +141,8 @@ export function createTelemetryStore(options: ConsoleHubServerOptions = {}): Tel
     sinkRoot,
     adapterName,
     databaseUrl: telemetryDatabaseUrl,
-    sqlClient: options.telemetrySqlClient ?? createOptionalPgClient(needsSqlClient ? telemetryDatabaseUrl : undefined)
+    sqlClient: options.telemetrySqlClient ?? createOptionalPgClient(needsSqlClient ? telemetryDatabaseUrl : undefined),
+    retentionDays
   });
 
   return {
@@ -173,7 +176,7 @@ export function createTelemetryStore(options: ConsoleHubServerOptions = {}): Tel
 export function createTelemetryRepository(config: TelemetryRepositoryConfig): TelemetryRepository {
   if (config.adapterName === "local-jsonl") return new LocalJsonlTelemetryRepository(config.rootDir, config.telemetryRoot, config.sinkRoot);
   if (config.adapterName === "sqlite") return new SqliteTelemetryRepository(config.rootDir, config.databaseUrl);
-  return new PostgresTelemetryRepository(config.adapterName, config.databaseUrl, config.sqlClient);
+  return new PostgresTelemetryRepository(config.adapterName, config.databaseUrl, config.sqlClient, config.retentionDays);
 }
 
 class LocalJsonlTelemetryRepository implements TelemetryRepository {
@@ -223,11 +226,13 @@ class PostgresTelemetryRepository implements TelemetryRepository {
   readonly adapterName: TelemetryStorageAdapterName;
   private readonly sqlClient?: ConsoleSqlClient;
   private readonly ownsSqlClient: boolean;
+  private nextRetentionPruneAt = 0;
 
   constructor(
     adapterName: "postgres" | "sql",
     private readonly databaseUrl?: string,
-    sqlClient?: ConsoleSqlClient
+    sqlClient?: ConsoleSqlClient,
+    private readonly retentionDays?: number
   ) {
     this.adapterName = adapterName;
     this.ownsSqlClient = !sqlClient;
@@ -237,6 +242,7 @@ class PostgresTelemetryRepository implements TelemetryRepository {
   async accept(record: TelemetryRecord, observedAt: string, context: ConsoleRequestContext): Promise<TelemetryDeliveryResult> {
     if (!this.sqlClient) return this.notConfigured(record, observedAt);
     try {
+      await this.pruneExpiredTelemetry();
       await this.sqlClient.query(
         `insert into console_telemetry_events
           (tenant_id, event_id, schema_version, event_type, session_id, observed_at, received_at, payload)
@@ -263,6 +269,16 @@ class PostgresTelemetryRepository implements TelemetryRepository {
     } catch {
       return postgresDeliveryFailure(record, observedAt);
     }
+  }
+
+  private async pruneExpiredTelemetry(): Promise<void> {
+    if (!this.sqlClient || !this.retentionDays || Date.now() < this.nextRetentionPruneAt) return;
+    await this.sqlClient.query(
+      `delete from console_telemetry_events
+       where coalesce(observed_at, received_at) < now() - ($1 * interval '1 day')`,
+      [this.retentionDays]
+    );
+    this.nextRetentionPruneAt = Date.now() + 60 * 60 * 1000;
   }
 
   async runtimeSources(context: ConsoleRequestContext, query?: TelemetryQuery): Promise<Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>> {

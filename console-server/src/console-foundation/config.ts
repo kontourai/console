@@ -39,6 +39,7 @@ export interface ConsoleRuntimeConfig {
    */
   ingestToken?: string;
   telemetryStorageAdapter: TelemetryStorageAdapterName;
+  telemetryRetentionDays?: number;
   telemetryDatabaseUrl?: string;
   validation: ConsoleConfigValidationIssue[];
 }
@@ -59,10 +60,20 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
   const ingestToken = options.ingestToken || env.CONSOLE_INGEST_TOKEN;
   const allowedOrigins = options.allowedOrigins || parseCsv(env.CONSOLE_ALLOWED_ORIGINS);
   const telemetryStorageAdapter = resolveTelemetryStorageAdapter(options, env);
+  const telemetryRetentionDays = resolveTelemetryRetentionDays(options, env);
   const telemetryDatabaseUrl = options.telemetryDatabaseUrl || env.CONSOLE_DATABASE_URL || env.CONSOLE_TELEMETRY_DATABASE_URL;
   const oauth = resolveOAuthConfig(env);
   const oauthLogin = resolveOAuthLoginConfig(env);
   const validation: ConsoleConfigValidationIssue[] = [];
+  const retentionConfigured = options.telemetryRetentionDays !== undefined
+    || (env.CONSOLE_TELEMETRY_RETENTION_DAYS !== undefined && env.CONSOLE_TELEMETRY_RETENTION_DAYS.trim() !== "");
+  if (retentionConfigured && telemetryRetentionDays === undefined) {
+    validation.push({
+      severity: "error",
+      code: "TELEMETRY_RETENTION_INVALID",
+      message: "telemetry retention days must be an integer between 1 and 3650"
+    });
+  }
 
   if (mode === "hosted") {
     if (telemetryStorageAdapter !== "postgres") {
@@ -159,6 +170,7 @@ export function resolveConsoleRuntimeConfig(options: ConsoleHubServerOptions = {
     oauth,
     oauthLogin,
     telemetryStorageAdapter,
+    telemetryRetentionDays,
     telemetryDatabaseUrl,
     validation
   };
@@ -203,6 +215,7 @@ export function redactConsoleRuntimeConfig(config: ConsoleRuntimeConfig) {
         }
       : undefined,
     telemetryStorageAdapter: config.telemetryStorageAdapter,
+    telemetryRetentionDays: config.telemetryRetentionDays,
     telemetryDatabaseUrl: config.telemetryDatabaseUrl ? "[redacted]" : undefined,
     validation: config.validation
   };
@@ -214,6 +227,13 @@ export function resolveTelemetryStorageAdapter(options: ConsoleHubServerOptions 
     || "local-jsonl";
   if (configured === "local-jsonl" || configured === "sqlite" || configured === "postgres" || configured === "sql") return configured;
   return "local-jsonl";
+}
+
+export function resolveTelemetryRetentionDays(options: ConsoleHubServerOptions = {}, env: NodeJS.ProcessEnv = process.env): number | undefined {
+  const configured = options.telemetryRetentionDays ?? env.CONSOLE_TELEMETRY_RETENTION_DAYS;
+  if (configured === undefined || configured === "") return undefined;
+  const parsed = typeof configured === "number" ? configured : Number(configured);
+  return Number.isInteger(parsed) && parsed >= 1 && parsed <= 3650 ? parsed : undefined;
 }
 
 function resolveRuntimeMode(options: ConsoleHubServerOptions, env: NodeJS.ProcessEnv): ConsoleRuntimeMode {

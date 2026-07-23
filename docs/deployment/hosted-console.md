@@ -48,6 +48,7 @@ runtime options. Do not add Kontour-specific names to base source.
 | `CONSOLE_PUBLIC_ORIGIN=https://console.example.com` | Canonical public origin. | Used for links, CORS, and operator docs. |
 | `CONSOLE_ALLOWED_ORIGINS=https://console.example.com` | Browser origins allowed to call hosted API. | Comma-separated when staging origins exist. |
 | `CONSOLE_TELEMETRY_STORAGE=postgres` | Hosted telemetry adapter selection. | The base local default remains `local-jsonl`. |
+| `CONSOLE_TELEMETRY_RETENTION_DAYS` | Raw telemetry retention in days. | Optional integer `1..3650`. PostgreSQL prunes expired telemetry before inserts, at most hourly. Core and economics records are never deleted by this policy. |
 | `CONSOLE_DATABASE_URL` | Postgres connection string. | Secret. Store only in the secret manager. |
 | `CONSOLE_TENANT_ID` | Default tenant id for single-tenant bootstrap auth. | Deployment-specific default. |
 | `CONSOLE_AUTH_TOKEN` | Single bootstrap bearer token mapped to `CONSOLE_TENANT_ID`. | Secret. Use only for simple deployments. |

@@ -739,6 +739,9 @@ export interface ConsoleHubServerOptions extends LocalConsoleHubOptions {
   /** Dedicated session-cookie HMAC secret (#104); else env CONSOLE_SESSION_SECRET. */
   sessionSecret?: string;
   telemetryStorageAdapter?: TelemetryStorageAdapterName;
+  /** Opt-in raw telemetry retention. Expired rows are pruned globally before
+   * PostgreSQL inserts; core and economics records are never in scope. */
+  telemetryRetentionDays?: number;
   telemetryDatabaseUrl?: string;
   telemetrySqlClient?: ConsoleSqlClient;
   telemetryDescriptorPaths?: string[];
