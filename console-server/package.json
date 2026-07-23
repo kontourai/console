@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/console-server",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "type": "commonjs",
   "exports": {
     ".": {
@@ -37,7 +37,7 @@
     "dist"
   ],
   "dependencies": {
-    "@kontourai/console-core": "0.2.0",
+    "@kontourai/console-core": "0.3.0",
     "@kontourai/flow": "^1.4.0",
     "@kontourai/surface": "^1.0.1",
     "jose": "^6.2.3",

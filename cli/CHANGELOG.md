@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.5.0](https://github.com/kontourai/console/compare/cli-v0.4.0...cli-v0.5.0) (2026-07-23)
+
+
+### Features
+
+* **cli:** opt-in standalone action runner (consent-gated, never-authority) ([#240](https://github.com/kontourai/console/issues/240)) ([14ae169](https://github.com/kontourai/console/commit/14ae169906d4ac0cc8c0ad55f16ddaa368e2ce3c))
+* **console-ui:** host-mountable BoardView component package ([#237](https://github.com/kontourai/console/issues/237)) ([40c33c0](https://github.com/kontourai/console/commit/40c33c04a4989da553bee51550cb11332d04c006))
+
+
+### Bug Fixes
+
+* **publish:** ship the library entry for @kontourai/console (closes C1/C2) ([#235](https://github.com/kontourai/console/issues/235)) ([1435b82](https://github.com/kontourai/console/commit/1435b82bb7e4994efe3b8d358d299e93d71d9a20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @kontourai/console-core bumped from 0.2.0 to 0.3.0
+
 ## [0.4.0](https://github.com/kontourai/console/compare/cli-v0.3.1...cli-v0.4.0) (2026-07-13)
 
 
