@@ -25,6 +25,7 @@
  */
 
 import type { ConsoleProcess, OperatingState } from "@kontourai/console-core";
+import { deriveSourceRefs, type SourceRef } from "../../utils/sourceRefs";
 
 // ── Freshness thresholds ─────────────────────────────────────────────────────
 
@@ -161,6 +162,13 @@ export interface FleetCard {
   freshness: FreshnessTier;
   /** How the card should render `updatedAt` — see `classifyActivity`. */
   display: ActivityDisplay;
+  /**
+   * Source-of-truth link-outs (console#256), deterministically ordered — see
+   * `deriveSourceRefs` (utils/sourceRefs.ts). The fleet card renders only the
+   * `work-item` chip (compact, one line); the full set is available here for
+   * any future card surface that wants more.
+   */
+  sourceRefs: SourceRef[];
 }
 
 export function deriveFleetCard(process: ConsoleProcess, now: number = Date.now()): FleetCard {
@@ -179,6 +187,7 @@ export function deriveFleetCard(process: ConsoleProcess, now: number = Date.now(
     bucket: classifyFleetBucket(process, now),
     freshness: activity.freshness,
     display: activity.display,
+    sourceRefs: deriveSourceRefs(process),
   };
 }
 

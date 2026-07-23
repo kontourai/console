@@ -10,6 +10,7 @@ import type {
 import { BOARD_STAGES, BOARD_STAGE_LABEL, classifyBoardStage, runIdFromProcessId, type BoardStage } from "@kontourai/console-ui";
 import { classifyActivity, type ActivityDisplay, type FreshnessTier } from "../workers/derive";
 import { serializeOperatePath } from "../../utils/appRoute";
+import { deriveSourceRefs, type SourceRef } from "../../utils/sourceRefs";
 
 /**
  * console#253 run drill-in — a pure projection answering "where is this run
@@ -77,11 +78,6 @@ export interface RunGateEntry {
   href: string;
 }
 
-export interface RunSourceRef {
-  label: string;
-  url: string;
-}
-
 export interface RunDetail {
   id: string;
   /** The flow run id for the projection fetch (#178) — process id minus its `run-` prefix. */
@@ -98,10 +94,14 @@ export interface RunDetail {
   gates: RunGateEntry[];
   /** This run's own recent timeline slice, newest first, capped — see `RUN_TIMELINE_LIMIT`. */
   timeline: TimelineItem[];
-  /** External work-item link-outs, when the process record carries them. Only
-   *  entries with a real, non-empty, http(s) URL are ever included — never
-   *  fabricated, never an unsafe scheme. */
-  sourceOfTruthRefs: RunSourceRef[];
+  /**
+   * Source-of-truth link-outs (console#256), when the process record carries
+   * them — deterministically ordered (work-item, then the assignment trio,
+   * then anything else), each rendered by the shared `SourceRefLinks`
+   * component. A ref with no safe http(s) url is still included (rendered as
+   * text, never a fake anchor) — see `deriveSourceRefs` (utils/sourceRefs.ts).
+   */
+  sourceOfTruthRefs: SourceRef[];
 }
 
 /** Cap on the timeline slice rendered per run — recent context, not a full audit log. */
@@ -358,52 +358,6 @@ function deriveTimelineSlice(state: OperatingState, process: ConsoleProcess): Ti
     .slice(0, RUN_TIMELINE_LIMIT);
 }
 
-// ── Source-of-truth link-outs ────────────────────────────────────────────────
-
-/** Only http(s) links are ever rendered as a real `<a href>` — console#253
- *  review finding 6: a raw, unvalidated URL string could carry an unsafe
- *  scheme (`javascript:`, `data:`, …) that executes/renders inline instead
- *  of navigating externally. An unparsable string is rejected the same way
- *  (never a broken/relative href masquerading as an external link). */
-const ALLOWED_LINK_PROTOCOLS = new Set(["https:", "http:"]);
-
-function isSafeExternalUrl(url: string): boolean {
-  try {
-    return ALLOWED_LINK_PROTOCOLS.has(new URL(url).protocol);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * `sourceOfTruthRefs` is not (yet) a declared `ConsoleProcess` field — no
- * producer in this repo emits it. Read defensively off the raw record so a
- * future producer's link-outs render the moment they appear, without ever
- * fabricating a link: only entries carrying a real, non-empty, http(s) URL
- * string are included (tolerating either a `url` or `href` key), everything
- * else is silently skipped rather than guessed at.
- */
-function deriveSourceOfTruthRefs(process: ConsoleProcess): RunSourceRef[] {
-  const raw = (process as unknown as { sourceOfTruthRefs?: unknown }).sourceOfTruthRefs;
-  if (!Array.isArray(raw)) return [];
-  const refs: RunSourceRef[] = [];
-  for (const entry of raw) {
-    if (!entry || typeof entry !== "object") continue;
-    const candidate = entry as { url?: unknown; href?: unknown; label?: unknown; id?: unknown };
-    const url = typeof candidate.url === "string" && candidate.url
-      ? candidate.url
-      : typeof candidate.href === "string" && candidate.href
-        ? candidate.href
-        : undefined;
-    if (!url || !isSafeExternalUrl(url)) continue;
-    const label = (typeof candidate.label === "string" && candidate.label)
-      || (typeof candidate.id === "string" && candidate.id)
-      || url;
-    refs.push({ label, url });
-  }
-  return refs;
-}
-
 /**
  * Project a single run's drill-in detail from the operating state, or `null`
  * when the process id isn't present in the CURRENT state — an honest
@@ -435,6 +389,6 @@ export function deriveRunDetail(
     stages: deriveStages(safe, process),
     gates: deriveGateHistory(safe, process),
     timeline: deriveTimelineSlice(safe, process),
-    sourceOfTruthRefs: deriveSourceOfTruthRefs(process),
+    sourceOfTruthRefs: deriveSourceRefs(process),
   };
 }

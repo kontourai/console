@@ -19,6 +19,15 @@ const runState = {
       currentStep: { id: "execute", label: "Implement banner retry" },
       percentComplete: 55,
       updatedAt: "2026-07-20T11:55:00.000Z",
+      // console#256: source-of-truth link-outs -- a real work-item URL, an
+      // assignment-branch ref with NO url (text-only chip, never a fake
+      // anchor), and an unsafe javascript: URL that must never render as a
+      // live link anywhere this ref set is shown (fleet card + run detail).
+      sourceOfTruthRefs: [
+        { kind: "assignment-branch", label: "feature/checkout-banner" },
+        { kind: "work-item", label: "#891", url: "https://github.com/kontourai/flow-agents/issues/891" },
+        { kind: "assignment-actor", label: "evil-actor", url: "javascript:alert(1)" },
+      ],
     },
   ],
   gates: [
@@ -168,6 +177,54 @@ test("loading /run/:id for an id absent from the operating state shows an honest
   await expect(page.getByRole("link", { name: "Board", exact: true })).toHaveClass(/active/);
   await expect(page.locator(".board-drilldown")).toContainText(/not found in current operating state/i);
   await expect(page.locator(".run-stage-strip")).toHaveCount(0);
+
+  expect(consoleErrors).toEqual([]);
+});
+
+// console#256: source-of-truth link-outs surface on BOTH the fleet card
+// (Overview, compact work-item-only chip) and the run detail (full ref set,
+// deterministic work-item-first order), reusing the SAME shared component --
+// and an unsafe javascript: URL never becomes a live link on either surface.
+test("a process with a work-item sourceOfTruthRefs entry shows a linked chip on its fleet card AND in the run detail (console#256)", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  await installMock(page);
+  await page.goto("/");
+
+  // Fleet card (Overview): the compact work-item-only chip, linking out.
+  const fleetCard = page.locator(".wf-card", { hasText: "Checkout retry banner" });
+  await expect(fleetCard).toBeVisible();
+  const fleetWorkItemLink = fleetCard.locator("a.source-ref-link");
+  await expect(fleetWorkItemLink).toHaveCount(1);
+  await expect(fleetWorkItemLink).toHaveText("#891");
+  await expect(fleetWorkItemLink).toHaveAttribute("href", "https://github.com/kontourai/flow-agents/issues/891");
+  await expect(fleetWorkItemLink).toHaveAttribute("target", "_blank");
+  await expect(fleetWorkItemLink).toHaveAttribute("rel", "noopener noreferrer");
+  // Only the work-item kind renders on the fleet card -- the
+  // assignment-branch/actor refs are present in state but filtered out here.
+  await expect(fleetCard.locator("code.source-ref-text")).toHaveCount(0);
+
+  // Run detail: the FULL ref set, work-item chip first, then the
+  // assignment-branch text chip (no url -- an honest <code>, never a link).
+  await page.goto("/run/run-checkout-banner");
+  const sourceRefs = page.locator(".run-detail-source-refs .source-ref-chip");
+  await expect(sourceRefs).toHaveCount(3);
+  const runDetailWorkItemLink = page.locator(".run-detail-source-refs a.source-ref-link");
+  await expect(runDetailWorkItemLink).toHaveCount(1);
+  await expect(runDetailWorkItemLink).toHaveText("#891");
+  await expect(runDetailWorkItemLink).toHaveAttribute("href", "https://github.com/kontourai/flow-agents/issues/891");
+  await expect(page.locator(".run-detail-source-refs code.source-ref-text", { hasText: "feature/checkout-banner" })).toBeVisible();
+  // The unsafe javascript: ref renders as text too -- never a link, anywhere.
+  await expect(page.locator(".run-detail-source-refs code.source-ref-text", { hasText: "evil-actor" })).toBeVisible();
+  await expect(page.locator(".run-detail-source-refs a", { hasText: "evil-actor" })).toHaveCount(0);
+  // Deterministic order: work-item chip appears before the assignment chips,
+  // regardless of the fixture's own (deliberately out-of-order) input order.
+  await expect(sourceRefs.nth(0)).toContainText("#891");
+
+  // Never a live javascript: href anywhere on the page.
+  const jsHrefs = await page.locator('a[href^="javascript:"]').count();
+  expect(jsHrefs).toBe(0);
 
   expect(consoleErrors).toEqual([]);
 });

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import type { OperatingState } from "@kontourai/console-core";
 import { StatusBadge } from "@kontourai/ui/react";
 import { formatRelative } from "../utils/format";
+import { SourceRefLinks } from "../components/SourceRefLinks";
 import {
   deriveFleetCards,
   deriveFleetCounts,
@@ -181,6 +182,7 @@ function WorkerCard({ card, now }: { card: FleetCard; now: number }) {
         <StatusBadge status={card.status} />
       </div>
       {card.stepLabel ? <p className="wf-card-step">at {card.stepLabel}</p> : null}
+      <SourceRefLinks refs={card.sourceRefs} only={["work-item"]} className="wf-card-source-refs" ariaLabel="Work item" />
       {card.blockedReason ? <p className="wf-card-blocked">{card.blockedReason}</p> : null}
       {pct != null ? (
         <div

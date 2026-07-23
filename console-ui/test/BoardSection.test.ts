@@ -144,6 +144,32 @@ test("BoardSection: a javascript: sourceOfTruthRefs URL is never rendered as a l
   assert.doesNotMatch(markup, /javascript:/);
 });
 
+// console#256: the run detail's source-of-truth refs now render through the
+// shared SourceRefLinks component -- a work-item ref with a real url becomes
+// a live link; an assignment-branch ref with no url renders as honest text,
+// never a dead/fake anchor, in the deterministic work-item-first order.
+test("BoardSection: run detail shows a linked work-item chip AND a text-only assignment-branch chip, work-item first", () => {
+  const withRefs = {
+    id: "run-1",
+    label: "Run with source-of-truth refs",
+    sourceOfTruthRefs: [
+      { kind: "assignment-branch", label: "feature/checkout-banner" },
+      { kind: "work-item", label: "#891", url: "https://github.com/kontourai/flow-agents/issues/891" },
+    ],
+  } as unknown as ConsoleProcess;
+  const markup = render({
+    state: state({ processes: [withRefs] }),
+    fetchProjection: neverResolves,
+    selectedId: "run-1",
+    now: FIXED_NOW,
+  });
+  assert.match(markup, /<a[^>]*href="https:\/\/github\.com\/kontourai\/flow-agents\/issues\/891"[^>]*>#891<\/a>/);
+  assert.match(markup, /<code[^>]*>feature\/checkout-banner<\/code>/);
+  // Deterministic order: work-item chip's markup appears before the
+  // assignment-branch chip's, regardless of input order above.
+  assert.ok(markup.indexOf("#891") < markup.indexOf("feature/checkout-banner"));
+});
+
 // console#253 review finding 7 (probe): a truthy-but-unparsable gate/timeline
 // timestamp must never render as an invalid <time dateTime="not-a-date">.
 test("BoardSection: a gate with a garbage updatedAt renders it as raw text, never an invalid <time dateTime>", () => {

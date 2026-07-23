@@ -266,3 +266,47 @@ test("WorkerFleetSection: omitting `now` still renders (falls back to the live w
   });
   assert.match(markup, /<time class="wf-card-time" dateTime="[^"]+">just now<\/time>/);
 });
+
+// ── console#256: source-of-truth work-item chip on the fleet card ──────────
+
+test("WorkerFleetSection: a process carrying a work-item sourceOfTruthRefs entry shows a linked chip on its card", () => {
+  const withRefs = {
+    id: "p1",
+    label: "Checkout retry banner",
+    status: "running",
+    updatedAt: new Date(NOW).toISOString(),
+    sourceOfTruthRefs: [
+      { kind: "work-item", label: "#891", url: "https://github.com/kontourai/flow-agents/issues/891" },
+      { kind: "assignment-branch", label: "feature/checkout-banner" },
+    ],
+  } as unknown as ConsoleProcess;
+  const markup = render({ now: NOW, state: state({ processes: [withRefs] }) });
+  assert.match(markup, /class="source-ref-links wf-card-source-refs"/);
+  assert.match(markup, /<a[^>]*href="https:\/\/github\.com\/kontourai\/flow-agents\/issues\/891"[^>]*>#891<\/a>/);
+  // Only the work-item kind renders on the compact fleet card -- the
+  // assignment-branch ref is present in state but filtered out here.
+  assert.doesNotMatch(markup, /feature\/checkout-banner/);
+});
+
+test("WorkerFleetSection: a process with no sourceOfTruthRefs renders no source-ref chip row at all", () => {
+  const markup = render({
+    now: NOW,
+    state: state({ processes: [proc({ id: "p1", label: "No refs", status: "running", updatedAt: new Date(NOW).toISOString() })] }),
+  });
+  assert.doesNotMatch(markup, /source-ref-links/);
+});
+
+// XSS probe: an unsafe javascript: url on a work-item ref never becomes a
+// live link on the fleet card.
+test("WorkerFleetSection: a javascript: sourceOfTruthRefs url on a fleet card is never rendered as a link (XSS probe)", () => {
+  const withRefs = {
+    id: "p1",
+    label: "Unsafe ref worker",
+    status: "running",
+    updatedAt: new Date(NOW).toISOString(),
+    sourceOfTruthRefs: [{ kind: "work-item", label: "evil", url: "javascript:alert(1)" }],
+  } as unknown as ConsoleProcess;
+  const markup = render({ now: NOW, state: state({ processes: [withRefs] }) });
+  assert.doesNotMatch(markup, /javascript:/);
+  assert.match(markup, /<code[^>]*>evil<\/code>/);
+});
