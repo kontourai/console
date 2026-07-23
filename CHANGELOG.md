@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.8.0](https://github.com/kontourai/console/compare/v2.7.0...v2.8.0) (2026-07-23)
+
+
+### Features
+
+* **act-plane:** intent-binding + consent contract with enforced never-authority ([#238](https://github.com/kontourai/console/issues/238)) ([b8bb955](https://github.com/kontourai/console/commit/b8bb955faab680a5bf60ef257d9ab167a7adcfb7))
+* **cli:** opt-in standalone action runner (consent-gated, never-authority) ([#240](https://github.com/kontourai/console/issues/240)) ([14ae169](https://github.com/kontourai/console/commit/14ae169906d4ac0cc8c0ad55f16ddaa368e2ce3c))
+* **console-server:** bridge flow-agents workflow-process projections onto the board ([#239](https://github.com/kontourai/console/issues/239)) ([#241](https://github.com/kontourai/console/issues/241)) ([22484e0](https://github.com/kontourai/console/commit/22484e0dca467458df0bfae0bb07a5614dbd97f2))
+* **console-ui:** host-mountable BoardView component package ([#237](https://github.com/kontourai/console/issues/237)) ([40c33c0](https://github.com/kontourai/console/commit/40c33c04a4989da553bee51550cb11332d04c006))
+* **projection:** interactive-session process states (needs_input, review_pending) + blockedReason ([#236](https://github.com/kontourai/console/issues/236)) ([cffecca](https://github.com/kontourai/console/commit/cffecca5b8c0450b3b78fcfdc503e6d210b1f00f))
+
+
+### Bug Fixes
+
+* **publish:** ship the library entry for @kontourai/console (closes C1/C2) ([#235](https://github.com/kontourai/console/issues/235)) ([1435b82](https://github.com/kontourai/console/commit/1435b82bb7e4994efe3b8d358d299e93d71d9a20))
+* **release:** stabilize trusted publisher identity ([#205](https://github.com/kontourai/console/issues/205)) ([7689ad6](https://github.com/kontourai/console/commit/7689ad687b50e5ebcccb794eddf0fb1dd9f3b26b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @kontourai/console-core bumped from 0.2.0 to 0.3.0
+
 ## [2.7.0](https://github.com/kontourai/console/compare/v2.6.2...v2.7.0) (2026-07-13)
 
 

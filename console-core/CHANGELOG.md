@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.0](https://github.com/kontourai/console/compare/console-core-v0.2.0...console-core-v0.3.0) (2026-07-23)
+
+
+### Features
+
+* **act-plane:** intent-binding + consent contract with enforced never-authority ([#238](https://github.com/kontourai/console/issues/238)) ([b8bb955](https://github.com/kontourai/console/commit/b8bb955faab680a5bf60ef257d9ab167a7adcfb7))
+* **cli:** opt-in standalone action runner (consent-gated, never-authority) ([#240](https://github.com/kontourai/console/issues/240)) ([14ae169](https://github.com/kontourai/console/commit/14ae169906d4ac0cc8c0ad55f16ddaa368e2ce3c))
+* **projection:** interactive-session process states (needs_input, review_pending) + blockedReason ([#236](https://github.com/kontourai/console/issues/236)) ([cffecca](https://github.com/kontourai/console/commit/cffecca5b8c0450b3b78fcfdc503e6d210b1f00f))
+
 ## [0.2.0](https://github.com/kontourai/console/compare/console-core-v0.1.0...console-core-v0.2.0) (2026-07-12)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/cli",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Offline-first suite router for Kontour products.",
   "license": "Apache-2.0",
   "repository": {
@@ -45,7 +45,7 @@
     "prepack": "npm run build"
   },
   "dependencies": {
-    "@kontourai/console-core": "0.2.0"
+    "@kontourai/console-core": "0.3.0"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
