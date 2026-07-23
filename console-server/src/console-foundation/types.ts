@@ -986,6 +986,7 @@ export interface TelemetryAnalyticsSummary {
   // #180 read-model projections — turn raw tool events into operator meaning.
   actionClasses: TelemetryActionClassSummary[];
   costPerTurn: TelemetryTurnCostSummary;
+  retrySignals: TelemetryRetrySignalSummary;
   // #181 read-model projections built on the #568/#580 enriched tool stream.
   toolReliability: TelemetryToolReliabilitySummary;
   activityTimeline: TelemetryActivityTimeline;
@@ -1035,6 +1036,27 @@ export interface TelemetryTurnCostSummary {
   turnCount: number;
   /** Sum of each distinct turn's cost — every turn counted once. */
   totalEstimatedCostUsd: number;
+}
+
+/** A repeated, byte-equivalent tool invocation within one turn (or session
+ * when the runtime cannot provide a turn id). The private input identity used
+ * to form this group never crosses the Console API boundary. */
+export interface TelemetryRetrySignal {
+  sessionId: string;
+  turnId?: string;
+  toolName: string;
+  actionClass: TelemetryActionClass;
+  attempts: number;
+  firstObservedAt?: string;
+  lastObservedAt?: string;
+}
+
+export interface TelemetryRetrySignalSummary {
+  signals: TelemetryRetrySignal[];
+  /** Exact number of repeated-invocation groups before the detail cap. */
+  signalCount: number;
+  /** Exact invocations beyond the first attempt across every group. */
+  excessInvocationCount: number;
 }
 
 /** Per-tool latency + outcome reliability over the tool.result stream

@@ -45,6 +45,7 @@ function toolEventRecord(opts: {
   observedAt?: number;
   durationMs?: number | null;
   outcome?: "pass" | "fail" | "ambiguous";
+  toolInput?: Record<string, unknown>;
 }): Record<string, unknown> {
   evtCounter += 1;
   const record: Record<string, unknown> = {
@@ -58,6 +59,7 @@ function toolEventRecord(opts: {
     tool: {
       name: opts.toolName,
       normalized_name: opts.toolName,
+      ...(opts.toolInput !== undefined ? { input: opts.toolInput } : {}),
       ...(opts.durationMs !== undefined ? { duration_ms: opts.durationMs } : {}),
       ...(opts.outcome !== undefined ? { outcome: opts.outcome } : {})
     }
@@ -171,6 +173,51 @@ test("actionTaxonomy counts tool.invoke actions only, not paired tool.result", a
   assert.equal(classes.search.sessionCount, 1);
   // edit action only happened in s1.
   assert.equal(classes.edit.sessionCount, 1);
+});
+
+test("retrySignals detects exact repeated invocations without exposing their input identity", async () => {
+  const summary = await summarize([
+    toolEventRecord({
+      sessionId: "s1", turnId: "t1", eventType: "tool.invoke", toolName: "Bash",
+      toolInput: { command: "npm test", timeout: 30 }, observedAt: 1781200000000
+    }),
+    toolEventRecord({
+      sessionId: "s1", turnId: "t1", eventType: "tool.invoke", toolName: "Bash",
+      toolInput: { timeout: 30, command: "npm test" }, observedAt: 1781200001000
+    }),
+    toolEventRecord({
+      sessionId: "s1", turnId: "t1", eventType: "tool.invoke", toolName: "Bash",
+      toolInput: { command: "npm run build", timeout: 30 }, observedAt: 1781200002000
+    })
+  ]);
+
+  assert.deepEqual(summary.analytics.retrySignals, {
+    signals: [{
+      sessionId: "s1",
+      turnId: "t1",
+      toolName: "Bash",
+      attempts: 2,
+      firstObservedAt: new Date(1781200000000).toISOString(),
+      lastObservedAt: new Date(1781200001000).toISOString(),
+      actionClass: "execute"
+    }],
+    signalCount: 1,
+    excessInvocationCount: 1
+  });
+  const serialized = JSON.stringify(summary);
+  assert.doesNotMatch(serialized, /npm test|npm run build|toolInvocationIdentity/);
+});
+
+test("retrySignals scopes matches by turn and ignores results or missing input", async () => {
+  const same = { path: "src/index.ts" };
+  const summary = await summarize([
+    toolEventRecord({ sessionId: "s1", turnId: "t1", eventType: "tool.invoke", toolName: "Read", toolInput: same }),
+    toolEventRecord({ sessionId: "s1", turnId: "t1", eventType: "tool.result", toolName: "Read", toolInput: same }),
+    toolEventRecord({ sessionId: "s1", turnId: "t2", eventType: "tool.invoke", toolName: "Read", toolInput: same }),
+    toolEventRecord({ sessionId: "s1", turnId: "t1", eventType: "tool.invoke", toolName: "Read" })
+  ]);
+  assert.equal(summary.analytics.retrySignals.signalCount, 0);
+  assert.equal(summary.analytics.retrySignals.excessInvocationCount, 0);
 });
 
 // --- costPerTurn (integration) — the correctness crux -----------------------

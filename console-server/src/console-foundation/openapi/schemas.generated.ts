@@ -246,6 +246,9 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "costPerTurn": {
         "$ref": "#/definitions/TelemetryTurnCostSummary"
       },
+      "retrySignals": {
+        "$ref": "#/definitions/TelemetryRetrySignalSummary"
+      },
       "toolReliability": {
         "$ref": "#/definitions/TelemetryToolReliabilitySummary"
       },
@@ -263,6 +266,7 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "usageByTaskSlug",
       "actionClasses",
       "costPerTurn",
+      "retrySignals",
       "toolReliability",
       "activityTimeline"
     ],
@@ -612,6 +616,65 @@ export const GENERATED_DEFINITIONS: Record<string, unknown> = {
       "eventId",
       "eventType",
       "sessionId"
+    ],
+    "additionalProperties": false
+  },
+  "TelemetryRetrySignal": {
+    "type": "object",
+    "properties": {
+      "sessionId": {
+        "type": "string"
+      },
+      "turnId": {
+        "type": "string"
+      },
+      "toolName": {
+        "type": "string"
+      },
+      "actionClass": {
+        "$ref": "#/definitions/TelemetryActionClass"
+      },
+      "attempts": {
+        "type": "number"
+      },
+      "firstObservedAt": {
+        "type": "string"
+      },
+      "lastObservedAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sessionId",
+      "toolName",
+      "actionClass",
+      "attempts"
+    ],
+    "additionalProperties": false,
+    "description": "A repeated, byte-equivalent tool invocation within one turn (or session when the runtime cannot provide a turn id). The private input identity used to form this group never crosses the Console API boundary."
+  },
+  "TelemetryRetrySignalSummary": {
+    "type": "object",
+    "properties": {
+      "signals": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/TelemetryRetrySignal"
+        }
+      },
+      "signalCount": {
+        "type": "number",
+        "description": "Exact number of repeated-invocation groups before the detail cap."
+      },
+      "excessInvocationCount": {
+        "type": "number",
+        "description": "Exact invocations beyond the first attempt across every group."
+      }
+    },
+    "required": [
+      "signals",
+      "signalCount",
+      "excessInvocationCount"
     ],
     "additionalProperties": false
   },
