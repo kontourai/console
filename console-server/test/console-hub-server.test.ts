@@ -847,6 +847,35 @@ test("hosted hub server persists postgres telemetry through injected SQL client 
   }
 });
 
+test("hosted telemetry retention prunes globally before insert and throttles cleanup", async () => {
+  const rootDir = tempRoot();
+  const sqlClient = new FakeTelemetrySqlClient();
+  const app = createConsoleHubServer({
+    rootDir,
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryRetentionDays: 7,
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: sqlClient,
+    hostedAuthTokens: [{ token: "token-a", tenantId: "tenant-a" }]
+  });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    const headers = { authorization: "Bearer token-a" };
+    const first = await requestJson("POST", `${baseUrl}/api/telemetry/records`, telemetryRecord("retention-1", "tool.invoke", "session-a", new Date().toISOString()), headers);
+    const second = await requestJson("POST", `${baseUrl}/api/telemetry/records`, telemetryRecord("retention-2", "tool.invoke", "session-a", new Date().toISOString()), headers);
+
+    assert.equal(first.statusCode, 202);
+    assert.equal(second.statusCode, 202);
+    assert.deepEqual(sqlClient.telemetryPrunes, [{ retentionDays: 7, rowCountBeforeInsert: 0 }]);
+    assert.equal(sqlClient.rows.length, 2);
+  } finally {
+    await close(app);
+  }
+});
+
 test("hosted hub server reads a full bounded SQL window before app-side search and facet filters", async () => {
   const rootDir = tempRoot();
   const sqlClient = new FakeTelemetrySqlClient();
@@ -3223,6 +3252,7 @@ class FakeTelemetrySqlClient {
   economicsRows: any[] = [];
   migrations = new Set<string>();
   selects: Array<{ text: string; values: any[] }> = [];
+  telemetryPrunes: Array<{ retentionDays: number; rowCountBeforeInsert: number }> = [];
   private coreSequence = 1;
   private economicsSequence = 1;
   failNextCoreLoad = false;
@@ -3346,6 +3376,10 @@ class FakeTelemetrySqlClient {
       if (existingIndex >= 0) this.rows[existingIndex] = row;
       else this.rows.push(row);
       return { rows: [], rowCount: 1 };
+    }
+    if (normalized.startsWith("delete from console_telemetry_events")) {
+      this.telemetryPrunes.push({ retentionDays: Number(values[0]), rowCountBeforeInsert: this.rows.length });
+      return { rows: [], rowCount: 0 };
     }
     if (normalized.startsWith("select event_id, event_type, session_id, observed_at, received_at, payload from console_telemetry_events")) {
       const tenantId = values[0];
