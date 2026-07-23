@@ -82,6 +82,41 @@ test("findOwningProcess: undefined when the gate has no processRef", () => {
   assert.equal(findOwningProcess(g, [proc({ id: "p1" })]), undefined);
 });
 
+// console#255 review MED finding 1 regression: a qualified processRef must
+// only join the process whose sourceRef.product/kind actually agree — a bare
+// id match alone let a gate from one product silently pick up a DIFFERENT
+// product's same-id process (and show ITS trust report).
+
+test("findOwningProcess: a qualified processRef only joins the process whose sourceRef.product/kind agree, even when another process shares the SAME id", () => {
+  const g = gate({ id: "g1", processRef: { product: "flow-agents", kind: "workflow", id: "shared-id" } });
+  const wrongProduct = proc({ id: "shared-id", sourceRef: { product: "flow", kind: "run" } });
+  const rightProduct = proc({ id: "shared-id", sourceRef: { product: "flow-agents", kind: "workflow" } });
+  assert.equal(findOwningProcess(g, [wrongProduct, rightProduct]), rightProduct);
+});
+
+test("selectGateTrustReport: the reviewer's two-same-id-processes probe selects the CORRECT product's process report, never the wrong one", () => {
+  const wrongReport = { schemaVersion: 5, source: "wrong-product-report", claims: [] };
+  const rightReport = { schemaVersion: 5, source: "right-product-report", claims: [] };
+  const g = gate({ id: "g1", processRef: { product: "flow-agents", kind: "workflow", id: "shared-id" } });
+  const wrongProduct = proc({ id: "shared-id", sourceRef: { product: "flow", kind: "run" }, trustReport: wrongReport });
+  const rightProduct = proc({ id: "shared-id", sourceRef: { product: "flow-agents", kind: "workflow" }, trustReport: rightReport });
+  const selection = selectGateTrustReport(g, [wrongProduct, rightProduct]);
+  assert.equal(selection.source, "process");
+  assert.deepEqual(selection.report, rightReport);
+});
+
+test("findOwningProcess: a qualified processRef with no agreeing process is honestly 'not found' — never falls back to a same-id, wrong-product process", () => {
+  const g = gate({ id: "g1", processRef: { product: "flow-agents", kind: "workflow", id: "shared-id" } });
+  const wrongProduct = proc({ id: "shared-id", sourceRef: { product: "flow", kind: "run" } });
+  assert.equal(findOwningProcess(g, [wrongProduct]), undefined);
+});
+
+test("findOwningProcess: a BARE (unqualified) processRef keeps the looser id-only join — matches whichever process has that id", () => {
+  const g = gate({ id: "g1", processRef: { id: "shared-id" } });
+  const anyProduct = proc({ id: "shared-id", sourceRef: { product: "flow", kind: "run" } });
+  assert.equal(findOwningProcess(g, [anyProduct]), anyProduct);
+});
+
 // ── Component: report selection drives rendered output ─────────────────────
 
 test("GateTrustPanel: renders <surface-trust-panel> and an aria-label naming the gate when a report is available", () => {
