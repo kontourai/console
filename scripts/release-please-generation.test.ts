@@ -9,7 +9,7 @@ import { parse as parseYaml } from "yaml";
 const { LocalGitHub } = require("release-please/build/src/local-github.js") as typeof import("release-please/build/src/local-github.js");
 const { Manifest } = require("release-please/build/src/manifest.js") as typeof import("release-please/build/src/manifest.js");
 
-type Baseline = { root: string; cli: string; core: string; server: string };
+type Baseline = { root: string; cli: string; core: string; server: string; ui: string };
 const repositoryRoot = join(__dirname, "..");
 const releaseWorkflow = readFileSync(join(repositoryRoot, ".github/workflows/release-please.yml"), "utf8");
 type ReleaseSet = { console?: string; core?: string; cli?: string; server?: string };
@@ -54,9 +54,10 @@ const loadedPackages = {
   cli: JSON.parse(readFileSync(join(repositoryRoot, "cli/package.json"), "utf8")) as { version: string },
   core: JSON.parse(readFileSync(join(repositoryRoot, "console-core/package.json"), "utf8")) as { version: string },
   server: JSON.parse(readFileSync(join(repositoryRoot, "console-server/package.json"), "utf8")) as { version: string },
+  ui: JSON.parse(readFileSync(join(repositoryRoot, "console-ui/package.json"), "utf8")) as { version: string },
 };
-const loadedBaseline: Baseline = { root: loadedManifest["."], cli: loadedManifest.cli, core: loadedManifest["console-core"], server: loadedPackages.server.version };
-assert.deepEqual(loadedBaseline, { root: loadedPackages.root.version, cli: loadedPackages.cli.version, core: loadedPackages.core.version, server: loadedPackages.server.version });
+const loadedBaseline: Baseline = { root: loadedManifest["."], cli: loadedManifest.cli, core: loadedManifest["console-core"], server: loadedPackages.server.version, ui: loadedPackages.ui.version };
+assert.deepEqual(loadedBaseline, { root: loadedPackages.root.version, cli: loadedPackages.cli.version, core: loadedPackages.core.version, server: loadedPackages.server.version, ui: loadedPackages.ui.version });
 
 function parts(version: string): [number, number, number] {
   const parsed = version.split(".").map(Number);
@@ -68,7 +69,7 @@ function patchVersion(version: string): string { const [major, minor, patch] = p
 function featureVersion(version: string): string { const [major, minor] = parts(version); return `${major}.${minor + 1}.0`; }
 function breakingVersion(version: string): string { const [major] = parts(version); return `${major + 1}.0.0`; }
 function candidateFor(baseline: Baseline): Baseline {
-  return { root: patchVersion(baseline.root), cli: patchVersion(baseline.cli), core: featureVersion(baseline.core), server: patchVersion(baseline.server) };
+  return { root: patchVersion(baseline.root), cli: patchVersion(baseline.cli), core: featureVersion(baseline.core), server: patchVersion(baseline.server), ui: patchVersion(baseline.ui) };
 }
 
 const isolatedMarker = "KONTOUR_RELEASE_PLEASE_FIXTURE_ISOLATED";
@@ -81,14 +82,15 @@ async function buildFixture(baseline: Baseline, includeCoreRelease: boolean) {
   const root = mkdtempSync(join(tmpdir(), "release-please-manifest-"));
   try {
     git(root, "init", "-b", "main"); git(root, "config", "user.email", "fixture@example.test"); git(root, "config", "user.name", "Fixture");
-    put(root, "package.json", { name: "@kontourai/console", version: baseline.root, workspaces: ["cli", "console-core", "console-server"], dependencies: { "@kontourai/console-core": baseline.core } });
+    put(root, "package.json", { name: "@kontourai/console", version: baseline.root, workspaces: ["cli", "console-core", "console-server", "console-ui"], dependencies: { "@kontourai/console-core": baseline.core } });
     put(root, "cli/package.json", { name: "@kontourai/cli", version: baseline.cli, dependencies: { "@kontourai/console-core": baseline.core } });
     put(root, "console-core/package.json", { name: "@kontourai/console-core", version: baseline.core });
     put(root, "console-server/package.json", { name: "@kontourai/console-server", version: baseline.server, publishConfig: { access: "public" }, dependencies: { "@kontourai/console-core": baseline.core } });
-    put(root, "package-lock.json", { name: "@kontourai/console", version: baseline.root, lockfileVersion: 3, packages: { "": { name: "@kontourai/console", version: baseline.root, dependencies: { "@kontourai/console-core": baseline.core } }, cli: { name: "@kontourai/cli", version: baseline.cli, dependencies: { "@kontourai/console-core": baseline.core } }, "console-core": { name: "@kontourai/console-core", version: baseline.core }, "console-server": { name: "@kontourai/console-server", version: baseline.server, dependencies: { "@kontourai/console-core": baseline.core } } } });
-    put(root, ".release-please-manifest.json", { ".": baseline.root, cli: baseline.cli, "console-core": baseline.core, "console-server": baseline.server });
+    put(root, "console-ui/package.json", { name: "@kontourai/console-ui", version: baseline.ui, publishConfig: { access: "public" }, dependencies: { "@kontourai/console-core": baseline.core } });
+    put(root, "package-lock.json", { name: "@kontourai/console", version: baseline.root, lockfileVersion: 3, packages: { "": { name: "@kontourai/console", version: baseline.root, dependencies: { "@kontourai/console-core": baseline.core } }, cli: { name: "@kontourai/cli", version: baseline.cli, dependencies: { "@kontourai/console-core": baseline.core } }, "console-core": { name: "@kontourai/console-core", version: baseline.core }, "console-server": { name: "@kontourai/console-server", version: baseline.server, dependencies: { "@kontourai/console-core": baseline.core } }, "console-ui": { name: "@kontourai/console-ui", version: baseline.ui, dependencies: { "@kontourai/console-core": baseline.core } } } });
+    put(root, ".release-please-manifest.json", { ".": baseline.root, cli: baseline.cli, "console-core": baseline.core, "console-server": baseline.server, "console-ui": baseline.ui });
     put(root, "release-please-config.json", releaseConfig);
-    put(root, "CHANGELOG.md", "# Changelog\n"); put(root, "cli/CHANGELOG.md", "# Changelog\n"); put(root, "console-core/CHANGELOG.md", "# Changelog\n"); put(root, "console-server/CHANGELOG.md", "# Changelog\n");
+    put(root, "CHANGELOG.md", "# Changelog\n"); put(root, "cli/CHANGELOG.md", "# Changelog\n"); put(root, "console-core/CHANGELOG.md", "# Changelog\n"); put(root, "console-server/CHANGELOG.md", "# Changelog\n"); put(root, "console-ui/CHANGELOG.md", "# Changelog\n");
     git(root, "add", "."); git(root, "commit", "-m", "feat(console-core)!: historical release content"); const releaseSha = git(root, "rev-parse", "HEAD");
     put(root, "release-boundary.txt", "release history is supplied by the fixture provider\n"); git(root, "add", "."); git(root, "commit", "-m", "chore: configure release boundary");
     put(root, "console-core/descriptor.txt", "published descriptor surface\n"); git(root, "add", "."); git(root, "commit", "-m", "feat(console-core): publish descriptor package subpaths");
@@ -97,6 +99,7 @@ async function buildFixture(baseline: Baseline, includeCoreRelease: boolean) {
       { id: 2, tagName: `cli-v${baseline.cli}`, sha: releaseSha, url: "https://example.test/releases/cli" },
       ...(includeCoreRelease ? [{ id: 3, tagName: `console-core-v${baseline.core}`, sha: releaseSha, url: "https://example.test/releases/core" }] : []),
       { id: 4, tagName: `console-server-v${baseline.server}`, sha: releaseSha, url: "https://example.test/releases/console-server" },
+      { id: 5, tagName: `console-ui-v${baseline.ui}`, sha: releaseSha, url: "https://example.test/releases/console-ui" },
     ];
     const releaseIterator = async function* () { yield* releases; };
     const empty = async function* () { /* no pull requests in fixture provider state */ };
@@ -119,14 +122,15 @@ async function assertGeneratedCandidate(label: string, baseline: Baseline): Prom
   assert.equal(fixtureTags, "", `${label}: fixture must not inherit ambient tags`);
   assert.equal(prs.length, 1);
   const data = new Map(prs[0].body.releaseData.map((item: { component?: string; version?: { toString(): string } }) => [item.component ?? "", item.version?.toString()]));
-  assert.equal(data.get("console-core"), expected.core); assert.equal(data.get("cli"), expected.cli); assert.equal(data.get(""), expected.root); assert.equal(data.get("console-server"), expected.server);
-  const cli = JSON.parse(updates.get("cli/package.json")!); const rootPackage = JSON.parse(updates.get("package.json")!); const server = JSON.parse(updates.get("console-server/package.json")!); const lock = JSON.parse(updates.get("package-lock.json")!); const versions = JSON.parse(updates.get(".release-please-manifest.json")!);
+  assert.equal(data.get("console-core"), expected.core); assert.equal(data.get("cli"), expected.cli); assert.equal(data.get(""), expected.root); assert.equal(data.get("console-server"), expected.server); assert.equal(data.get("console-ui"), expected.ui);
+  const cli = JSON.parse(updates.get("cli/package.json")!); const rootPackage = JSON.parse(updates.get("package.json")!); const server = JSON.parse(updates.get("console-server/package.json")!); const ui = JSON.parse(updates.get("console-ui/package.json")!); const lock = JSON.parse(updates.get("package-lock.json")!); const versions = JSON.parse(updates.get(".release-please-manifest.json")!);
   assert.equal(cli.version, expected.cli); assert.equal(cli.dependencies["@kontourai/console-core"], expected.core);
-  assert.equal(rootPackage.version, expected.root); assert.equal(rootPackage.dependencies["@kontourai/console-core"], expected.core); assert.equal(server.dependencies["@kontourai/console-core"], expected.core);
+  assert.equal(rootPackage.version, expected.root); assert.equal(rootPackage.dependencies["@kontourai/console-core"], expected.core); assert.equal(server.dependencies["@kontourai/console-core"], expected.core); assert.equal(ui.dependencies["@kontourai/console-core"], expected.core);
   assert.equal(lock.packages.cli.version, expected.cli); assert.equal(lock.packages.cli.dependencies["@kontourai/console-core"], expected.core); assert.equal(lock.packages["console-core"].version, expected.core);
-  assert.equal(lock.packages[""].version, expected.root); assert.equal(lock.packages[""].dependencies["@kontourai/console-core"], expected.core); assert.equal(lock.packages["console-server"].dependencies["@kontourai/console-core"], expected.core);
+  assert.equal(lock.packages[""].version, expected.root); assert.equal(lock.packages[""].dependencies["@kontourai/console-core"], expected.core); assert.equal(lock.packages["console-server"].dependencies["@kontourai/console-core"], expected.core); assert.equal(lock.packages["console-ui"].dependencies["@kontourai/console-core"], expected.core);
   assert.equal(server.version, expected.server); assert.equal(lock.packages["console-server"].version, expected.server, "Console Server is now an independently released, published component and receives the same workspace-forced bump as cli and root");
-  assert.deepEqual(versions, { ".": expected.root, cli: expected.cli, "console-core": expected.core, "console-server": expected.server });
+  assert.equal(ui.version, expected.ui); assert.equal(lock.packages["console-ui"].version, expected.ui, "Console UI is now an independently released, published component and receives the same workspace-forced bump as cli and root");
+  assert.deepEqual(versions, { ".": expected.root, cli: expected.cli, "console-core": expected.core, "console-server": expected.server, "console-ui": expected.ui });
   assert.match(updates.get("console-core/CHANGELOG.md")!, new RegExp(expected.core.replaceAll(".", "\\."))); assert.match(updates.get("cli/CHANGELOG.md")!, new RegExp(expected.cli.replaceAll(".", "\\.")));
 }
 
