@@ -47,6 +47,7 @@ npm install -g @kontourai/console
 console-inspect            # inspect the current directory
 kontour serve              # start the local hub on 127.0.0.1:3737
 kontour-flow-bridge --help # bridge local Flow runs into the hub
+kontour-process-bridge --help # bridge flow-agents workflow-process projections into the hub
 ```
 
 The `@kontourai/console` package's `kontour serve` entry point remains behaviorally compatible but is deprecated in favor of `@kontourai/cli` and `kontour console serve`. It will not be removed before Console 3.0; it remains a direct Console bin and does not proxy through the router.
@@ -55,7 +56,7 @@ The `@kontourai/console` package's `kontour serve` entry point remains behaviora
 
 ## Published packages
 
-- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, and `kontour-flow-bridge` bins.
+- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, `kontour-flow-bridge`, and `kontour-process-bridge` bins.
 - `@kontourai/console-core` — shared record and process-flow shapes.
 - `@kontourai/cli` — the offline-first suite router (`kontour` bin) for Flow, Flow Agents, and Console product delegation.
 - `@kontourai/telemetry` — the canonical telemetry contract: event/pricing shapes, versioned pricing registry, and OpenTelemetry GenAI mapping, consumed by `@kontourai/console`.
@@ -73,6 +74,16 @@ npx --package @kontourai/console kontour-flow-bridge \
 ```
 
 Point the Console UI at the hub and the operating plane follows your actual gated work — current step, advances, route-backs — with no demo scripting.
+
+## Bridge a flow-agents workflow-process projection
+
+`kontour-process-bridge` reads flow-agents' local workflow-process projection envelopes (`.kontourai/console/projections/<producer>/*.json`, written by the `flow-agents-console-process-projection` CLI, flow-agents#778) and delivers them to a hub as Console process events — read-only over the envelope files, content-addressed event ids, idempotent re-runs. A session sitting in `blocked`/`needs_input`/`review_pending` renders on the board with its `blockedReason`, the same way any other Console process does:
+
+```sh
+npx --package @kontourai/console kontour serve             # hub on 127.0.0.1:3737
+npx --package @kontourai/console kontour-process-bridge \
+  --watch                                                        # follow live workflow-process projections
+```
 
 ## See it locally
 
