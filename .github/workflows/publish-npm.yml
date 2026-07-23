@@ -119,8 +119,17 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
+
+      # OIDC trusted publishing (fix: console-core@0.3.0 E404). Do NOT set
+      # setup-node's `registry-url` here — it writes an .npmrc `_authToken` line
+      # that pins `npm publish` to the (now 2FA-restricted) token auth path
+      # instead of the package's configured OIDC trusted publisher. With no
+      # token config present and `id-token: write`, npm >= 11.5.1 authenticates
+      # the publish via the trusted publisher. Upgrade npm so that support is
+      # guaranteed regardless of the Node-bundled version.
+      - name: Ensure npm supports OIDC trusted publishing
+        run: npm install -g npm@latest
 
       - name: Install
         run: npm ci --no-fund --no-audit
