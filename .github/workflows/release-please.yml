@@ -30,6 +30,8 @@ jobs:
       cli_tag_name: ${{ steps.release.outputs['cli--tag_name'] }}
       server_release_created: ${{ steps.release.outputs['console-server--release_created'] }}
       server_tag_name: ${{ steps.release.outputs['console-server--tag_name'] }}
+      ui_release_created: ${{ steps.release.outputs['console-ui--release_created'] }}
+      ui_tag_name: ${{ steps.release.outputs['console-ui--tag_name'] }}
     steps:
       # Release PRs authored by the default GITHUB_TOKEN (github-actions[bot])
       # get their CI runs held as action_required on every refresh. Minting a
@@ -112,6 +114,20 @@ jobs:
     uses: ./.github/workflows/publish-npm.yml
     with:
       target_tag: ${{ needs.release-please.outputs.server_tag_name }}
+    permissions:
+      contents: read
+      id-token: write
+
+  publish-console-ui:
+    needs: [release-please, publish-core]
+    if: >-
+      always() &&
+      needs.release-please.result == 'success' &&
+      needs.release-please.outputs.ui_release_created == 'true' &&
+      (needs.publish-core.result == 'success' || needs.publish-core.result == 'skipped')
+    uses: ./.github/workflows/publish-npm.yml
+    with:
+      target_tag: ${{ needs.release-please.outputs.ui_tag_name }}
     permissions:
       contents: read
       id-token: write

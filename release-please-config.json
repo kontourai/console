@@ -2,13 +2,16 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "node",
   "include-component-in-tag": false,
-  "plugins": ["node-workspace"],
+  "plugins": [
+    "node-workspace"
+  ],
   "packages": {
     ".": {
       "exclude-paths": [
         "cli",
         "console-core",
-        "console-server"
+        "console-server",
+        "console-ui"
       ]
     },
     "cli": {
@@ -52,6 +55,16 @@
           "type": "json",
           "path": "/package-lock.json",
           "jsonpath": "$.packages[''].dependencies['@kontourai/console-core']"
+        },
+        {
+          "type": "json",
+          "path": "/package-lock.json",
+          "jsonpath": "$.packages.console-ui.dependencies['@kontourai/console-core']"
+        },
+        {
+          "type": "json",
+          "path": "/console-ui/package.json",
+          "jsonpath": "$.dependencies['@kontourai/console-core']"
         }
       ]
     },
@@ -64,6 +77,18 @@
           "type": "json",
           "path": "/package-lock.json",
           "jsonpath": "$.packages.console-server.version"
+        }
+      ]
+    },
+    "console-ui": {
+      "component": "console-ui",
+      "package-name": "@kontourai/console-ui",
+      "include-component-in-tag": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/package-lock.json",
+          "jsonpath": "$.packages.console-ui.version"
         }
       ]
     }
