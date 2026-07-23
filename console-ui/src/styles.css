@@ -3038,7 +3038,7 @@ flow-run-panel {
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Overview — the unified triage-first operator home (redesign slice 1, #295 IA).
-   Reading order: Needs you → At a glance → signposts to Now / Fleet / Cost.
+   Reading order: The fleet → Needs you → At a glance → signposts to Now / Sessions / Cost.
    All values are @kontourai/ui --k-* tokens; no ad-hoc colors/spacing.
    ═══════════════════════════════════════════════════════════════════════════ */
 .overview { display: flex; flex-direction: column; gap: var(--k-space-6); padding-top: var(--k-space-5); }
@@ -3050,6 +3050,49 @@ flow-run-panel {
 .ov-live { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-muted); }
 .ov-link { background: none; border: none; cursor: pointer; font-family: var(--k-font-mono); font-size: var(--k-text-sm); color: var(--k-brand); padding: 0; }
 .ov-link:hover { text-decoration: underline; }
+
+/* The fleet — one card per worker (console#251) */
+.wf-counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--k-space-3); }
+@media (max-width: 900px) { .wf-counts { grid-template-columns: repeat(2, 1fr); } }
+.wf-count { display: flex; flex-direction: column; gap: 2px; background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-3) var(--k-space-4); text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.wf-count:hover { border-color: var(--k-line-strong); }
+.wf-count.is-active { border-color: var(--k-brand); box-shadow: inset 0 0 0 1px var(--k-brand); }
+.wf-count-value { font-family: var(--k-font-display); font-size: var(--k-text-2xl); font-weight: 600; line-height: 1.05; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--k-text); }
+.wf-count-label { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); letter-spacing: 0.03em; }
+.wf-count-waiting-on-you .wf-count-value { color: var(--k-caution); }
+.wf-count-stalled .wf-count-value { color: var(--k-negative); }
+.wf-count-archived .wf-count-value { color: var(--k-text-faint); }
+
+.wf-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--k-space-3); list-style: none; margin: 0; padding: 0; }
+@media (max-width: 900px) { .wf-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .wf-grid { grid-template-columns: 1fr; } }
+
+.wf-card { position: relative; background: var(--k-panel); border: 1px solid var(--k-line); border-radius: var(--k-radius-sm); padding: var(--k-space-4); overflow: hidden; box-shadow: var(--k-shadow); }
+.wf-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--wf-accent, var(--k-neutral)); }
+.wf-card-active { --wf-accent: var(--k-positive); }
+.wf-card-waiting-on-you { --wf-accent: var(--k-caution); }
+.wf-card-stalled { --wf-accent: var(--k-negative); }
+.wf-card-archived { --wf-accent: var(--k-neutral); opacity: 0.75; }
+.wf-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--k-space-2); }
+.wf-card-title { font-family: var(--k-font-ui); font-size: var(--k-text-md); font-weight: 600; color: var(--k-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-card-step { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-muted); margin: var(--k-space-2) 0 0; }
+.wf-card-blocked { font-size: var(--k-text-sm); color: var(--k-caution); margin: var(--k-space-1) 0 0; overflow-wrap: anywhere; }
+.wf-card-progress { height: 6px; background: var(--k-neutral-soft, rgba(111,128,149,0.14)); border-radius: 20px; overflow: hidden; margin-top: var(--k-space-2); }
+.wf-card-progress-fill { display: block; height: 100%; background: var(--k-active); border-radius: 20px; }
+.wf-card-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--k-space-2); margin-top: var(--k-space-3); }
+.wf-freshness { font-family: var(--k-font-mono); font-size: var(--k-text-xs); letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 7px; border-radius: 20px; }
+.wf-freshness-fresh { color: var(--k-positive); background: var(--k-positive-soft, rgba(52,211,153,0.14)); }
+.wf-freshness-idle { color: var(--k-caution); background: var(--k-caution-soft, rgba(240,180,80,0.14)); }
+.wf-freshness-stalled { color: var(--k-negative); background: var(--k-negative-soft, rgba(240,100,100,0.14)); }
+.wf-freshness-unknown { color: var(--k-text-faint); background: var(--k-neutral-soft, rgba(111,128,149,0.14)); }
+.wf-card-time { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); white-space: nowrap; }
+.wf-card-time-unknown { font-style: italic; }
+.wf-card-time-raw { font-style: italic; text-decoration: underline dotted var(--k-text-faint); }
+
+.wf-archive { margin-top: var(--k-space-1); }
+.wf-archive-toggle { background: none; border: none; cursor: pointer; font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-muted); padding: 0; }
+.wf-archive-toggle:hover { color: var(--k-text); }
+.wf-grid-archived { margin-top: var(--k-space-3); }
 
 /* Needs-you triage cards */
 .triage { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--k-space-3); }
