@@ -62,6 +62,17 @@ export interface ConsoleProcess {
   updatedAt?: string;
   claimRefs?: ConsoleRef[];
   nextActionRefs?: ConsoleRef[];
+  /**
+   * `@kontourai/surface`'s `buildTrustReport` output, folded verbatim from
+   * flow-agents' workflow-trust bridge (console#254) so this process's board
+   * card can carry the FULL Surface trust report even when it has zero gate
+   * associations. Typed `unknown` here (like `PipelineGateExpect.trustReport`
+   * in pipeline.ts) so console-core takes no dependency on `@kontourai/surface`;
+   * console-ui narrows/passes it through opaquely at the UI boundary where
+   * `<surface-trust-panel>` (console#255) mounts. Console never derives or
+   * transforms this — Surface stays the sole authority for trust verdicts.
+   */
+  trustReport?: unknown;
 }
 
 export interface ConsoleGate {
@@ -79,6 +90,14 @@ export interface ConsoleGate {
     maxAttempts?: number;
   };
   updatedAt?: string;
+  /**
+   * The same Surface trust report relayed onto this gate directly (console#254's
+   * workflow-trust bridge attaches it to every gate association), so
+   * console#255's gate trust panel can read it without first resolving the
+   * owning process. See `ConsoleProcess.trustReport` for the opaque-typing
+   * rationale.
+   */
+  trustReport?: unknown;
 }
 
 export interface ConsoleClaim {

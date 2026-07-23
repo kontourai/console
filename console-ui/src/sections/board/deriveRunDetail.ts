@@ -329,8 +329,13 @@ function byRecencyDesc(aMs: number | null, bMs: number | null): number {
  * NOT changed here — noted in the task report as a follow-up candidate,
  * since strengthening it changes the board's existing gate-tally contract
  * out of scope for this run-detail slice.
+ *
+ * Exported (console#255 review MED finding 1) so GateTrustPanel's
+ * gate->owning-process join (components/GateTrustPanel.tsx) shares this SAME
+ * hardened join instead of re-deriving a weaker, bare-id-only one — the exact
+ * cross-product collision class this helper already closes.
  */
-function refJoinsProcess(ref: ConsoleRef | undefined, process: ConsoleProcess): boolean {
+export function refJoinsProcess(ref: ConsoleRef | undefined, process: ConsoleProcess): boolean {
   if (!ref || !ref.id || ref.id !== process.id) return false;
   if (ref.product !== undefined && ref.product !== process.sourceRef?.product) return false;
   if (ref.kind !== undefined && ref.kind !== (process.sourceRef?.kind ?? "run")) return false;
