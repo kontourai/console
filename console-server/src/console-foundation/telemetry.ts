@@ -12,6 +12,7 @@ import type {
   TelemetryActionClassSummary,
   TelemetryTurnCost,
   TelemetryTurnCostSummary,
+  TelemetryRetrySignalSummary,
   TelemetryToolReliability,
   TelemetryToolReliabilitySummary,
   TelemetryActivityBucket,
@@ -669,7 +670,7 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
   const status = nestedString(record, ["status"]) || hookEventName;
   const outcome = nestedString(record, ["outcome"]) || nestedString(record, ["tool", "status"]);
   const usage = parseRecordUsage(nestedValue(record, ["usage"]), model);
-  return {
+  const summary: TelemetryRecordSummary = {
     sourceId,
     sourceKind: "runtime",
     eventId: record.event_id,
@@ -720,6 +721,14 @@ function summarizeRuntimeRecord(record: TelemetryRecord, sourceId: string, fileP
     }),
     path: filePath
   };
+  const toolInput = nestedValue(record, ["tool", "input"]);
+  if (toolInput !== undefined) {
+    Object.defineProperty(summary, TOOL_INVOCATION_IDENTITY, {
+      value: `${toolName || "unknown"}\u0000${stableProjectionValue(toolInput)}`,
+      enumerable: false
+    });
+  }
+  return summary;
 }
 
 function readDescriptorRecordSources(rootDir: string, productRoots: TelemetryProductRoots, descriptor: TelemetryDescriptor): { sources: Array<{ source: TelemetrySourceSummary; records: TelemetryRecordSummary[] }>; records: TelemetryRecordSummary[] } {
@@ -911,6 +920,7 @@ function buildAnalytics(records: TelemetryRecordSummary[], descriptor: Telemetry
     usageByTaskSlug: usageByDimensionBreakdown(records, (r) => r.taskSlug).filter((b) => b.key !== "unknown"),
     actionClasses: actionTaxonomy(records),
     costPerTurn: costPerTurn(records),
+    retrySignals: retrySignals(records),
     toolReliability: toolReliability(records),
     activityTimeline: activityTimeline(records)
   };
@@ -1692,6 +1702,21 @@ function usageByDimensionBreakdown(
 // Cap on the per-turn detail list returned in an analytics summary. Aggregates
 // (turnCount, totalEstimatedCostUsd) are always exact over every turn.
 const MAX_COST_PER_TURN_ROWS = 200;
+const MAX_RETRY_SIGNAL_ROWS = 100;
+const TOOL_INVOCATION_IDENTITY = Symbol("toolInvocationIdentity");
+
+type ProjectionTelemetryRecord = TelemetryRecordSummary & {
+  [TOOL_INVOCATION_IDENTITY]?: string;
+};
+
+function stableProjectionValue(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableProjectionValue).join(",")}]`;
+  return `{${Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, entry]) => `${JSON.stringify(key)}:${stableProjectionValue(entry)}`)
+    .join(",")}}`;
+}
 
 const ACTION_CLASS_LABELS: Record<TelemetryActionClass, string> = {
   edit: "Edit",
@@ -1883,6 +1908,61 @@ export function costPerTurn(records: TelemetryRecordSummary[]): TelemetryTurnCos
   // exact; callers wanting more detail narrow the query window.
   const totalEstimatedCostUsd = round6(turns.reduce((sum, turn) => sum + turn.estimatedCostUsd, 0));
   return { turns: turns.slice(0, MAX_COST_PER_TURN_ROWS), turnCount: turns.length, totalEstimatedCostUsd };
+}
+
+/** Detect exact repeated tool+input invocations without returning tool input or
+ * a stable digest. The private identity exists only while projecting records
+ * already available to the local Console process. */
+export function retrySignals(records: TelemetryRecordSummary[]): TelemetryRetrySignalSummary {
+  interface Accumulator {
+    sessionId: string;
+    turnId?: string;
+    toolName: string;
+    attempts: number;
+    firstObservedAt?: string;
+    lastObservedAt?: string;
+  }
+  const groups = new Map<string, Accumulator>();
+  for (const record of records as ProjectionTelemetryRecord[]) {
+    if (!isToolInvokeRecord(record)) continue;
+    const identity = record[TOOL_INVOCATION_IDENTITY];
+    if (!identity) continue;
+    const scope = record.turnId ? `turn:${record.turnId}` : `session:${record.sessionId}`;
+    const key = `${record.sessionId}\u0000${scope}\u0000${identity}`;
+    const current = groups.get(key);
+    if (!current) {
+      groups.set(key, {
+        sessionId: record.sessionId,
+        turnId: record.turnId,
+        toolName: record.toolName || "unknown",
+        attempts: 1,
+        firstObservedAt: record.observedAt,
+        lastObservedAt: record.observedAt
+      });
+      continue;
+    }
+    current.attempts += 1;
+    if (record.observedAt && (!current.firstObservedAt || record.observedAt < current.firstObservedAt)) {
+      current.firstObservedAt = record.observedAt;
+    }
+    if (record.observedAt && (!current.lastObservedAt || record.observedAt > current.lastObservedAt)) {
+      current.lastObservedAt = record.observedAt;
+    }
+  }
+  const signals = Array.from(groups.values())
+    .filter((group) => group.attempts > 1)
+    .map((group) => ({ ...group, actionClass: classifyActionClass(group.toolName) }))
+    .sort((left, right) =>
+      right.attempts - left.attempts
+      || (right.lastObservedAt || "").localeCompare(left.lastObservedAt || "")
+      || left.sessionId.localeCompare(right.sessionId)
+      || left.toolName.localeCompare(right.toolName)
+    );
+  return {
+    signals: signals.slice(0, MAX_RETRY_SIGNAL_ROWS),
+    signalCount: signals.length,
+    excessInvocationCount: signals.reduce((total, signal) => total + signal.attempts - 1, 0)
+  };
 }
 
 // --- #181 Piece A: per-tool latency + outcome reliability -------------------
