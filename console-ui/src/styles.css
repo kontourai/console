@@ -2970,6 +2970,57 @@ surface-trust-panel {
   grid-column: 1 / -1;
 }
 
+/* ── Gate trust panel (console#255) ──────────────────────────────────────────
+   Mounts <surface-trust-panel> below whichever gate is selected/deep-linked
+   in the Operate WorkGrid's Gates panel. */
+.gate-row-wrap {
+  display: grid;
+  gap: 0;
+}
+
+.gate-trust-panel {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--dark-row);
+}
+
+.gate-trust-panel--empty {
+  color: var(--dim);
+}
+
+.gate-trust-panel .trust-panel-no-data {
+  margin: 0;
+}
+
+.gate-trust-panel-note {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+
+.gate-trust-panel-refs {
+  margin-top: 8px;
+}
+
+.gate-trust-panel-refs ul {
+  margin: 4px 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+}
+
+.gate-trust-panel-refs li {
+  margin: 2px 0;
+  overflow-wrap: anywhere;
+}
+
+.gate-trust-panel surface-trust-panel {
+  display: block;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
 /* ── <flow-run-panel> embed ─────────────────────────────────────────────────
    Mounts Flow's run panel below the stepper. The custom element themes itself
    from the host --k-* tokens (already defined by the console), and nests

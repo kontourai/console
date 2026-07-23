@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Panel } from "@kontourai/ui/react";
 import type { FlowConsoleProjection } from "@kontourai/flow/console-contract";
 import { PipelineStepper } from "../components/PipelineStepper";
+import { GateTrustPanel } from "../components/GateTrustPanel";
 import { FlowRunPanel } from "../components/FlowRunPanel";
 import { ProcessView } from "../components/ProcessView";
 import { ActionRow, ClaimRow, GateRow, LearningRow } from "../components/Rows";
@@ -180,17 +181,26 @@ export function WorkGrid({ state, selectedNodeId, onNodeSelect, anchor, onAnchor
 
         <Panel title="Gates" count={state.gates?.length || 0}>
           <div className="stack">
-            {(state.gates || []).map((gate) => (
-              <button
-                key={gate.id}
-                id={`gate:${gate.id}`}
-                type="button"
-                className={`data-row-btn${selectedNodeId === `gate:${gate.id}` ? " selected" : ""}`}
-                onClick={() => selectByEntityId("gate", gate.id)}
-              >
-                <GateRow gate={gate} />
-              </button>
-            ))}
+            {(state.gates || []).map((gate) => {
+              const isGateSelected = selectedNodeId === `gate:${gate.id}`;
+              return (
+                <div key={gate.id} className="gate-row-wrap">
+                  <button
+                    id={`gate:${gate.id}`}
+                    type="button"
+                    className={`data-row-btn${isGateSelected ? " selected" : ""}`}
+                    onClick={() => selectByEntityId("gate", gate.id)}
+                  >
+                    <GateRow gate={gate} />
+                  </button>
+                  {/* console#255: the Surface trust panel for whichever gate is
+                      selected/deep-linked (`/gate/:id`, console#252), fed live from
+                      the trust bridge's fold (console#254) — re-fed on every state
+                      change, never cached, never a fabricated verdict. */}
+                  {isGateSelected ? <GateTrustPanel gate={gate} processes={state.processes || []} /> : null}
+                </div>
+              );
+            })}
             {!state.gates?.length
               ? <DesignedEmpty
                   headline="No gates replayed."
