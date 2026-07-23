@@ -877,6 +877,7 @@ function safeErrorMessage(error: unknown): string {
 
 const emitter = require("./emitter");
 const flowBridge = require("./flow-bridge");
+const workflowProcessBridge = require("./workflow-process-bridge");
 const surfaceClaimHelper = require("./surface-claim-helper");
 const flowProcessHelper = require("./flow-process-helper");
 const currentOperatingState = require("./current-operating-state");
@@ -941,6 +942,13 @@ module.exports = {
   deriveFlowRunEvents: flowBridge.deriveFlowRunEvents,
   discoverFlowRuns: flowBridge.discoverFlowRuns,
   listFlowRunDirs: flowBridge.listFlowRunDirs,
+  bridgeWorkflowProcessProjection: workflowProcessBridge.bridgeWorkflowProcessProjection,
+  buildWorkflowProcessBridgeSink: workflowProcessBridge.buildWorkflowProcessBridgeSink,
+  discoverWorkflowProcessProjections: workflowProcessBridge.discoverWorkflowProcessProjections,
+  translateWorkflowProcessProjectionEnvelope: workflowProcessBridge.translateWorkflowProcessProjectionEnvelope,
+  readWorkflowProcessProjectionEnvelope: workflowProcessBridge.readWorkflowProcessProjectionEnvelope,
+  isWorkflowProcessProjectionEnvelope: workflowProcessBridge.isWorkflowProcessProjectionEnvelope,
+  DEFAULT_WORKFLOW_PROCESS_PROJECTION_ROOT: workflowProcessBridge.DEFAULT_WORKFLOW_PROCESS_PROJECTION_ROOT,
   surfaceClaimStateToProjection: surfaceClaimHelper.surfaceClaimStateToProjection,
   surfaceFreshnessTransitionToEvent: surfaceClaimHelper.surfaceFreshnessTransitionToEvent,
   flowProcessStateToProjection: flowProcessHelper.flowProcessStateToProjection,
@@ -962,6 +970,31 @@ export type {
   FlowRunDiscovery,
 } from "./flow-bridge";
 export { DEFAULT_CONSOLE_RUNTIME_ROOT } from "./runtime-root";
+
+// console#239: workflow-process bridge -- flow-agents workflow-process
+// projection envelope (flow-agents#778) -> kontour.console.event, folded
+// through the same buildCurrentOperatingState path as every other process.
+// Same dual-source pattern as the flow-bridge re-exports above: runtime values
+// come from the `module.exports = {...}` literal; this `export ... from` gives
+// an index-level TypeScript consumer real types.
+export {
+  bridgeWorkflowProcessProjection,
+  buildWorkflowProcessBridgeSink,
+  discoverWorkflowProcessProjections,
+  isWorkflowProcessProjectionEnvelope,
+  readWorkflowProcessProjectionEnvelope,
+  translateWorkflowProcessProjectionEnvelope,
+  DEFAULT_WORKFLOW_PROCESS_PROJECTION_ROOT,
+} from "./workflow-process-bridge";
+export type {
+  WorkflowProcessBridgeDelivery,
+  WorkflowProcessBridgeSinkConfig,
+  WorkflowProcessProjectionDiscovery,
+  WorkflowProcessProjectionEntry,
+  WorkflowProcessProjectionEnvelope,
+  WorkflowProcessProjectionRef,
+  WorkflowProcessProjectionScope,
+} from "./workflow-process-bridge";
 
 // Producer integration surface (#71). These names are provided at RUNTIME by
 // the `module.exports = {...}` literal above (which reassigns the module object,
