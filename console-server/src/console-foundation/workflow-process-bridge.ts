@@ -40,13 +40,27 @@
 //
 // console#239 independent review (2026-07-22), all four findings addressed here:
 //   1. Event identity AND subject identity are now SCOPE-QUALIFIED
-//      (`qualifiedSubjectId`): the producer derives `entry.id` from relative
-//      source path + task slug only, NOT projection scope, so two different
-//      scopes (e.g. two repos) can legitimately emit the SAME entry.id. Without
-//      qualification those would collapse onto one board process / dedupe each
-//      other out at the hub. Qualifying with (producer.product, scope.kind,
-//      scope.id) makes cross-scope collisions structurally impossible while
-//      staying deterministic within a scope.
+//      (`qualifiedSubjectId`): the producer derives `entry.subjectRef.id`
+//      (the workflow's `task_slug`) only from the local workflow directory,
+//      NOT projection scope, so two different scopes (e.g. two repos) can
+//      legitimately emit the SAME task_slug. Without qualification those would
+//      collapse onto one board process / dedupe each other out at the hub.
+//      Qualifying with (producer.product, scope.kind, scope.id) makes
+//      cross-scope collisions structurally impossible while staying
+//      deterministic within a scope.
+//      console#254 update: qualification now keys off `entry.subjectRef.id`
+//      (task_slug) rather than the envelope's own `entry.id` (a hash of the
+//      source file's relative path + task_slug). `entry.id` is NOT shared
+//      across flow-agents' different projection envelope families (a process
+//      envelope hashes its `state.json` path; a trust envelope, flow-agents#891,
+//      hashes its `trust.bundle` path for the SAME workflow) -- only
+//      `subjectRef.id` is byte-identical across them. Qualifying by
+//      `subjectRef.id` instead lets workflow-trust-bridge.ts (console#254)
+//      independently derive the IDENTICAL process subject id for the same
+//      workflow, so its `gate.*` events' `processRef` lands on the SAME
+//      process card this bridge creates, instead of fabricating a duplicate.
+//      See workflow-subject-identity.ts's `qualifiedWorkflowSubjectId` for the
+//      shared formula both bridges now call.
 //   2. The event-id content key is now a SHA-256 digest of a canonical,
 //      JSON-encoded (not delimiter-joined) field set that INCLUDES occurredAt --
 //      closing both the delimiter-ambiguity collision (a raw `"|"`-joined string
@@ -69,6 +83,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { DEFAULT_CONSOLE_RUNTIME_ROOT } = require("./runtime-root");
 const { LocalFileSink, CompositeSink, ApiSink } = require("./emitter");
+const { qualifiedWorkflowSubjectId } = require("./workflow-subject-identity");
 import type { ConsoleEventRecord, ConsoleRecord, DeliveryResult, Sink } from "./types";
 
 /** Default root this bridge scans for producer-written envelope files: `<kontour-root>/projections`, matching the `console-process-projection`/`console-learning-projection` CLIs' own `destinationPath` (`<kontour-root>/projections/<producer>/<scope>.json`). */
@@ -319,18 +334,24 @@ function stringExtensionField(entry: WorkflowProcessProjectionEntry, field: stri
 
 /**
  * Globally-unique, scope-qualified subject/process id (console#239 review
- * finding 1). The producer derives `entry.id` from relative source path +
- * task slug ONLY (flow-agents src/lib/workflow-process-projection.ts's
- * `deterministicProcessId`) -- it does NOT fold in projection scope. Two
- * different scopes (e.g. two repos, each with a "demo" workflow at the same
- * relative sidecar path) can therefore legitimately produce the SAME
- * `entry.id`. Qualifying with the envelope's own (producer.product,
- * scope.kind, scope.id) tuple makes that collision structurally impossible on
- * the board, while staying fully deterministic: the SAME entry in the SAME
- * scope always re-derives the SAME qualified id.
+ * finding 1). The producer derives `entry.subjectRef.id` (the workflow's
+ * `task_slug`) from the local workflow directory name ONLY -- it does NOT
+ * fold in projection scope. Two different scopes (e.g. two repos, each with a
+ * "demo" workflow) can therefore legitimately produce the SAME `task_slug`.
+ * Qualifying with the envelope's own (producer.product, scope.kind, scope.id)
+ * tuple makes that collision structurally impossible on the board, while
+ * staying fully deterministic: the SAME workflow in the SAME scope always
+ * re-derives the SAME qualified id.
+ *
+ * console#254: delegates to the shared `qualifiedWorkflowSubjectId` (see
+ * workflow-subject-identity.ts) keyed off `entry.subjectRef.id` rather than
+ * the envelope's own `entry.id` -- the only field byte-identical across
+ * flow-agents' process AND trust projection envelope families for the same
+ * workflow, so workflow-trust-bridge.ts's gate events can point their
+ * `processRef` at exactly the process subject id this function produces.
  */
 function qualifiedSubjectId(envelope: WorkflowProcessProjectionEnvelope, entry: WorkflowProcessProjectionEntry): string {
-  return [envelope.producer.product, envelope.scope.kind, envelope.scope.id, entry.id].join(":");
+  return qualifiedWorkflowSubjectId(envelope.producer.product, envelope.scope, entry.subjectRef.id);
 }
 
 /**

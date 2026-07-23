@@ -65,9 +65,17 @@ function envelope(processEntries: Record<string, unknown> | Record<string, unkno
   };
 }
 
-/** Mirrors `qualifiedSubjectId` in workflow-process-bridge.ts: `<producer.product>:<scope.kind>:<scope.id>:<entry.id>` (console#239 review finding 1). */
-function qualifiedProcessId(entryId: string, scope = DEFAULT_SCOPE, producerProduct = DEFAULT_PRODUCER.product) {
-  return `${producerProduct}:${scope.kind}:${scope.id}:${entryId}`;
+/**
+ * Mirrors `qualifiedSubjectId` in workflow-process-bridge.ts:
+ * `<producer.product>:<scope.kind>:<scope.id>:<subjectRef.id>` (console#239
+ * review finding 1; console#254 switched the qualified component from the
+ * envelope's own `entry.id` to `entry.subjectRef.id` -- the workflow's
+ * task_slug -- so workflow-trust-bridge.ts can independently derive the SAME
+ * qualified process subject id for the same workflow; see
+ * workflow-subject-identity.ts).
+ */
+function qualifiedProcessId(taskSlug: string, scope = DEFAULT_SCOPE, producerProduct = DEFAULT_PRODUCER.product) {
+  return `${producerProduct}:${scope.kind}:${scope.id}:${taskSlug}`;
 }
 
 const blockedEntry = {
@@ -142,7 +150,7 @@ test("blocked workflow-process projection entry folds into OperatingState via bu
   const state = buildCurrentOperatingState([{ relativePath: "inline-workflow-process.jsonl", events }]);
 
   assert.equal(state.processes.length, 1);
-  assert.equal(state.processes[0].id, qualifiedProcessId(blockedEntry.id));
+  assert.equal(state.processes[0].id, qualifiedProcessId(blockedEntry.subjectRef.id));
   assert.equal(state.processes[0].status, "blocked");
   assert.equal(state.processes[0].blockedReason, blockedEntry.blockedReason);
 });
@@ -152,7 +160,7 @@ test("needs_input workflow-process projection entry folds into OperatingState vi
   const state = buildCurrentOperatingState([{ relativePath: "inline-workflow-process.jsonl", events }]);
 
   assert.equal(state.processes.length, 1);
-  assert.equal(state.processes[0].id, qualifiedProcessId(needsInputEntry.id));
+  assert.equal(state.processes[0].id, qualifiedProcessId(needsInputEntry.subjectRef.id));
   assert.equal(state.processes[0].status, "needs_input");
   assert.equal(state.processes[0].blockedReason, needsInputEntry.blockedReason);
 });
@@ -162,7 +170,7 @@ test("review_pending workflow-process projection entry folds into OperatingState
   const state = buildCurrentOperatingState([{ relativePath: "inline-workflow-process.jsonl", events }]);
 
   assert.equal(state.processes.length, 1);
-  assert.equal(state.processes[0].id, qualifiedProcessId(reviewPendingEntry.id));
+  assert.equal(state.processes[0].id, qualifiedProcessId(reviewPendingEntry.subjectRef.id));
   assert.equal(state.processes[0].status, "review_pending");
   assert.equal(state.processes[0].blockedReason, reviewPendingEntry.blockedReason);
 });
@@ -173,9 +181,9 @@ test("a single envelope with all three interactive-session entries folds into th
 
   assert.equal(state.processes.length, 3);
   const byId = new Map<string, any>(state.processes.map((process: any) => [process.id, process]));
-  assert.equal(byId.get(qualifiedProcessId(blockedEntry.id)).status, "blocked");
-  assert.equal(byId.get(qualifiedProcessId(needsInputEntry.id)).status, "needs_input");
-  assert.equal(byId.get(qualifiedProcessId(reviewPendingEntry.id)).status, "review_pending");
+  assert.equal(byId.get(qualifiedProcessId(blockedEntry.subjectRef.id)).status, "blocked");
+  assert.equal(byId.get(qualifiedProcessId(needsInputEntry.subjectRef.id)).status, "needs_input");
+  assert.equal(byId.get(qualifiedProcessId(reviewPendingEntry.subjectRef.id)).status, "review_pending");
 });
 
 // ── console#239 acceptance: board COLUMN grouping, not just status string ──
@@ -192,20 +200,20 @@ test("blocked/needs_input/review_pending fold into the CORRECT board column via 
   const state = buildCurrentOperatingState([{ relativePath: "board-grouping.jsonl", events }]);
 
   const board = deriveBoard(state as any);
-  const stageOf = (entryId: string) => {
+  const stageOf = (taskSlug: string) => {
     for (const column of board.columns) {
-      if (column.cards.some((card: any) => card.id === qualifiedProcessId(entryId))) return column.stage;
+      if (column.cards.some((card: any) => card.id === qualifiedProcessId(taskSlug))) return column.stage;
     }
     return undefined;
   };
 
   // blockedEntry's phase ("implement") is IN_FLIGHT_STEP: a blocked interactive
   // session mid-implementation is active work, not an unstarted Backlog item.
-  assert.equal(stageOf(blockedEntry.id), "in-flight");
+  assert.equal(stageOf(blockedEntry.subjectRef.id), "in-flight");
   // needsInputEntry's phase ("plan") is PLANNING_STEP.
-  assert.equal(stageOf(needsInputEntry.id), "planning");
+  assert.equal(stageOf(needsInputEntry.subjectRef.id), "planning");
   // reviewPendingEntry's phase ("verify") is VERIFY_STEP.
-  assert.equal(stageOf(reviewPendingEntry.id), "verify");
+  assert.equal(stageOf(reviewPendingEntry.subjectRef.id), "verify");
 
   // Regression guard for the review's specific concern: if currentStep/phase
   // were ever dropped from the fold, blockedEntry's status alone ("blocked")
@@ -215,35 +223,40 @@ test("blocked/needs_input/review_pending fold into the CORRECT board column via 
   const backlogColumn = board.columns.find((column: any) => column.stage === "backlog");
   assert.ok(backlogColumn, "board should always have a backlog column");
   for (const card of backlogColumn!.cards) {
-    assert.notEqual(card.id, qualifiedProcessId(blockedEntry.id));
+    assert.notEqual(card.id, qualifiedProcessId(blockedEntry.subjectRef.id));
   }
 });
 
 // ── console#239 review finding 1: scope-qualified identity ────────────────
 
-test("review finding 1: two different scopes with the SAME producer-derived entry id fold into TWO DISTINCT board processes, not one", () => {
+test("review finding 1: two different scopes with the SAME workflow task_slug fold into TWO DISTINCT board processes, not one", () => {
   const scopeA = { kind: "repo", id: "repo-a" };
   const scopeB = { kind: "repo", id: "repo-b" };
-  const envelopeA = envelope(blockedEntry, "2026-07-20T12:00:00Z", scopeA);
-  const envelopeB = envelope({ ...needsInputEntry, id: blockedEntry.id }, "2026-07-20T12:00:00Z", scopeB);
+  // Same task_slug ("demo") in both scopes, but DIFFERENT entry.id -- this is
+  // the real production shape (console#254): the producer's `entry.id` hashes
+  // in the source file's relative path, which necessarily differs across
+  // repos, while `subjectRef.id` (task_slug) is scope-independent and can
+  // legitimately repeat (two repos each with a "demo" workflow directory).
+  const sharedSlugA = { ...blockedEntry, id: "process.workflow.demo.aaaa1111", subjectRef: { product: "flow-agents", kind: "workflow", id: "demo", label: "demo" } };
+  const sharedSlugB = { ...needsInputEntry, id: "process.workflow.demo.bbbb2222", subjectRef: { product: "flow-agents", kind: "workflow", id: "demo", label: "demo" } };
+  const envelopeA = envelope(sharedSlugA, "2026-07-20T12:00:00Z", scopeA);
+  const envelopeB = envelope(sharedSlugB, "2026-07-20T12:00:00Z", scopeB);
 
-  // SAME entry.id in both scopes -- mirrors the producer's own id derivation,
-  // which is scope-independent (deterministicProcessId keys ONLY off
-  // relative-source-path + task-slug, flow-agents src/lib/workflow-process-projection.ts:634-645).
-  assert.equal(envelopeA.processes[0].id, envelopeB.processes[0].id);
+  assert.equal((envelopeA.processes[0] as any).subjectRef.id, (envelopeB.processes[0] as any).subjectRef.id);
+  assert.notEqual(envelopeA.processes[0].id, envelopeB.processes[0].id);
 
   const { events: eventsA } = translateWorkflowProcessProjectionEnvelope(envelopeA);
   const { events: eventsB } = translateWorkflowProcessProjectionEnvelope(envelopeB);
   assert.notEqual(eventsA[0].subject.id, eventsB[0].subject.id);
   assert.notEqual(eventsA[0].id, eventsB[0].id);
-  assert.equal(eventsA[0].subject.id, qualifiedProcessId(blockedEntry.id, scopeA));
-  assert.equal(eventsB[0].subject.id, qualifiedProcessId(blockedEntry.id, scopeB));
+  assert.equal(eventsA[0].subject.id, qualifiedProcessId("demo", scopeA));
+  assert.equal(eventsB[0].subject.id, qualifiedProcessId("demo", scopeB));
 
   const state = buildCurrentOperatingState([{ relativePath: "two-scopes.jsonl", events: [...eventsA, ...eventsB] }]);
   assert.equal(state.processes.length, 2);
   const byId = new Map<string, any>(state.processes.map((process: any) => [process.id, process]));
-  assert.equal(byId.get(qualifiedProcessId(blockedEntry.id, scopeA)).status, "blocked");
-  assert.equal(byId.get(qualifiedProcessId(blockedEntry.id, scopeB)).status, "needs_input");
+  assert.equal(byId.get(qualifiedProcessId("demo", scopeA)).status, "blocked");
+  assert.equal(byId.get(qualifiedProcessId("demo", scopeB)).status, "needs_input");
 });
 
 // ── console#239 review finding 2: canonical, occurredAt-inclusive digest ──
@@ -310,7 +323,7 @@ test("review finding 3: an entry with a non-string status/blockedReason is skipp
   const { events, warnings } = translateWorkflowProcessProjectionEnvelope(envelope([malformed, needsInputEntry]));
 
   assert.equal(events.length, 1);
-  assert.equal(events[0].subject.id, qualifiedProcessId(needsInputEntry.id));
+  assert.equal(events[0].subject.id, qualifiedProcessId(needsInputEntry.subjectRef.id));
   assert.equal(warnings.length, 1);
   assert.match(warnings[0], /status must be a non-empty string/);
 
@@ -331,7 +344,7 @@ test("review finding 3: a non-object / missing-field entry in processes[] is ski
   const { events, warnings } = translateWorkflowProcessProjectionEnvelope(envelope([null as any, "not-an-entry" as any, missingSubjectRef, blockedEntry]));
 
   assert.equal(events.length, 1);
-  assert.equal(events[0].subject.id, qualifiedProcessId(blockedEntry.id));
+  assert.equal(events[0].subject.id, qualifiedProcessId(blockedEntry.subjectRef.id));
   assert.equal(warnings.length, 3);
   assert.match(warnings[0], /must be an object/);
   assert.match(warnings[1], /must be an object/);
@@ -545,7 +558,7 @@ test("kontour-process-bridge CLI discovers the default projection root and bridg
     assert.match(stdout, /repo-flow-agents\.json: 1 events \(1 accepted, 0 duplicate, 0 failed\)/);
 
     const state = await fetch(`http://127.0.0.1:${address.port}/state`).then((response: any) => response.json());
-    const bridgedProcess = (state.processes || []).find((item: any) => item.id === qualifiedProcessId(blockedEntry.id));
+    const bridgedProcess = (state.processes || []).find((item: any) => item.id === qualifiedProcessId(blockedEntry.subjectRef.id));
     assert.ok(bridgedProcess, "bridged process should appear in the hub's OperatingState");
     assert.equal(bridgedProcess.status, "blocked");
     assert.equal(bridgedProcess.blockedReason, blockedEntry.blockedReason);
