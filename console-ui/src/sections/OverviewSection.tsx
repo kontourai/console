@@ -7,17 +7,23 @@ import {
   type AttentionItem,
   type AttentionKind,
 } from "./environment/derive";
+import { WorkerFleetSection } from "./WorkerFleetSection";
 import { HappeningNowSection } from "./HappeningNowSection";
 import { FleetSection } from "./FleetSection";
 import { CostSection } from "./CostSection";
 
 // The unified operator home ("Overview"). This is the front door of the redesign: it answers
-// "what needs me right now?" FIRST (triage), backed by an at-a-glance health strip, and links out
-// to the detailed views for the full picture. It reuses environment/derive.ts's attention logic
-// verbatim — the same items the Environment view computes, promoted from a buried tab to the hero.
+// "what is the fleet of flow-agent workers doing right now?" FIRST (console#251's fleet grid),
+// backed by a gate/claim/source triage and an at-a-glance health strip, and links out to the
+// detailed views for the full picture.
 //
-// Slice 1 scope (this file): the "Needs you" triage + the at-a-glance strip. Subsequent slices fold
-// "Happening now", "The fleet", and "What it's costing" into this same surface and retire the tabs.
+// console#251: the fleet grid (WorkerFleetSection) is the one place every operating-state
+// process renders as a card — with its stage, a relative last-activity timestamp, and a
+// freshness tier — so "Needs you" below only carries triage items that are NOT a process
+// (blocked gates, stale claims, quiet telemetry sources). Paused-run and long-running-process
+// attention kinds used to double as a second, less-informative wall of process cards here; they
+// are still computed by deriveAttentionItems (environment/derive.ts, also used by the retired
+// Environment tab) but filtered out of this list so a given worker is represented exactly once.
 
 export type OverviewTarget = "board" | "operate" | "telemetry";
 
@@ -29,6 +35,12 @@ interface OverviewSectionProps {
   // and highlight after switching views — so a "Needs you" card deep-links to the
   // exact item it names instead of the generic board (#135).
   onOpen: (target: OverviewTarget, anchor?: string) => void;
+  /**
+   * Fixed reference clock (epoch ms), threaded through to the fleet grid's
+   * relative-time + freshness classification for deterministic rendering
+   * (e.g. a test). Defaults to the real wall clock when omitted.
+   */
+  now?: number;
 }
 
 // Present-tense, operator-facing framing for each attention kind: a severity tone (drives the
@@ -45,13 +57,26 @@ const KIND_PRESENTATION: Record<
   "quiet-source": { tone: "caution", kind: "source quiet", action: "Check source", target: "telemetry" },
 };
 
-export function OverviewSection({ state, telemetry, liveStatus, onOpen }: OverviewSectionProps) {
+// Attention kinds that describe a *process* — console#251's fleet grid already renders every
+// process as its own card with a real timestamp and freshness tier, so these two kinds are
+// dropped from "Needs you" to avoid rendering the same worker twice, once richly (the fleet
+// grid) and once thinly (a triage card with no freshness signal and, for paused-run, no
+// timestamp at all — see workers/derive.ts for the root cause).
+const PROCESS_ATTENTION_KINDS = new Set<AttentionKind>(["paused-run", "long-running-process"]);
+
+export function OverviewSection({ state, telemetry, liveStatus, onOpen, now }: OverviewSectionProps) {
   const health = useMemo(() => deriveHealthCounts(state), [state]);
-  const attention = useMemo(() => deriveAttentionItems(state, telemetry), [state, telemetry]);
+  const attention = useMemo(
+    () => deriveAttentionItems(state, telemetry).filter((item) => !PROCESS_ATTENTION_KINDS.has(item.kind)),
+    [state, telemetry],
+  );
 
   return (
     <div className="overview">
-      {/* ── ① Needs you — triage leads ─────────────────────────────────────────── */}
+      {/* ── ① The fleet — every worker, at a glance (console#251) ─────────────────── */}
+      <WorkerFleetSection state={state} now={now} />
+
+      {/* ── ② Needs you — non-process triage (blocked gates, stale claims, quiet sources) ─ */}
       <section className="ov-section">
         <header className="ov-head">
           <h2 className="ov-title">Needs you</h2>
@@ -75,7 +100,7 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen }: Overvi
             <span className="ov-allclear-mark" aria-hidden="true">✓</span>
             <div>
               <h3 className="ov-allclear-title">Nothing needs your attention</h3>
-              <p className="ov-allclear-body">No paused runs, blocked gates, stale claims, long-running work, or quiet sources right now. New issues surface here the moment they appear.</p>
+              <p className="ov-allclear-body">No blocked gates, stale claims, or quiet sources right now. New issues surface here the moment they appear.</p>
             </div>
           </div>
         )}
@@ -99,10 +124,10 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen }: Overvi
         </div>
       </section>
 
-      {/* ── ② Happening now — the live flow + activity ───────────────────────────── */}
+      {/* ── ③ Happening now — the live flow + activity ───────────────────────────── */}
       <HappeningNowSection state={state} onOpen={() => onOpen("board")} />
 
-      {/* ── ③ The fleet — who's active (coordination state arrives with #295) ─────── */}
+      {/* ── ④ Sessions — who's active (coordination state arrives with #295) ─────── */}
       <FleetSection
         telemetry={telemetry}
         liveSessions={state.actors}
@@ -110,7 +135,7 @@ export function OverviewSection({ state, telemetry, liveStatus, onOpen }: Overvi
         onOpen={() => onOpen("telemetry")}
       />
 
-      {/* ── ④ What it's costing — usage & economics ──────────────────────────────── */}
+      {/* ── ⑤ What it's costing — usage & economics ──────────────────────────────── */}
       <CostSection telemetry={telemetry} onOpen={() => onOpen("telemetry")} />
     </div>
   );

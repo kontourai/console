@@ -4,9 +4,12 @@ import type { ConsoleActor } from "@kontourai/console-core";
 import type { ConsoleTelemetryResponse } from "../serverApiTypes";
 import { formatCompact, formatUsd } from "../utils/format";
 
-// "The fleet" derives rows from telemetry facets/usage, then correlates liveness
+// "Sessions" derives rows from telemetry facets/usage, then correlates liveness
 // actor identities with the runtime session ids retained from telemetry records.
 // Identities that cannot be joined remain visible in the honest fallback line.
+// Renamed from "The fleet" (console#251): that heading now belongs to
+// WorkerFleetSection, the operating-state process grid — this section covers
+// telemetry-derived actor/agent identities, a different concept.
 export type CoordinationState = "held-fresh" | "held" | "reclaimable" | "human-held" | "ci";
 
 export interface FleetActor {
@@ -146,7 +149,7 @@ export function FleetSection({ telemetry, liveSessions, reclaimableSessions, onO
   return (
     <section className="ov-section">
       <header className="ov-head">
-        <h2 className="ov-title">The fleet</h2>
+        <h2 className="ov-title">Sessions</h2>
         <span className="ov-sub">
           {actors.length > 0 ? `${actors.length} active actor${actors.length === 1 ? "" : "s"} · ${sessions} session${sessions === 1 ? "" : "s"}` : "who's active"}
         </span>
