@@ -15,6 +15,13 @@
  * is always carried through as its own field regardless of `status`, so no
  * status branch can silently omit it, and freshness is classified from that
  * one field rather than re-derived per attention-kind.
+ *
+ * console#251 review (round 2): a garbage/invalid `updatedAt` must never be
+ * silently treated as "fresh"/"active" (there's nothing to disprove staleness
+ * with), and a clearly-future `updatedAt` (clock skew beyond a small
+ * tolerance) must never be silently treated as fresh either — see
+ * `classifyActivity` below, the single source both `classifyFreshness` and
+ * `classifyFleetBucket` now read from.
  */
 
 import type { ConsoleProcess, OperatingState } from "@kontourai/console-core";
@@ -31,21 +38,56 @@ export const FRESH_THRESHOLD_MS = 60 * 60 * 1000; // 1 hour
  */
 export const STALL_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
+/**
+ * A `updatedAt` this far (or less) in the future is treated as ordinary clock
+ * skew between the producer and the reader — clamped to "just now"/fresh.
+ * Anything further in the future is not clock skew, it's a garbage or
+ * mis-stamped timestamp, and must never be silently classified as fresh.
+ */
+export const FUTURE_SKEW_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
+
 export type FreshnessTier = "fresh" | "idle" | "stalled" | "unknown";
+
+/** How a card should render its `updatedAt`, decided alongside freshness so the
+ *  two can never disagree (e.g. "unknown" freshness rendering a relative time). */
+export type ActivityDisplay = "relative" | "raw" | "none";
+
+export interface ActivitySignal {
+  freshness: FreshnessTier;
+  display: ActivityDisplay;
+}
+
+/**
+ * The single source of truth for turning a raw `updatedAt` + reference clock
+ * into (a) a freshness tier and (b) how it's safe to render:
+ * - missing or unparsable → `unknown` / `none` (no timestamp to show at all —
+ *   never a `<time dateTime="...">` built from a garbage string).
+ * - clearly in the future (beyond FUTURE_SKEW_TOLERANCE_MS) → `unknown` /
+ *   `raw` (a valid, parsable timestamp, but relative math on it would lie —
+ *   "in -3 days" reads as nonsense, so the raw ISO value is shown instead).
+ * - within tolerance of "now" (including small future clock skew) → `fresh`
+ *   / `relative`.
+ * - otherwise bucketed by age into `idle` / `stalled`, both `relative`.
+ */
+export function classifyActivity(updatedAt: string | undefined, now: number = Date.now()): ActivitySignal {
+  if (!updatedAt) return { freshness: "unknown", display: "none" };
+  const then = Date.parse(updatedAt);
+  if (Number.isNaN(then)) return { freshness: "unknown", display: "none" };
+  const age = now - then;
+  if (age < -FUTURE_SKEW_TOLERANCE_MS) return { freshness: "unknown", display: "raw" };
+  if (age < FRESH_THRESHOLD_MS) return { freshness: "fresh", display: "relative" };
+  if (age < STALL_THRESHOLD_MS) return { freshness: "idle", display: "relative" };
+  return { freshness: "stalled", display: "relative" };
+}
 
 /**
  * Classify a card's freshness purely from `now - updatedAt`. `unknown` when
- * there is no (or an unparsable) timestamp to judge by — never fabricated as
- * "fresh" just because there's nothing to disprove it.
+ * there is no (or an unparsable, or a clearly-future) timestamp to honestly
+ * judge freshness by — never fabricated as "fresh" just because there's
+ * nothing to disprove it. Thin wrapper over `classifyActivity`.
  */
 export function classifyFreshness(updatedAt: string | undefined, now: number = Date.now()): FreshnessTier {
-  if (!updatedAt) return "unknown";
-  const then = new Date(updatedAt).getTime();
-  if (Number.isNaN(then)) return "unknown";
-  const age = now - then;
-  if (age < FRESH_THRESHOLD_MS) return "fresh";
-  if (age < STALL_THRESHOLD_MS) return "idle";
-  return "stalled";
+  return classifyActivity(updatedAt, now).freshness;
 }
 
 // ── Fleet buckets ─────────────────────────────────────────────────────────────
@@ -86,14 +128,19 @@ const WAITING_ON_YOU_STATUSES = new Set(["paused", "blocked", "waiting", "needs_
  * - terminal work is archived, regardless of age;
  * - work parked on a human decision is waiting-on-you, regardless of age
  *   (an old paused run is still "waiting on you", not merely "stalled");
- * - everything else is bucketed by freshness: recently updated is active,
- *   and beyond STALL_THRESHOLD_MS with no update is stalled.
+ * - everything else is bucketed by freshness: only a genuinely fresh/idle
+ *   timestamp counts as "active" — a stalled OR unknown (missing/unparsable/
+ *   clearly-future) timestamp is exactly as inconclusive as a stalled one and
+ *   is treated the same, conservative way. A card must never be silently
+ *   folded into "active" just because there's no data to disprove it
+ *   (console#251 review finding 2).
  */
 export function classifyFleetBucket(process: ConsoleProcess, now: number = Date.now()): FleetBucket {
   const status = (process.status || "").toLowerCase();
   if (ARCHIVED_STATUSES.has(status)) return "archived";
   if (WAITING_ON_YOU_STATUSES.has(status)) return "waiting-on-you";
-  return classifyFreshness(process.updatedAt, now) === "stalled" ? "stalled" : "active";
+  const freshness = classifyFreshness(process.updatedAt, now);
+  return freshness === "fresh" || freshness === "idle" ? "active" : "stalled";
 }
 
 function stepLabel(step: ConsoleProcess["currentStep"]): string | undefined {
@@ -112,9 +159,12 @@ export interface FleetCard {
   product?: string;
   bucket: FleetBucket;
   freshness: FreshnessTier;
+  /** How the card should render `updatedAt` — see `classifyActivity`. */
+  display: ActivityDisplay;
 }
 
 export function deriveFleetCard(process: ConsoleProcess, now: number = Date.now()): FleetCard {
+  const activity = classifyActivity(process.updatedAt, now);
   return {
     id: process.id,
     label: process.label || process.id,
@@ -127,7 +177,8 @@ export function deriveFleetCard(process: ConsoleProcess, now: number = Date.now(
     percentComplete: process.percentComplete,
     product: process.sourceRef?.product,
     bucket: classifyFleetBucket(process, now),
-    freshness: classifyFreshness(process.updatedAt, now),
+    freshness: activity.freshness,
+    display: activity.display,
   };
 }
 
@@ -154,9 +205,32 @@ export function deriveFleetCounts(cards: FleetCard[]): FleetCounts {
   return counts;
 }
 
-/** Most-recently-updated first; undated cards sink to the bottom (never a fabricated recency). */
+/**
+ * Epoch ms for a card's `updatedAt`, or `null` when missing/unparsable.
+ * `Date.parse` (not lexical string compare) so recency sorting is correct
+ * across sub-second-precision and UTC-offset ISO variants — see `byRecency`.
+ */
+function recencyMs(card: FleetCard): number | null {
+  if (!card.updatedAt) return null;
+  const ms = Date.parse(card.updatedAt);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+/**
+ * Most-recently-updated first, by numeric epoch value — NOT `localeCompare`
+ * on the raw ISO string, which sorts lexically and silently mis-orders
+ * sub-second-precision timestamps (`"...:00.500Z"` behind `"...:00Z"`) and
+ * differing UTC-offset forms (console#251 review finding 1). Undated AND
+ * unparsable cards sink to the bottom together, in their original relative
+ * order — never a fabricated recency.
+ */
 function byRecency(a: FleetCard, b: FleetCard): number {
-  return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+  const aMs = recencyMs(a);
+  const bMs = recencyMs(b);
+  if (aMs == null && bMs == null) return 0;
+  if (aMs == null) return 1;
+  if (bMs == null) return -1;
+  return bMs - aMs;
 }
 
 export interface FleetGrid {

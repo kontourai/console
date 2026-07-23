@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ConsoleProcess, OperatingState } from "@kontourai/console-core";
 import {
+  classifyActivity,
   classifyFleetBucket,
   classifyFreshness,
   deriveFleetCard,
@@ -9,6 +10,7 @@ import {
   deriveFleetCounts,
   partitionFleet,
   FRESH_THRESHOLD_MS,
+  FUTURE_SKEW_TOLERANCE_MS,
   STALL_THRESHOLD_MS,
   type FleetCard,
 } from "../src/sections/workers/derive";
@@ -21,10 +23,13 @@ function proc(p: Partial<ConsoleProcess> & { id: string }): ConsoleProcess {
 
 test("classifyFreshness: no updatedAt is unknown, never fabricated as fresh", () => {
   assert.equal(classifyFreshness(undefined), "unknown");
+});
+
+test("classifyFreshness: empty string is unknown", () => {
   assert.equal(classifyFreshness(""), "unknown");
 });
 
-test("classifyFreshness: an unparsable timestamp is unknown", () => {
+test("classifyFreshness: a garbage/unparsable string is unknown", () => {
   assert.equal(classifyFreshness("not-a-date"), "unknown");
 });
 
@@ -44,6 +49,50 @@ test("classifyFreshness: stalled at or beyond STALL_THRESHOLD_MS", () => {
   const now = Date.now();
   assert.equal(classifyFreshness(new Date(now - STALL_THRESHOLD_MS).toISOString(), now), "stalled");
   assert.equal(classifyFreshness(new Date(now - STALL_THRESHOLD_MS * 12).toISOString(), now), "stalled"); // e.g. "12d ago"
+});
+
+// console#251 review finding 2: future/invalid timestamps must never produce a
+// false "fresh"/"active" claim.
+
+test("classifyFreshness: a small future timestamp (+2min, ordinary clock skew) is fresh", () => {
+  const now = Date.now();
+  assert.equal(classifyFreshness(new Date(now + 2 * 60 * 1000).toISOString(), now), "fresh");
+});
+
+test("classifyFreshness: a future timestamp at exactly the skew tolerance is still fresh", () => {
+  const now = Date.now();
+  assert.equal(classifyFreshness(new Date(now + FUTURE_SKEW_TOLERANCE_MS).toISOString(), now), "fresh");
+});
+
+test("classifyFreshness: a clearly-future timestamp (+24h) is unknown, never fresh — no silent 'ahead of schedule' claim", () => {
+  const now = Date.now();
+  assert.equal(classifyFreshness(new Date(now + 24 * 60 * 60 * 1000).toISOString(), now), "unknown");
+});
+
+test("classifyFreshness: a future timestamp just beyond the skew tolerance is unknown, not fresh", () => {
+  const now = Date.now();
+  assert.equal(classifyFreshness(new Date(now + FUTURE_SKEW_TOLERANCE_MS + 1000).toISOString(), now), "unknown");
+});
+
+// ── classifyActivity — the freshness+display pairing ────────────────────────
+
+test("classifyActivity: missing or garbage updatedAt never renders a <time> (display 'none')", () => {
+  const now = Date.now();
+  assert.deepEqual(classifyActivity(undefined, now), { freshness: "unknown", display: "none" });
+  assert.deepEqual(classifyActivity("", now), { freshness: "unknown", display: "none" });
+  assert.deepEqual(classifyActivity("not-a-date", now), { freshness: "unknown", display: "none" });
+});
+
+test("classifyActivity: a clearly-future timestamp is parsable, so it renders as raw text, not a lying relative time", () => {
+  const now = Date.now();
+  const iso = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  assert.deepEqual(classifyActivity(iso, now), { freshness: "unknown", display: "raw" });
+});
+
+test("classifyActivity: an ordinary past/near-future timestamp renders relative", () => {
+  const now = Date.now();
+  assert.equal(classifyActivity(new Date(now - 1000).toISOString(), now).display, "relative");
+  assert.equal(classifyActivity(new Date(now + 2 * 60 * 1000).toISOString(), now).display, "relative");
 });
 
 // ── classifyFleetBucket ──────────────────────────────────────────────────────
@@ -76,8 +125,45 @@ test("classifyFleetBucket: a long-running process (e.g. 12d idle) is stalled, no
   assert.equal(classifyFleetBucket(proc({ id: "p", status: "running", updatedAt: twelveDaysAgo }), now), "stalled");
 });
 
-test("classifyFleetBucket: a process with no status and no updatedAt defaults to active (nothing to disprove progress)", () => {
-  assert.equal(classifyFleetBucket(proc({ id: "p" })), "active");
+// console#251 review finding 2: an unknown freshness (missing/garbage/clearly-
+// future updatedAt) must be treated exactly as conservatively as "stalled" —
+// NEVER silently folded into "active".
+
+test("classifyFleetBucket: a process with no status and no updatedAt is conservatively stalled, not active (nothing to disprove staleness)", () => {
+  assert.equal(classifyFleetBucket(proc({ id: "p" })), "stalled");
+});
+
+test("classifyFleetBucket: a garbage/unparsable updatedAt is stalled, not active", () => {
+  const now = Date.now();
+  assert.equal(classifyFleetBucket(proc({ id: "p", status: "running", updatedAt: "not-a-date" }), now), "stalled");
+});
+
+test("classifyFleetBucket: an empty-string updatedAt is stalled, not active", () => {
+  const now = Date.now();
+  assert.equal(classifyFleetBucket(proc({ id: "p", status: "running", updatedAt: "" }), now), "stalled");
+});
+
+test("classifyFleetBucket: a clearly-future updatedAt (+24h) is stalled, not active — never silently 'ahead of schedule'", () => {
+  const now = Date.now();
+  const iso = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  assert.equal(classifyFleetBucket(proc({ id: "p", status: "running", updatedAt: iso }), now), "stalled");
+});
+
+test("classifyFleetBucket: a small future updatedAt (+2min, clock skew) is active", () => {
+  const now = Date.now();
+  const iso = new Date(now + 2 * 60 * 1000).toISOString();
+  assert.equal(classifyFleetBucket(proc({ id: "p", status: "running", updatedAt: iso }), now), "active");
+});
+
+// A waiting-on-you or archived status still wins outright even with an
+// unparsable/future updatedAt — the review's "bucket by status only if
+// waiting-on-you/terminal" requirement.
+test("classifyFleetBucket: waiting-on-you/archived status overrides an unparsable or future updatedAt", () => {
+  const now = Date.now();
+  assert.equal(classifyFleetBucket(proc({ id: "p1", status: "paused", updatedAt: "not-a-date" }), now), "waiting-on-you");
+  assert.equal(classifyFleetBucket(proc({ id: "p2", status: "complete", updatedAt: "not-a-date" }), now), "archived");
+  const farFuture = new Date(now + 24 * 60 * 60 * 1000).toISOString();
+  assert.equal(classifyFleetBucket(proc({ id: "p3", status: "blocked", updatedAt: farFuture }), now), "waiting-on-you");
 });
 
 // ── deriveFleetCard — the #251 timestamp regression ─────────────────────────
@@ -101,6 +187,17 @@ test("deriveFleetCard: a process with no updatedAt at all renders that honestly 
   const card = deriveFleetCard(proc({ id: "p", status: "paused" }));
   assert.equal(card.updatedAt, undefined);
   assert.equal(card.freshness, "unknown");
+  assert.equal(card.display, "none");
+});
+
+test("deriveFleetCard: display is 'none' for missing/garbage/empty updatedAt, 'raw' for clearly-future, 'relative' otherwise", () => {
+  const now = Date.now();
+  assert.equal(deriveFleetCard(proc({ id: "p1" }), now).display, "none");
+  assert.equal(deriveFleetCard(proc({ id: "p2", updatedAt: "not-a-date" }), now).display, "none");
+  assert.equal(deriveFleetCard(proc({ id: "p3", updatedAt: "" }), now).display, "none");
+  assert.equal(deriveFleetCard(proc({ id: "p4", updatedAt: new Date(now + 24 * 60 * 60 * 1000).toISOString() }), now).display, "raw");
+  assert.equal(deriveFleetCard(proc({ id: "p5", updatedAt: new Date(now + 2 * 60 * 1000).toISOString() }), now).display, "relative");
+  assert.equal(deriveFleetCard(proc({ id: "p6", updatedAt: new Date(now - 1000).toISOString() }), now).display, "relative");
 });
 
 test("deriveFleetCard: reads currentStep from both a string and an {id,label} shape", () => {
@@ -217,4 +314,58 @@ test("partitionFleet: empty fleet yields empty partitions", () => {
   const { main, archived } = partitionFleet([] as FleetCard[]);
   assert.deepEqual(main, []);
   assert.deepEqual(archived, []);
+});
+
+// console#251 review finding 1: recency sort must use numeric epoch compare,
+// not lexical string compare on the raw ISO text.
+
+test("partitionFleet: numeric epoch sort — sub-second precision orders correctly (not lexical)", () => {
+  const state: OperatingState = {
+    processes: [
+      // Lexically, ".5" sorts BEFORE "Z" as a raw string compare, which would
+      // wrongly put the whole-second timestamp ahead of the chronologically
+      // later sub-second one under naive localeCompare.
+      proc({ id: "whole-second", status: "running", updatedAt: "2026-07-20T11:00:00Z" }),
+      proc({ id: "sub-second-later", status: "running", updatedAt: "2026-07-20T11:00:00.500Z" }),
+    ],
+  };
+  const { main } = partitionFleet(deriveFleetCards(state));
+  assert.deepEqual(main.map((c) => c.id), ["sub-second-later", "whole-second"]);
+});
+
+test("partitionFleet: numeric epoch sort — a UTC-offset timestamp that is chronologically newer sorts first, even though its raw string sorts last lexically", () => {
+  const state: OperatingState = {
+    processes: [
+      proc({ id: "utc-form", status: "running", updatedAt: "2026-07-20T12:00:00Z" }), // 12:00:00 UTC
+      proc({ id: "offset-form", status: "running", updatedAt: "2026-07-20T08:30:00-04:00" }), // 12:30:00 UTC — 30min NEWER
+    ],
+  };
+  const { main } = partitionFleet(deriveFleetCards(state));
+  assert.deepEqual(main.map((c) => c.id), ["offset-form", "utc-form"]);
+});
+
+test("partitionFleet: a garbage updatedAt sinks to the bottom of the main grid, never sorts first", () => {
+  const now = Date.now();
+  const state: OperatingState = {
+    processes: [
+      proc({ id: "garbage", status: "running", updatedAt: "not-a-date" }),
+      proc({ id: "dated", status: "running", updatedAt: new Date(now - 1000).toISOString() }),
+    ],
+  };
+  const { main } = partitionFleet(deriveFleetCards(state, now));
+  assert.deepEqual(main.map((c) => c.id), ["dated", "garbage"]);
+});
+
+test("partitionFleet: garbage and undated cards sink to the bottom together, alongside each other", () => {
+  const now = Date.now();
+  const state: OperatingState = {
+    processes: [
+      proc({ id: "garbage", status: "running", updatedAt: "not-a-date" }),
+      proc({ id: "undated", status: "running" }),
+      proc({ id: "dated", status: "running", updatedAt: new Date(now - 1000).toISOString() }),
+    ],
+  };
+  const { main } = partitionFleet(deriveFleetCards(state, now));
+  assert.equal(main[0].id, "dated");
+  assert.deepEqual(main.slice(1).map((c) => c.id).sort(), ["garbage", "undated"]);
 });

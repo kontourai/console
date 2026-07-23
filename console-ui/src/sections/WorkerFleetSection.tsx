@@ -39,14 +39,19 @@ export interface WorkerFleetSectionProps {
   /**
    * Fixed reference clock (epoch ms) for classifying freshness and rendering
    * each card's relative "updated" time deterministically — e.g. a test.
-   * Defaults to the real wall clock (`Date.now()`, read fresh on every
-   * render) when omitted, mirroring BoardView's `now` prop (lib/src/BoardView.tsx).
+   * When omitted, one `Date.now()` snapshot is captured ONCE for the
+   * component's lifetime (a lazy `useState` initializer, not a per-render
+   * `Date.now()` call) so every card in a single render tree agrees on "now"
+   * instead of drifting against each other across re-renders/hydration
+   * (console#251 review finding 4), mirroring BoardView's `now` prop
+   * (lib/src/BoardView.tsx) for the injectable case.
    */
   now?: number;
 }
 
 export function WorkerFleetSection({ state, now }: WorkerFleetSectionProps) {
-  const clock = now ?? Date.now();
+  const [mountedNow] = useState(() => Date.now());
+  const clock = now ?? mountedNow;
   const cards = useMemo(() => deriveFleetCards(state, clock), [state, clock]);
   const counts = useMemo(() => deriveFleetCounts(cards), [cards]);
   const grid = useMemo(() => partitionFleet(cards), [cards]);
@@ -96,9 +101,11 @@ export function WorkerFleetSection({ state, now }: WorkerFleetSectionProps) {
         </p>
       )}
 
+      {/* "N archived" — not "N completed": the archive also holds failed/cancelled/
+          abandoned work, which never completed (console#251 review finding 3). */}
       <div id="wf-archive" className="wf-archive">
         <button type="button" className="wf-archive-toggle" onClick={() => setArchiveOpen((open) => !open)} aria-expanded={archiveOpen}>
-          {archiveOpen ? "Hide archive" : "Show archive"} · {grid.archived.length} completed
+          {archiveOpen ? "Hide archive" : "Show archive"} · {grid.archived.length} archived
         </button>
         {archiveOpen ? (
           grid.archived.length > 0 ? (
@@ -159,12 +166,29 @@ function WorkerCard({ card, now }: { card: FleetCard; now: number }) {
       ) : null}
       <div className="wf-card-foot">
         <span className={`wf-freshness wf-freshness-${card.freshness}`}>{FRESHNESS_LABEL[card.freshness]}</span>
-        {card.updatedAt ? (
-          <time className="wf-card-time" dateTime={card.updatedAt}>{formatRelative(card.updatedAt, now)}</time>
-        ) : (
-          <span className="wf-card-time wf-card-time-unknown">no activity recorded</span>
-        )}
+        <ActivityTime card={card} now={now} />
       </div>
     </li>
   );
+}
+
+// Render mode decided by workers/derive.ts's classifyActivity, never
+// re-derived here — the "raw" branch guarantees `card.updatedAt` is a
+// parsable timestamp (just clearly in the future beyond clock-skew
+// tolerance), so its raw ISO text is shown instead of a relative time that
+// would otherwise lie ("in -3 days"). The "none" branch guarantees a
+// `<time dateTime>` is NEVER built from a missing or garbage string
+// (console#251 review finding 2c).
+function ActivityTime({ card, now }: { card: FleetCard; now: number }) {
+  if (card.display === "relative" && card.updatedAt) {
+    return <time className="wf-card-time" dateTime={card.updatedAt}>{formatRelative(card.updatedAt, now)}</time>;
+  }
+  if (card.display === "raw" && card.updatedAt) {
+    return (
+      <time className="wf-card-time wf-card-time-raw" dateTime={card.updatedAt} title="Timestamp is in the future — showing it as-is, not a relative time.">
+        {card.updatedAt}
+      </time>
+    );
+  }
+  return <span className="wf-card-time wf-card-time-unknown">no activity recorded</span>;
 }

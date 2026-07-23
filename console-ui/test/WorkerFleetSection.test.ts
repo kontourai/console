@@ -68,6 +68,58 @@ test("WorkerFleetSection: a process with no updatedAt renders an honest 'no acti
   assert.doesNotMatch(markup, /<time/);
 });
 
+// console#251 review finding 2: a garbage `updatedAt` must never render an
+// invalid `<time dateTime="not-a-date">` — it must fall back to the same
+// honest "no activity recorded" text as a missing timestamp, with no <time>
+// element at all.
+test("WorkerFleetSection: a garbage updatedAt string renders 'no activity recorded', never an invalid <time dateTime>", () => {
+  const markup = render({
+    now: NOW,
+    state: state({ processes: [proc({ id: "p1", label: "Garbage timestamp worker", status: "running", updatedAt: "not-a-date" })] }),
+  });
+  assert.match(markup, /wf-card-time-unknown">no activity recorded</);
+  assert.doesNotMatch(markup, /<time/);
+  assert.doesNotMatch(markup, /dateTime="not-a-date"/);
+});
+
+test("WorkerFleetSection: an empty-string updatedAt renders 'no activity recorded', never an empty <time dateTime>", () => {
+  const markup = render({
+    now: NOW,
+    state: state({ processes: [proc({ id: "p1", label: "Empty timestamp worker", status: "running", updatedAt: "" })] }),
+  });
+  assert.match(markup, /wf-card-time-unknown">no activity recorded</);
+  assert.doesNotMatch(markup, /<time/);
+});
+
+// console#251 review finding 2: a clearly-future timestamp (beyond the 5min
+// clock-skew tolerance) must never be silently classified as fresh/active —
+// it renders its raw ISO text (a valid dateTime), not a nonsensical relative
+// time, and its freshness badge reads "no activity data", not "fresh".
+test("WorkerFleetSection: a clearly-future updatedAt (+24h) renders the raw timestamp, tagged 'no activity data' — never silently fresh", () => {
+  const future = new Date(NOW + 24 * 60 * 60 * 1000).toISOString();
+  const markup = render({
+    now: NOW,
+    state: state({ processes: [proc({ id: "p1", label: "Future timestamp worker", status: "running", updatedAt: future })] }),
+  });
+  assert.match(markup, new RegExp(`<time class="wf-card-time wf-card-time-raw" dateTime="${future}"[^>]*>${future}</time>`));
+  assert.match(markup, /wf-freshness-unknown">no activity data</);
+  assert.doesNotMatch(markup, /wf-freshness-fresh/);
+  // Conservative bucket too: never counted/rendered as the "active" card class.
+  assert.doesNotMatch(markup, /wf-card-active/);
+});
+
+// A small future timestamp (ordinary clock skew, <=5min) is still treated as
+// fresh/active — only timestamps clearly beyond skew tolerance are suspect.
+test("WorkerFleetSection: a small future updatedAt (+2min, clock skew) still renders as fresh/active with a normal relative time", () => {
+  const nearFuture = new Date(NOW + 2 * 60 * 1000).toISOString();
+  const markup = render({
+    now: NOW,
+    state: state({ processes: [proc({ id: "p1", label: "Slightly-ahead worker", status: "running", updatedAt: nearFuture })] }),
+  });
+  assert.match(markup, new RegExp(`<time class="wf-card-time" dateTime="${nearFuture}">just now</time>`));
+  assert.match(markup, /wf-card-active[\s\S]*?wf-freshness-fresh">fresh</);
+});
+
 test("WorkerFleetSection: freshness tiers reflect the injected now (fresh / idle / stalled)", () => {
   const markup = render({
     now: NOW,
@@ -100,7 +152,21 @@ test("WorkerFleetSection: archive partitioning — terminal work is out of the m
   assert.doesNotMatch(mainGridMatch![1], /Completed worker/);
   // Archived collapsed by default: no archived list rendered, but the toggle names its count.
   assert.doesNotMatch(markup, /wf-grid-archived/);
-  assert.match(markup, /Show archive · 1 completed/);
+  assert.match(markup, /Show archive · 1 archived/);
+});
+
+// console#251 review finding 3: the archive holds failed/cancelled/abandoned
+// work too, not just successfully completed work — "N completed" was a false
+// claim for a failed-only archive.
+test("WorkerFleetSection: archive toggle says 'N archived', not 'N completed', for a failed-only archive", () => {
+  const markup = render({
+    now: NOW,
+    state: state({
+      processes: [proc({ id: "p1", label: "Failed worker", status: "failed", updatedAt: new Date(NOW).toISOString() })],
+    }),
+  });
+  assert.match(markup, /Show archive · 1 archived/);
+  assert.doesNotMatch(markup, /completed/);
 });
 
 test("WorkerFleetSection: main grid sorts most-recently-updated first", () => {

@@ -3087,6 +3087,7 @@ flow-run-panel {
 .wf-freshness-unknown { color: var(--k-text-faint); background: var(--k-neutral-soft, rgba(111,128,149,0.14)); }
 .wf-card-time { font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-faint); white-space: nowrap; }
 .wf-card-time-unknown { font-style: italic; }
+.wf-card-time-raw { font-style: italic; text-decoration: underline dotted var(--k-text-faint); }
 
 .wf-archive { margin-top: var(--k-space-1); }
 .wf-archive-toggle { background: none; border: none; cursor: pointer; font-family: var(--k-font-mono); font-size: var(--k-text-xs); color: var(--k-text-muted); padding: 0; }
