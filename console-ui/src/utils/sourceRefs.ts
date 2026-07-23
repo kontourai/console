@@ -48,25 +48,38 @@ function kindRank(kind: string): number {
  * console-core type owns it (console#254 folds it on dynamically via
  * `payload.after`). Read defensively off the raw record so a producer's
  * link-outs render the moment they appear, without ever fabricating a link:
- * malformed entries (not an object, no honest label) are silently skipped
+ * malformed entries (not an object, no real identity) are silently skipped
  * rather than guessed at; an entry's `url` is kept only when it is a real,
  * safe http(s) string (tolerating either a `url` or `href` key, matching the
  * producer field name flexibility the prior deriveRunDetail helper had).
+ *
+ * console#256 review LOW finding 1: a ref is only ever RENDERED when it
+ * carries a real, non-empty `id` — the producer contract's identity field
+ * (see `WorkflowTrustSourceOfTruthRef` in workflow-trust-bridge.ts, always
+ * id-bearing). A label alone is not a defensible ground-truth claim: an
+ * identityless `{kind:'work-item', label:'#256', url:'https://…'}` could
+ * otherwise render as a provider-grounded anchor with nothing backing it.
+ * This is a defensive UI boundary over arbitrary (dynamically-folded)
+ * process state, not a trust of the producer's own validation.
+ *
+ * console#256 review LOW finding 2: exact duplicate refs (same kind, id, and
+ * url) are deduped, keeping only the first occurrence/order — never repeated
+ * identical chips for what is evidently the same ref relayed twice.
  */
 export function deriveSourceRefs(record: unknown): SourceRef[] {
   const raw = (record as { sourceOfTruthRefs?: unknown } | null | undefined)?.sourceOfTruthRefs;
   if (!Array.isArray(raw)) return [];
 
   const refs: SourceRef[] = [];
+  const seen = new Set<string>();
   for (const entry of raw) {
     if (!entry || typeof entry !== "object") continue;
     const candidate = entry as { kind?: unknown; label?: unknown; id?: unknown; url?: unknown; href?: unknown };
 
-    const label = (typeof candidate.label === "string" && candidate.label)
-      || (typeof candidate.id === "string" && candidate.id)
-      || undefined;
-    if (!label) continue; // nothing honest to show
+    const id = typeof candidate.id === "string" && candidate.id ? candidate.id : undefined;
+    if (!id) continue; // no real identity -- nothing ground-truth to render
 
+    const label = (typeof candidate.label === "string" && candidate.label) || id;
     const kind = typeof candidate.kind === "string" && candidate.kind ? candidate.kind : "ref";
 
     const rawUrl = typeof candidate.url === "string" && candidate.url
@@ -75,6 +88,10 @@ export function deriveSourceRefs(record: unknown): SourceRef[] {
         ? candidate.href
         : undefined;
     const url = rawUrl && isSafeExternalUrl(rawUrl) ? rawUrl : undefined;
+
+    const dedupeKey = `${kind}\u0000${id}\u0000${url ?? ""}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
 
     refs.push(url ? { kind, label, url } : { kind, label });
   }

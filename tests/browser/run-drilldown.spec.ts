@@ -24,9 +24,9 @@ const runState = {
       // anchor), and an unsafe javascript: URL that must never render as a
       // live link anywhere this ref set is shown (fleet card + run detail).
       sourceOfTruthRefs: [
-        { kind: "assignment-branch", label: "feature/checkout-banner" },
-        { kind: "work-item", label: "#891", url: "https://github.com/kontourai/flow-agents/issues/891" },
-        { kind: "assignment-actor", label: "evil-actor", url: "javascript:alert(1)" },
+        { kind: "assignment-branch", id: "branch-checkout-banner", label: "feature/checkout-banner" },
+        { kind: "work-item", id: "github:kontourai/flow-agents#891", label: "#891", url: "https://github.com/kontourai/flow-agents/issues/891" },
+        { kind: "assignment-actor", id: "evil-actor-id", label: "evil-actor", url: "javascript:alert(1)" },
       ],
     },
   ],

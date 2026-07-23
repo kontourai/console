@@ -524,8 +524,8 @@ test("deriveRunDetail: sourceOfTruthRefs carries a real https URL through, and r
   const withRefs = {
     id: "run-1",
     sourceOfTruthRefs: [
-      { kind: "work-item", label: "Work item", url: "https://example.test/work/123" },
-      { kind: "assignment-branch", label: "evil", url: "javascript:alert(1)" },
+      { kind: "work-item", id: "work-item-123", label: "Work item", url: "https://example.test/work/123" },
+      { kind: "assignment-branch", id: "branch-evil", label: "evil", url: "javascript:alert(1)" },
       "not even an object",
     ],
   } as unknown as ConsoleProcess;

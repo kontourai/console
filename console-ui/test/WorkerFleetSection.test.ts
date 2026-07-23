@@ -276,8 +276,8 @@ test("WorkerFleetSection: a process carrying a work-item sourceOfTruthRefs entry
     status: "running",
     updatedAt: new Date(NOW).toISOString(),
     sourceOfTruthRefs: [
-      { kind: "work-item", label: "#891", url: "https://github.com/kontourai/flow-agents/issues/891" },
-      { kind: "assignment-branch", label: "feature/checkout-banner" },
+      { kind: "work-item", id: "github:kontourai/flow-agents#891", label: "#891", url: "https://github.com/kontourai/flow-agents/issues/891" },
+      { kind: "assignment-branch", id: "branch-checkout-banner", label: "feature/checkout-banner" },
     ],
   } as unknown as ConsoleProcess;
   const markup = render({ now: NOW, state: state({ processes: [withRefs] }) });
@@ -304,7 +304,7 @@ test("WorkerFleetSection: a javascript: sourceOfTruthRefs url on a fleet card is
     label: "Unsafe ref worker",
     status: "running",
     updatedAt: new Date(NOW).toISOString(),
-    sourceOfTruthRefs: [{ kind: "work-item", label: "evil", url: "javascript:alert(1)" }],
+    sourceOfTruthRefs: [{ kind: "work-item", id: "evil-work-item", label: "evil", url: "javascript:alert(1)" }],
   } as unknown as ConsoleProcess;
   const markup = render({ now: NOW, state: state({ processes: [withRefs] }) });
   assert.doesNotMatch(markup, /javascript:/);

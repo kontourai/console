@@ -153,8 +153,8 @@ test("BoardSection: run detail shows a linked work-item chip AND a text-only ass
     id: "run-1",
     label: "Run with source-of-truth refs",
     sourceOfTruthRefs: [
-      { kind: "assignment-branch", label: "feature/checkout-banner" },
-      { kind: "work-item", label: "#891", url: "https://github.com/kontourai/flow-agents/issues/891" },
+      { kind: "assignment-branch", id: "branch-checkout-banner", label: "feature/checkout-banner" },
+      { kind: "work-item", id: "github:kontourai/flow-agents#891", label: "#891", url: "https://github.com/kontourai/flow-agents/issues/891" },
     ],
   } as unknown as ConsoleProcess;
   const markup = render({
