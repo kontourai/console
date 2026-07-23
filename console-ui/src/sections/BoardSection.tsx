@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import type { OperatingState } from "@kontourai/console-core";
 import { BOARD_SELECT_CARD_INTENT, BoardView, deriveBoard, type BoardCard, type ConsoleIntent } from "@kontourai/console-ui";
 import { BoardDrilldown } from "./board/BoardDrilldown";
@@ -13,16 +13,32 @@ import { BoardDrilldown } from "./board/BoardDrilldown";
  * (#98/#159), and live agent presence per card waits on a verified liveness↔
  * process id mapping (see lib/src/board.ts) — both intentionally absent
  * rather than faked.
+ *
+ * console#252: `selectedId`/`onSelectedIdChange` are an OPTIONAL controlled
+ * pair so App can drive the selection from (and sync it back to) the
+ * `/run/:id` route — a card's id is the underlying process id (board.ts),
+ * matching the route's `:id` segment 1:1. Omitting both props keeps the
+ * original uncontrolled behavior.
  */
 export function BoardSection({
   state,
-  fetchProjection
+  fetchProjection,
+  selectedId: controlledSelectedId,
+  onSelectedIdChange,
 }: {
   state: OperatingState;
   fetchProjection?: (runId: string) => Promise<unknown | null>;
+  selectedId?: string | null;
+  onSelectedIdChange?: (id: string | null) => void;
 }) {
   const board = useMemo(() => deriveBoard(state), [state]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const selectedId = controlledSelectedId !== undefined ? controlledSelectedId : internalSelectedId;
+
+  function setSelectedId(id: string | null) {
+    if (onSelectedIdChange) onSelectedIdChange(id);
+    else setInternalSelectedId(id);
+  }
 
   // Keep the selected card in sync with the latest projection (its stage/gates
   // may change); drop it if the work item leaves the board entirely.

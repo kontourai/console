@@ -202,6 +202,62 @@ test("WorkerFleetSection: renders the current step as a visible stage line", () 
   assert.match(markup, /class="wf-card-step">at Verify gate</);
 });
 
+// console#252: controlled filter/archiveOpen — App owns this state so it can
+// sync to the URL (`?filter=`, `/archive`). Both are OPTIONAL: omitting them
+// (as every test above does) preserves the original uncontrolled behavior.
+test("WorkerFleetSection: a controlled `filter` renders only that bucket, pre-applied (no click needed)", () => {
+  const markup = render({
+    now: NOW,
+    state: state({
+      processes: [
+        proc({ id: "p1", label: "Active worker", status: "running", updatedAt: new Date(NOW).toISOString() }),
+        proc({ id: "p2", label: "Stalled worker", status: "running", updatedAt: new Date(NOW - STALL_THRESHOLD_MS - 1000).toISOString() }),
+      ],
+    }),
+    filter: "stalled",
+  });
+  const mainGridMatch = markup.match(/<ul class="wf-grid" aria-label="Active workers">([\s\S]*?)<\/ul>/);
+  assert.ok(mainGridMatch, "expected the main fleet grid to render");
+  assert.match(mainGridMatch![1], /Stalled worker/);
+  assert.doesNotMatch(mainGridMatch![1], /Active worker/);
+  assert.match(markup, /wf-count-stalled is-active"/);
+});
+
+test("WorkerFleetSection: a controlled `filter` of null renders everything, unfiltered", () => {
+  const markup = render({
+    now: NOW,
+    state: state({
+      processes: [proc({ id: "p1", label: "Active worker", status: "running", updatedAt: new Date(NOW).toISOString() })],
+    }),
+    filter: null,
+  });
+  assert.match(markup, /Active worker/);
+});
+
+test("WorkerFleetSection: a controlled `archiveOpen=true` renders the archived list pre-expanded (no click needed)", () => {
+  const markup = render({
+    now: NOW,
+    state: state({
+      processes: [proc({ id: "p1", label: "Done worker", status: "complete", updatedAt: new Date(NOW).toISOString() })],
+    }),
+    archiveOpen: true,
+  });
+  assert.match(markup, /wf-grid-archived/);
+  assert.match(markup, /Done worker/);
+  assert.match(markup, /aria-expanded="true"/);
+});
+
+test("WorkerFleetSection: a controlled `archiveOpen=false` keeps the archive collapsed even with archived work present", () => {
+  const markup = render({
+    now: NOW,
+    state: state({
+      processes: [proc({ id: "p1", label: "Done worker", status: "complete", updatedAt: new Date(NOW).toISOString() })],
+    }),
+    archiveOpen: false,
+  });
+  assert.doesNotMatch(markup, /wf-grid-archived/);
+});
+
 test("WorkerFleetSection: omitting `now` still renders (falls back to the live wall clock)", () => {
   const markup = render({
     state: state({

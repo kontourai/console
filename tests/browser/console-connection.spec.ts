@@ -52,7 +52,18 @@ async function installAuthAwareHubMock(page: Page): Promise<void> {
       if (pathname.endsWith("/session")) return Promise.resolve(new Response("", { status: 401 }));
       if (pathname.endsWith("/stream")) {
         if (!authed) return Promise.resolve(new Response("unauthorized", { status: 401 }));
-        return Promise.resolve(new Response(`event: state\ndata: ${JSON.stringify(state.operatingState)}\n\n`, { status: 200, headers: { "content-type": "text/event-stream" } }));
+        // A REAL `GET /stream` response body never ends on its own — it stays
+        // open for the life of the connection. Model that with a ReadableStream
+        // that enqueues the initial frame and then stays open (never closes),
+        // instead of a finite string body (which would "end" immediately after
+        // the one frame and look identical to a genuine drop to the client's
+        // reconnect-on-drop logic — console#252).
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(`event: state\ndata: ${JSON.stringify(state.operatingState)}\n\n`));
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } }));
       }
       if (pathname.endsWith("/api/telemetry")) {
         if (!authed) return Promise.resolve(new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 }));
@@ -88,7 +99,7 @@ test("renders the operating plane after authenticating via the Connection popove
   await expect(page.locator(".conn-dot")).toHaveAttribute("data-status", "connected", { timeout: 10_000 });
   // Gate names and evidence detail render on the Operate view (the unified
   // Overview is the default view since the redesign).
-  await page.getByRole("navigation", { name: "Console views" }).getByRole("button", { name: "Operate" }).click();
+  await page.getByRole("navigation", { name: "Console views" }).getByRole("link", { name: "Operate" }).click();
   await expect(page.getByRole("main")).toContainText("Suite audit remediation");
   await expect(page.getByRole("main")).toContainText("Backlog Gate");
   await expect(page.getByRole("main")).toContainText("9/9 correctness findings reproduced by running code");

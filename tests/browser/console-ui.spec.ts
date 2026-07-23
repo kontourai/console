@@ -541,7 +541,7 @@ test("reconnects to a submitted hub URL without leaving the console shell", asyn
 test("renders telemetry usage from the console API", async ({ page }) => {
   const consoleErrors = await loadConsole(page);
 
-  await page.getByRole("button", { name: "Telemetry" }).click();
+  await page.getByRole("link", { name: "Telemetry" }).click();
 
   await expect(page.getByRole("main")).toContainText("Runtime and workflow usage");
   await expect(page.getByLabel("Telemetry totals")).toContainText("42");
@@ -624,7 +624,7 @@ test("opens telemetry directly from the browser route", async ({ page }) => {
 
   await page.goto("/telemetry");
 
-  await expect(page.getByRole("button", { name: "Telemetry", exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole("link", { name: "Telemetry", exact: true })).toHaveClass(/active/);
   await expect(page.getByRole("main")).toContainText("Runtime and workflow usage");
   expect(consoleErrors).toEqual([]);
 });
@@ -635,7 +635,7 @@ test("syncs telemetry query state with URL and browser history", async ({ page }
 
   await page.goto("/telemetry?preset=24h&q=read_file&filter=tools:read_file&limit=24&sort=desc");
 
-  await expect(page.getByRole("button", { name: "Telemetry", exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole("link", { name: "Telemetry", exact: true })).toHaveClass(/active/);
   await expect(page.getByRole("textbox", { name: "Search" })).toHaveValue("read_file");
   await expect(page.getByLabel("Telemetry filters")).toContainText("Tools: read_file");
   await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["tools:read_file"]);
@@ -723,7 +723,7 @@ test("opens and refreshes telemetry dimension drilldown routes", async ({ page }
 test("renders the Board tab: work items grouped by flow stage", async ({ page }) => {
   const consoleErrors = await loadConsole(page);
 
-  await page.getByRole("navigation", { name: "Console views" }).getByRole("button", { name: "Board", exact: true }).click();
+  await page.getByRole("navigation", { name: "Console views" }).getByRole("link", { name: "Board", exact: true }).click();
   await expect(page.getByRole("main")).toContainText("Work in flight");
 
   // Five stage columns, always rendered.
@@ -776,7 +776,7 @@ test("keeps the primary console sections within the mobile viewport", async ({ p
     expect(stageBox.x + stageBox.width).toBeLessThanOrEqual(viewport.width + 1);
   }
 
-  await page.getByRole("button", { name: "Telemetry", exact: true }).click();
+  await page.getByRole("link", { name: "Telemetry", exact: true }).click();
   await page.getByRole("button", { name: /<img src=x onerror=.* 1/ }).click();
   await openFirstTelemetryDetails(page);
   const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -815,7 +815,7 @@ async function loadConsole(page: Page): Promise<string[]> {
 // Operate tab since the unified Overview became the default view.
 async function loadOperate(page: Page): Promise<string[]> {
   const consoleErrors = await loadConsole(page);
-  await page.getByRole("navigation", { name: "Console views" }).getByRole("button", { name: "Operate" }).click();
+  await page.getByRole("navigation", { name: "Console views" }).getByRole("link", { name: "Operate" }).click();
   await expect(page.getByLabel("Current stage")).toContainText("Survey review ready");
   return consoleErrors;
 }
@@ -1140,6 +1140,87 @@ test("a referenced child with no recorded projection shows an honest empty state
   // 404 → empty state: the reference is shown honestly, no child panel mounts.
   await expect(childDetail).toContainText("has not been fetched yet");
   await expect(childDetail.locator("flow-run-panel")).toHaveCount(0);
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("opens a run directly from the /run/:id route and back/forward stays in sync (console#252)", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  await page.goto("/run/process-survey-review");
+
+  await expect(page.getByRole("link", { name: "Board", exact: true })).toHaveClass(/active/);
+  await expect(page.locator(".board-drilldown")).toContainText("Survey claim review");
+  await expect(page.locator(".board-drilldown")).toContainText("run process-survey-review");
+
+  // Closing the drill-down navigates back to the plain board route.
+  await page.locator(".board-drilldown-close").click();
+  await expect(page.locator(".board-drilldown")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/board$/);
+
+  // Selecting the card again pushes a fresh /run/:id entry, and back() undoes it.
+  await page.locator(".board-column-verify .board-card-button").click();
+  await expect(page).toHaveURL(/\/run\/process-survey-review$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/board$/);
+  await expect(page.locator(".board-drilldown")).toHaveCount(0);
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("opens a gate directly from the /gate/:id route, focusing it in the Operate WorkGrid (console#252)", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
+  await page.goto("/gate/gate-authority");
+
+  await expect(page.getByRole("link", { name: "Operate", exact: true })).toHaveClass(/active/);
+  const gateRow = page.locator("#gate\\:gate-authority");
+  await expect(gateRow).toHaveClass(/selected/);
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("switching Console view tabs updates the URL and back/forward navigates between them (console#252)", async ({ page }) => {
+  const consoleErrors = await loadConsole(page);
+
+  await page.getByRole("link", { name: "Board", exact: true }).click();
+  await expect(page).toHaveURL(/\/board$/);
+  await page.getByRole("link", { name: "Operate", exact: true }).click();
+  await expect(page).toHaveURL(/\/operate$/);
+  await page.getByRole("link", { name: "Telemetry", exact: true }).click();
+  await expect(page).toHaveURL(/\/telemetry$/);
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/operate$/);
+  await expect(page.getByRole("link", { name: "Operate", exact: true })).toHaveClass(/active/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/board$/);
+  await page.goForward();
+  await expect(page).toHaveURL(/\/operate$/);
+
+  // Console view tab links are real anchors: cmd+click opens a new tab instead
+  // of being swallowed by a fake button (console#252 a11y constraint).
+  const economicsTab = page.getByRole("link", { name: "Economics", exact: true });
+  await expect(economicsTab).toHaveAttribute("href", /\/economics/);
+
+  expect(consoleErrors).toEqual([]);
+});
+
+test("the fleet header's count filter and archive toggle sync to the URL and survive reload (console#252)", async ({ page }) => {
+  const consoleErrors = await loadConsole(page);
+
+  await page.getByRole("group", { name: "Fleet status filters" }).getByRole("button", { name: /Active/ }).click();
+  await expect(page).toHaveURL(/[?&]filter=active/);
+
+  await page.locator(".wf-count-archived").click();
+  await expect(page).toHaveURL(/\/archive/);
+  await expect(page).toHaveURL(/filter=active/);
+
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Fleet status filters" }).getByRole("button", { name: /Active/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".wf-archive")).toContainText("Hide archive");
 
   expect(consoleErrors).toEqual([]);
 });
