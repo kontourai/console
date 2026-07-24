@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.1.0](https://github.com/kontourai/console/compare/console-server-v1.0.0...console-server-v1.1.0) (2026-07-24)
+
+
+### Features
+
+* **console-server:** bridge Surface trust projections into OperatingState ([#254](https://github.com/kontourai/console/issues/254)) ([#260](https://github.com/kontourai/console/issues/260)) ([eb95f67](https://github.com/kontourai/console/commit/eb95f674e980ed0c17a615a0bce6755056487d5d))
+* **telemetry:** project repeated invocation signals ([#243](https://github.com/kontourai/console/issues/243)) ([7ed115e](https://github.com/kontourai/console/commit/7ed115edc75b1add2152adcecfeae39fc26800af))
+
+
+### Bug Fixes
+
+* **telemetry:** bound hosted retention ([#246](https://github.com/kontourai/console/issues/246)) ([237f9cb](https://github.com/kontourai/console/commit/237f9cb24a39731b3bb3f998bff4bb2557a1f64a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @kontourai/console-core bumped from 0.3.0 to 0.4.0
+
 ## [1.0.0](https://github.com/kontourai/console/compare/console-server-v0.1.0...console-server-v1.0.0) (2026-07-23)
 
 
