@@ -93,10 +93,6 @@ jobs:
         run: npm pack --dry-run
         working-directory: console
 
-      - name: Pack CLI Dry Run
-        run: npm --workspace @kontourai/cli pack --dry-run
-        working-directory: console
-
       - name: Pack Console Core Dry Run
         run: npm --workspace @kontourai/console-core pack --dry-run
         working-directory: console
@@ -180,8 +176,8 @@ jobs:
           fi
         working-directory: console
 
-      - name: Verify CLI Core Dependency Is Public
-        if: startsWith(inputs.target_tag, 'cli-v') || startsWith(inputs.target_tag, 'console-server-v')
+      - name: Verify Console Server Core Dependency Is Public
+        if: startsWith(inputs.target_tag, 'console-server-v')
         env:
           PACKAGE_MANIFEST: ${{ needs.gate.outputs.manifest }}
         # Policy code from current main (console-main); manifest/package data

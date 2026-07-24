@@ -11,10 +11,13 @@ import { assertExactCoreMetadata, resolveCoreRegistryManifest } from "./npm-rele
 // — the caller sets `working-directory` to the immutable tag checkout — never
 // from this file's own on-disk location.
 const root = process.cwd();
-// Any package that pins @kontourai/console-core exactly (CLI, console-server)
-// runs this anti-drift gate. The manifest defaults to the CLI for backward
-// compatibility; the publish workflow passes the resolved target manifest.
-const manifestPath = process.env.PACKAGE_MANIFEST ?? "cli/package.json";
+// Any package that pins @kontourai/console-core exactly runs this
+// anti-drift gate. Currently only console-server: @kontourai/cli used to
+// share this pin and this exact gate before it was extracted to its own
+// kontourai/cli repository, which now carries its own copy. The manifest
+// defaults to console-server's for backward compatibility; the publish
+// workflow passes the resolved target manifest explicitly.
+const manifestPath = process.env.PACKAGE_MANIFEST ?? "console-server/package.json";
 const manifest = JSON.parse(readFileSync(resolve(root, manifestPath), "utf8")) as { dependencies?: Record<string, unknown> };
 const spec = manifest.dependencies?.["@kontourai/console-core"];
 if (typeof spec !== "string") throw new Error(`${manifestPath} is missing Core dependency`);

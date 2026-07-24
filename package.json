@@ -13,7 +13,6 @@
     "node": ">=22"
   },
   "workspaces": [
-    "cli",
     "console-core",
     "telemetry",
     "console-server",
@@ -45,18 +44,18 @@
     "console-server/migrations"
   ],
   "scripts": {
-    "build": "npm --workspace @kontourai/console-core run build && npm --workspace @kontourai/cli run build && npm --workspace @kontourai/console-server run build && npm --workspace @kontourai/console-ui run build",
+    "build": "npm --workspace @kontourai/console-core run build && npm --workspace @kontourai/console-server run build && npm --workspace @kontourai/console-ui run build",
     "prepack": "npm run build",
     "inspect:fixtures": "npm --workspace @kontourai/console-server run inspect:fixtures",
     "prototype:handoff": "node --import tsx scripts/serve-prototype.ts docs/prototypes/handoff-replay",
     "dev:local": "node --import tsx scripts/dev-local.ts",
     "serve": "npm --workspace @kontourai/console-server run serve --",
-    "test": "npm run check:release-package-versions && npm run test:release-policy && npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontourai/console-core test && npm --workspace @kontourai/console-core run test:package-surface && npm --workspace @kontourai/cli test && npm --workspace @kontourai/cli run check:import-boundary && npm --workspace @kontourai/console-server test && npm --workspace @kontourai/console-ui test && npm --workspace @kontourai/console-ui run typecheck && npm run test:dev-local && npm run test:browser && npm --workspace @kontourai/cli run test:tarball",
+    "test": "npm run check:release-package-versions && npm run test:release-policy && npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontourai/console-core test && npm --workspace @kontourai/console-core run test:package-surface && npm --workspace @kontourai/console-server test && npm --workspace @kontourai/console-ui test && npm --workspace @kontourai/console-ui run typecheck && npm run test:dev-local && npm run test:browser",
     "test:browser": "playwright test",
     "smoke:ui:hosted": "node scripts/hosted-ui-smoke.mjs",
     "test:dev-local": "node --import tsx --test scripts/dev-local.test.ts scripts/publish-npm-policy.test.ts scripts/check-release-package-versions.test.ts",
     "test:release-policy": "node --import tsx scripts/check-lock-integrity.ts && node --import tsx --test scripts/check-lock-integrity.test.ts scripts/npm-release-policy.test.ts scripts/verify-cli-core-release.test.ts scripts/release-please-generation.test.ts scripts/publish-npm-policy.test.ts scripts/check-release-package-versions.test.ts scripts/bin-manifest.test.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontourai/console-core run typecheck && npm --workspace @kontourai/cli run typecheck && npm --workspace @kontourai/console-server run typecheck && npm --workspace @kontourai/console-ui run typecheck",
+    "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontourai/console-core run typecheck && npm --workspace @kontourai/console-server run typecheck && npm --workspace @kontourai/console-ui run typecheck",
     "check:content-boundary": "node --import tsx scripts/check-content-boundary.ts",
     "check:release-package-versions": "node --import tsx scripts/check-release-package-versions.ts",
     "check:descriptor-boundary": "npm --workspace @kontourai/console-core run check:descriptor-boundary",
