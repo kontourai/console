@@ -115,6 +115,25 @@ jobs:
           fetch-depth: 0
           path: console
 
+      # console#264 (Route A): the tag checkout above is the immutable
+      # PACKAGE-CONTENT authority (its manifests define exactly what gets
+      # published) but its scripts/ directory is frozen forever the moment the
+      # tag is cut, so a release-policy bug fixed on main (e.g. npm CLI output
+      # shape drift) can never reach an already-tagged release. main is the
+      # WORKFLOW authority: it defines which checks run and how. Check out
+      # main's scripts into a separate path and run policy gates FROM there,
+      # while every step still points its working directory (and therefore its
+      # manifest/package reads) at the tag checkout in `console`. Never let a
+      # policy script under `console-main` read package contents from
+      # `console-main` itself.
+      - name: Checkout Main Release-Policy Scripts
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+          path: console-main
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -165,7 +184,11 @@ jobs:
         if: startsWith(inputs.target_tag, 'cli-v') || startsWith(inputs.target_tag, 'console-server-v')
         env:
           PACKAGE_MANIFEST: ${{ needs.gate.outputs.manifest }}
-        run: node --import tsx scripts/verify-cli-core-release.ts
+        # Policy code from current main (console-main); manifest/package data
+        # from the immutable tag (working-directory stays `console`, and the
+        # script resolves its root from process.cwd(), never its own file
+        # location) — see "Checkout Main Release-Policy Scripts" above.
+        run: node --import tsx ../console-main/scripts/verify-cli-core-release.ts
         working-directory: console
 
       - name: Publish

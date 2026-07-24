@@ -55,7 +55,7 @@
     "test:browser": "playwright test",
     "smoke:ui:hosted": "node scripts/hosted-ui-smoke.mjs",
     "test:dev-local": "node --import tsx --test scripts/dev-local.test.ts scripts/publish-npm-policy.test.ts scripts/check-release-package-versions.test.ts",
-    "test:release-policy": "node --import tsx scripts/check-lock-integrity.ts && node --import tsx --test scripts/check-lock-integrity.test.ts scripts/npm-release-policy.test.ts scripts/release-please-generation.test.ts scripts/publish-npm-policy.test.ts scripts/check-release-package-versions.test.ts scripts/bin-manifest.test.ts",
+    "test:release-policy": "node --import tsx scripts/check-lock-integrity.ts && node --import tsx --test scripts/check-lock-integrity.test.ts scripts/npm-release-policy.test.ts scripts/verify-cli-core-release.test.ts scripts/release-please-generation.test.ts scripts/publish-npm-policy.test.ts scripts/check-release-package-versions.test.ts scripts/bin-manifest.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && npm --workspace @kontourai/console-core run typecheck && npm --workspace @kontourai/cli run typecheck && npm --workspace @kontourai/console-server run typecheck && npm --workspace @kontourai/console-ui run typecheck",
     "check:content-boundary": "node --import tsx scripts/check-content-boundary.ts",
     "check:release-package-versions": "node --import tsx scripts/check-release-package-versions.ts",
