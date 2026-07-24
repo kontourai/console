@@ -35,7 +35,24 @@ test("Core is a first-class release and CLI publication waits for its exact publ
   assert.match(workflow, /target_tag:/);
   assert.match(workflow, /resolve-release-target\.sh/);
   assert.match(workflow, /Verify CLI Core Dependency Is Public/);
-  assert.match(workflow, /node --import tsx scripts\/verify-cli-core-release\.ts/);
+  // console#264 (Route A): the gate must execute main's (fixable) copy of the
+  // policy script, never the immutable tag's own frozen copy, so a policy fix
+  // lands retroactively for already-tagged releases.
+  assert.match(workflow, /node --import tsx \.\.\/console-main\/scripts\/verify-cli-core-release\.ts/);
+  assert.doesNotMatch(workflow, /run: node --import tsx scripts\/verify-cli-core-release\.ts/);
+});
+
+test("publish job sources release-policy scripts from a separate current-main checkout while manifests stay tag-authoritative", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:\n"));
+
+  assert.match(publishJob, /name: Checkout Main Release-Policy Scripts[\s\S]*?ref: main/);
+  assert.match(publishJob, /name: Checkout Main Release-Policy Scripts[\s\S]*?path: console-main/);
+  // The main checkout must never become the working directory for a step that
+  // reads package manifests — every job step keeps reading from the tag
+  // checkout (`console`).
+  assert.doesNotMatch(publishJob, /working-directory: console-main/);
+  assert.match(publishJob, /working-directory: console\n/);
 });
 
 test("tag ancestry is checked against an authoritative main ref with complete history", async () => {
