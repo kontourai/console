@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.9.0](https://github.com/kontourai/console/compare/v2.8.0...v2.9.0) (2026-07-24)
+
+
+### Features
+
+* **console-server:** bridge Surface trust projections into OperatingState ([#254](https://github.com/kontourai/console/issues/254)) ([#260](https://github.com/kontourai/console/issues/260)) ([eb95f67](https://github.com/kontourai/console/commit/eb95f674e980ed0c17a615a0bce6755056487d5d))
+* **console-ui:** /run/:id drill-in — stage position, gate history, run timeline ([#253](https://github.com/kontourai/console/issues/253)) ([#259](https://github.com/kontourai/console/issues/259)) ([e6f9095](https://github.com/kontourai/console/commit/e6f9095f9a10e4648bde6afaee50626e77be6f4d))
+* **console-ui:** deep-linkable routes + live SSE updates ([#252](https://github.com/kontourai/console/issues/252)) ([#258](https://github.com/kontourai/console/issues/258)) ([3054034](https://github.com/kontourai/console/commit/3054034ae96b5760c9d4a68237d58b1b2802ed02))
+* **console-ui:** gate trust panel — mount &lt;surface-trust-panel&gt; live ([#255](https://github.com/kontourai/console/issues/255)) ([#262](https://github.com/kontourai/console/issues/262)) ([293bfb4](https://github.com/kontourai/console/commit/293bfb4e32a6508c738ba33ada734fb9819b2bbf))
+* **console-ui:** provider-grounded source-of-truth link-outs ([#256](https://github.com/kontourai/console/issues/256)) ([#261](https://github.com/kontourai/console/issues/261)) ([45f0b69](https://github.com/kontourai/console/commit/45f0b69e33d1482ecca7ea398e83eb0b0a48bec5))
+
+
+### Bug Fixes
+
+* **release:** run release-policy from main + normalize npm view output shapes ([#264](https://github.com/kontourai/console/issues/264)) ([#265](https://github.com/kontourai/console/issues/265)) ([0dc7cad](https://github.com/kontourai/console/commit/0dc7cade51e3a1c7d69e54797944f6d96719aa5a))
+* **telemetry:** bound hosted retention ([#246](https://github.com/kontourai/console/issues/246)) ([237f9cb](https://github.com/kontourai/console/commit/237f9cb24a39731b3bb3f998bff4bb2557a1f64a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @kontourai/console-core bumped from 0.3.0 to 0.4.0
+
 ## [2.8.0](https://github.com/kontourai/console/compare/v2.7.0...v2.8.0) (2026-07-23)
 
 

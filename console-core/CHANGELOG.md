@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/kontourai/console/compare/console-core-v0.3.0...console-core-v0.4.0) (2026-07-24)
+
+
+### Features
+
+* **console-ui:** gate trust panel — mount &lt;surface-trust-panel&gt; live ([#255](https://github.com/kontourai/console/issues/255)) ([#262](https://github.com/kontourai/console/issues/262)) ([293bfb4](https://github.com/kontourai/console/commit/293bfb4e32a6508c738ba33ada734fb9819b2bbf))
+
 ## [0.3.0](https://github.com/kontourai/console/compare/console-core-v0.2.0...console-core-v0.3.0) (2026-07-23)
 
 
