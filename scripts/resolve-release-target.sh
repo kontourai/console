@@ -5,7 +5,6 @@ TARGET_TAG=${1:?Usage: resolve-release-target.sh <release-tag>}
 OUTPUT=${GITHUB_OUTPUT:-/dev/stdout}
 
 case "${TARGET_TAG}" in
-  cli-v*) PACKAGE_WORKSPACE="@kontourai/cli"; PACKAGE_MANIFEST="cli/package.json"; TAG_PREFIX="cli-v" ;;
   console-core-v*) PACKAGE_WORKSPACE="@kontourai/console-core"; PACKAGE_MANIFEST="console-core/package.json"; TAG_PREFIX="console-core-v" ;;
   console-server-v*) PACKAGE_WORKSPACE="@kontourai/console-server"; PACKAGE_MANIFEST="console-server/package.json"; TAG_PREFIX="console-server-v" ;;
   console-ui-v*) PACKAGE_WORKSPACE="@kontourai/console-ui"; PACKAGE_MANIFEST="console-ui/package.json"; TAG_PREFIX="console-ui-v" ;;
@@ -14,7 +13,7 @@ case "${TARGET_TAG}" in
 esac
 export PACKAGE_MANIFEST
 
-if ! printf '%s' "${TARGET_TAG}" | grep -Eq '^(v|cli-v|console-core-v|console-server-v|console-ui-v)[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+if ! printf '%s' "${TARGET_TAG}" | grep -Eq '^(v|console-core-v|console-server-v|console-ui-v)[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
   echo "Target must be a supported immutable release tag, got ${TARGET_TAG}" >&2
   exit 1
 fi

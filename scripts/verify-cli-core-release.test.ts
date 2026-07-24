@@ -39,13 +39,13 @@ test("root resolves from process.cwd(), not the script's own directory, so a mai
   try {
     // Simulate the tag checkout: only manifest data lives here.
     const tagCheckout = join(root, "console");
-    mkdirSync(join(tagCheckout, "cli"), { recursive: true });
-    writeFileSync(join(tagCheckout, "cli", "package.json"), JSON.stringify({ name: "@kontourai/cli", dependencies: { "@kontourai/console-core": "0.3.0" } }));
+    mkdirSync(join(tagCheckout, "console-server"), { recursive: true });
+    writeFileSync(join(tagCheckout, "console-server", "package.json"), JSON.stringify({ name: "@kontourai/console-server", dependencies: { "@kontourai/console-core": "0.3.0" } }));
     linkRepoNodeModules(tagCheckout);
 
     // Simulate the separately checked-out main scripts/ directory. The script
     // is invoked from HERE, but must not read manifests from here.
-    const bogusManifest = join(root, "cli-should-not-be-read");
+    const bogusManifest = join(root, "console-server-should-not-be-read");
     mkdirSync(bogusManifest, { recursive: true });
 
     const npmBin = join(root, "npm-bin");
@@ -60,7 +60,7 @@ test("root resolves from process.cwd(), not the script's own directory, so a mai
     const stdout = execFileSync(process.execPath, ["--import", "tsx", scriptPath], {
       cwd: tagCheckout,
       encoding: "utf8",
-      env: { ...process.env, PATH: `${npmBin}:${process.env.PATH}`, PACKAGE_MANIFEST: "cli/package.json" },
+      env: { ...process.env, PATH: `${npmBin}:${process.env.PATH}`, PACKAGE_MANIFEST: "console-server/package.json" },
     });
     assert.match(stdout, /Confirmed compatible @kontourai\/console-core@0\.3\.0 on npm/);
   } finally {
@@ -71,8 +71,8 @@ test("root resolves from process.cwd(), not the script's own directory, so a mai
 test("array-wrapped npm@latest output shape (console#264 root cause) no longer fails the gate (Route B)", () => {
   const root = mkdtempSync(join(tmpdir(), "verify-cli-core-release-"));
   try {
-    mkdirSync(join(root, "cli"), { recursive: true });
-    writeFileSync(join(root, "cli", "package.json"), JSON.stringify({ name: "@kontourai/cli", dependencies: { "@kontourai/console-core": "0.3.0" } }));
+    mkdirSync(join(root, "console-server"), { recursive: true });
+    writeFileSync(join(root, "console-server", "package.json"), JSON.stringify({ name: "@kontourai/console-server", dependencies: { "@kontourai/console-core": "0.3.0" } }));
     linkRepoNodeModules(root);
 
     const npmBin = join(root, "npm-bin");
@@ -90,7 +90,7 @@ test("array-wrapped npm@latest output shape (console#264 root cause) no longer f
     const stdout = execFileSync(process.execPath, ["--import", "tsx", scriptPath], {
       cwd: root,
       encoding: "utf8",
-      env: { ...process.env, PATH: `${npmBin}:${process.env.PATH}`, PACKAGE_MANIFEST: "cli/package.json" },
+      env: { ...process.env, PATH: `${npmBin}:${process.env.PATH}`, PACKAGE_MANIFEST: "console-server/package.json" },
     });
     assert.match(stdout, /Confirmed compatible @kontourai\/console-core@0\.3\.0 on npm/);
   } finally {
@@ -101,8 +101,8 @@ test("array-wrapped npm@latest output shape (console#264 root cause) no longer f
 test("a Core missing the required intent-binding export still fails closed after shape normalization", () => {
   const root = mkdtempSync(join(tmpdir(), "verify-cli-core-release-"));
   try {
-    mkdirSync(join(root, "cli"), { recursive: true });
-    writeFileSync(join(root, "cli", "package.json"), JSON.stringify({ name: "@kontourai/cli", dependencies: { "@kontourai/console-core": "0.3.0" } }));
+    mkdirSync(join(root, "console-server"), { recursive: true });
+    writeFileSync(join(root, "console-server", "package.json"), JSON.stringify({ name: "@kontourai/console-server", dependencies: { "@kontourai/console-core": "0.3.0" } }));
     linkRepoNodeModules(root);
 
     const npmBin = join(root, "npm-bin");
@@ -116,7 +116,7 @@ test("a Core missing the required intent-binding export still fails closed after
         execFileSync(process.execPath, ["--import", "tsx", scriptPath], {
           cwd: root,
           encoding: "utf8",
-          env: { ...process.env, PATH: `${npmBin}:${process.env.PATH}`, PACKAGE_MANIFEST: "cli/package.json" },
+          env: { ...process.env, PATH: `${npmBin}:${process.env.PATH}`, PACKAGE_MANIFEST: "console-server/package.json" },
           stdio: ["ignore", "pipe", "pipe"],
         }),
       /intent-binding/,

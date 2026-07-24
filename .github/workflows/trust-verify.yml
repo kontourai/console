@@ -1,9 +1,9 @@
 # Trust Verify — adopts the Flow Agents external trust anchor on this repo (ADVISORY).
 #
 # On every PR, re-runs this repo's canonical verification FRESH in a clean CI
-# environment an agent does not control — the same `npm test` + CLI pack-dry-run
-# that ci.yml's "Test" job runs across all five workspaces (console-core, cli,
-# telemetry, console-server, console-ui). If a Flow Agents session has published
+# environment an agent does not control — the same `npm test` that ci.yml's
+# "Test" job runs across all four workspaces (console-core, telemetry,
+# console-server, console-ui). If a Flow Agents session has published
 # delivery/trust.bundle, it also RECONCILES the agent's claimed passes against
 # CI's own fresh results and fails on any divergence. When no bundle is present,
 # only the fresh verify is enforced (fail-open on bundle absence; fail-closed on
@@ -58,10 +58,9 @@ jobs:
       #
       # verify-command mirrors ci.yml's "Test" job main verification exactly:
       # `npm test` (release-package-version + release-policy checks, root
-      # typecheck, content-boundary check, all five workspaces' unit/typecheck
-      # suites, dev-local tests, the Playwright browser suite, and the cli
-      # tarball test) followed by the cli's own pack --dry-run integrity check —
-      # the same two steps ci.yml's Test job runs after install.
+      # typecheck, content-boundary check, all four workspaces' unit/typecheck
+      # suites, dev-local tests, and the Playwright browser suite) — the same
+      # single step ci.yml's Test job runs after install.
       - uses: kontourai/flow-agents/.github/actions/trust-verify@f2efb33ef683793bbec01dcf7e909f3e1423c04d # flow-agents @ locked action runtime dependencies
         with:
-          verify-command: "npm test && npm --workspace @kontourai/cli pack --dry-run"
+          verify-command: "npm test"

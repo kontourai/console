@@ -21,7 +21,7 @@ This repo ships local-first Console foundation code alongside the product contex
 
 Requires Node.js 22 or newer.
 
-For suite navigation, install the dedicated router and opt into product packages separately:
+For suite navigation, install the dedicated router — [`@kontourai/cli`](https://github.com/kontourai/cli), a separate repository — and opt into product packages separately:
 
 ```sh
 npm install --global @kontourai/cli @kontourai/console
@@ -32,7 +32,7 @@ npx --yes --package @kontourai/cli@<exact-version> \
   kontour console serve
 ```
 
-The router is offline and never installs missing products itself. It discovers compatible product packages installed beside `@kontourai/cli` through normal Node package resolution. Explicit `--product-root=<flow|flow-agents|console>=<absolute-package-root>` mappings take precedence for reproducible or offline overrides. `kontour --help` and `kontour init --help` are inert and do not require repository setup. See the [Kontour CLI Router specification](docs/specs/kontour-cli-router.md) for Flow/Flow Agents kit ownership, direct-bin compatibility, confirmation boundaries, and compatibility-catalog provenance.
+The router is offline and never installs missing products itself. It discovers compatible product packages installed beside `@kontourai/cli` through normal Node package resolution. Explicit `--product-root=<flow|flow-agents|console>=<absolute-package-root>` mappings take precedence for reproducible or offline overrides. `kontour --help` and `kontour init --help` are inert and do not require repository setup. See the [Kontour CLI Router specification](https://github.com/kontourai/cli/blob/main/docs/kontour-cli-router.md) for Flow/Flow Agents kit ownership, direct-bin compatibility, confirmation boundaries, and compatibility-catalog provenance.
 
 Run the inspector against any directory without installing anything:
 
@@ -59,8 +59,8 @@ The `@kontourai/console` package's `kontour serve` entry point remains behaviora
 
 - `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, `kontour-flow-bridge`, `kontour-process-bridge`, and `kontour-trust-bridge` bins.
 - `@kontourai/console-core` — shared record and process-flow shapes.
-- `@kontourai/cli` — the offline-first suite router (`kontour` bin) for Flow, Flow Agents, and Console product delegation.
 - `@kontourai/telemetry` — the canonical telemetry contract: event/pricing shapes, versioned pricing registry, and OpenTelemetry GenAI mapping, consumed by `@kontourai/console`.
+- [`@kontourai/cli`](https://github.com/kontourai/cli) — the offline-first suite router (`kontour` bin) for Flow, Flow Agents, and Console product delegation. Published from its own repository; its only dependency is this repo's `@kontourai/console-core`.
 
 The React UI (`console-ui`) is built into the `@kontourai/console` package at `console-ui/dist` and served by `kontour serve` at the hub origin. It is not published as a separate npm package.
 
@@ -119,13 +119,14 @@ Open the UI, hit Reconnect, and the operating plane renders the replayed state: 
 
 ## Package Layout
 
-The Console prototype is split into five TypeScript workspaces with clear ownership:
+The Console prototype is split into four TypeScript workspaces with clear ownership:
 
 - `console-core` owns shared TypeScript record and process-flow shapes used across packages.
-- `cli` owns the offline-first `@kontourai/cli` suite router (`kontour` bin, product delegation, descriptors).
 - `telemetry` owns the `@kontourai/telemetry` event/pricing contract and OpenTelemetry GenAI mapping.
 - `console-server` owns local file sinks, fixture/local inspection, current-state projection, and the loopback SSE hub (plus the optional hosted runtime mode).
 - `console-ui` owns the React/Vite UI that renders hub state and live events.
+
+The offline-first `@kontourai/cli` suite router (`kontour` bin, product delegation, descriptors) previously lived here as a `cli` workspace; it now lives in its own [`kontourai/cli`](https://github.com/kontourai/cli) repository.
 
 Root commands delegate into those workspaces so a fresh checkout can still use `npm test`, `npm run typecheck`, `npm run inspect:fixtures`, and `npm run serve` from this directory.
 

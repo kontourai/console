@@ -8,22 +8,9 @@
   "packages": {
     ".": {
       "exclude-paths": [
-        "cli",
         "console-core",
         "console-server",
         "console-ui"
-      ]
-    },
-    "cli": {
-      "component": "cli",
-      "package-name": "@kontourai/cli",
-      "include-component-in-tag": true,
-      "extra-files": [
-        {
-          "type": "json",
-          "path": "/package-lock.json",
-          "jsonpath": "$.packages.cli.version"
-        }
       ]
     },
     "console-core": {
@@ -35,11 +22,6 @@
           "type": "json",
           "path": "/package-lock.json",
           "jsonpath": "$.packages.console-core.version"
-        },
-        {
-          "type": "json",
-          "path": "/package-lock.json",
-          "jsonpath": "$.packages.cli.dependencies['@kontourai/console-core']"
         },
         {
           "type": "json",

@@ -30,11 +30,11 @@ test("primary npm publish path fails closed and confirms the released version", 
   assert.doesNotMatch(primary, /npm bootstrap required/);
 });
 
-test("Core is a first-class release and CLI publication waits for its exact public dependency", async () => {
+test("Core is a first-class release and Console Server publication waits for its exact public dependency", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(workflow, /target_tag:/);
   assert.match(workflow, /resolve-release-target\.sh/);
-  assert.match(workflow, /Verify CLI Core Dependency Is Public/);
+  assert.match(workflow, /Verify Console Server Core Dependency Is Public/);
   // console#264 (Route A): the gate must execute main's (fixable) copy of the
   // policy script, never the immutable tag's own frozen copy, so a policy fix
   // lands retroactively for already-tagged releases.
@@ -163,13 +163,14 @@ test("target-tag authority is used for package-specific release gates", async ()
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /TARGET_TAG: \$\{\{ inputs\.target_tag \}\}/);
-  // The anti-drift "Verify … Core Dependency Is Public" gate must fire for BOTH
-  // exact-core-pinned packages — cli AND console-server — and must pass the
-  // resolved manifest so it checks the RIGHT package's core pin. Pinning the
-  // full condition (not just a `cli-v` substring) means dropping the
-  // console-server branch or the manifest env — which would let a console-server
+  // The anti-drift "Verify Console Server Core Dependency Is Public" gate
+  // must fire for console-server (the only remaining exact-core-pinned
+  // package in this repo — @kontourai/cli used to share this gate before it
+  // was extracted to its own kontourai/cli repository) and must pass the
+  // resolved manifest so it checks the RIGHT package's core pin. Dropping the
+  // console-server branch or the manifest env would let a console-server
   // release publish against an unverified core pin (#70) — fails this test.
-  assert.match(workflow, /if: startsWith\(inputs\.target_tag, 'cli-v'\) \|\| startsWith\(inputs\.target_tag, 'console-server-v'\)/);
+  assert.match(workflow, /if: startsWith\(inputs\.target_tag, 'console-server-v'\)/);
   assert.match(workflow, /PACKAGE_MANIFEST: \$\{\{ needs\.gate\.outputs\.manifest \}\}/);
   assert.match(workflow, /if: startsWith\(inputs\.target_tag, 'v'\)/);
   assert.doesNotMatch(workflow, /startsWith\(github\.ref/);
