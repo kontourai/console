@@ -109,6 +109,17 @@ export const API_ROUTES: ApiRoute[] = [
   { method: "GET", path: "/api/economics/delegations", auth: "gate", scope: "economics:read", knownRoute: true, summary: "Delegation efficiency per (role, model): outcome mix + acceptance rate (excluding `unavailable`), outcome coverage, and MODEL-GRANULARITY PROXY cost (no runtime isolates per-sub-agent tokens) (flow-agents #415).", tags: ["economics"],
     responses: { "200": { description: "EconomicsDelegationRollup read-model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
 
+  { method: "POST", path: "/api/kits/contributions", auth: "gate", scope: "records:write", knownRoute: true, summary: "Register a versioned Flow Agents Kit observability contribution for the authenticated tenant.", tags: ["kits"],
+    request: { description: "KitContributionRegistration wrapping the public Flow Agents descriptor." },
+    responses: { "201": { description: "Contribution registered." }, "202": { description: "Contribution quarantined with diagnostics." }, "400": ERR("Invalid body."), "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant."), "503": ERR("Kit host dependency unavailable.") } },
+  { method: "POST", path: "/api/kits/records", auth: "gate", scope: "records:write", knownRoute: true, summary: "Ingest or quarantine a descriptor-bound Kit observability record.", tags: ["kits"],
+    request: { description: "KitRecordIngest with controlled/observational provenance and producer-owned source refs." },
+    responses: { "202": { description: "Record accepted or quarantined." }, "400": ERR("Invalid body."), "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant."), "503": ERR("Kit host dependency unavailable.") } },
+  { method: "GET", path: "/api/kits/workspace", auth: "gate", scope: "records:read", knownRoute: true, summary: "Tenant-scoped Kit contribution registry, separate observational/controlled aggregates, runs, and quarantine diagnostics.", tags: ["kits"],
+    responses: { "200": { description: "KitWorkspaceRead standard-view model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant."), "503": ERR("Kit host dependency unavailable.") } },
+  { method: "GET", path: "/api/kits/runs/{runId}", auth: "gate", scope: "records:read", knownRoute: false, summary: "Trace a Kit aggregate back to exact run records and producer-owned source refs.", tags: ["kits"],
+    responses: { "200": { description: "Traceable Kit run records." }, "400": ERR("Invalid run id."), "404": ERR("Run not found."), "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant."), "503": ERR("Kit host dependency unavailable.") } },
+
   { method: "POST", path: "/mcp", auth: "gate", scope: "telemetry:read", knownRoute: true, summary: "MCP server (JSON-RPC 2.0) over the telemetry/cost analytics.", tags: ["mcp"],
     request: { description: "JSON-RPC 2.0 request: initialize | ping | tools/list | tools/call." },
     responses: { "200": { description: "JSON-RPC 2.0 response (result or error)." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } }

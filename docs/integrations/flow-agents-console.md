@@ -8,6 +8,58 @@ Definition gates, route-back behavior, typed `expects`, provider policy, skill
 execution, and workflow-learning source records. Console displays, correlates,
 and routes through those records.
 
+## Kit observability contribution host
+
+Console's first Kit-host slice consumes the public Flow Agents package surfaces
+`@kontourai/flow-agents/kit-observability-contract` and
+`@kontourai/flow-agents/kit-observability-conformance`. It does not inspect Kit
+private files or branch on Builder, Knowledge, or third-party Kit identifiers.
+
+The authenticated routes are:
+
+- `POST /api/kits/contributions` to register or quarantine a descriptor;
+- `POST /api/kits/records` to validate a descriptor-bound record and its
+  tenant/source provenance;
+- `GET /api/kits/workspace` for generic standard-view registry, aggregate, run,
+  and quarantine data;
+- `GET /api/kits/runs/{runId}` to trace an aggregate to exact producer-owned
+  source references.
+
+Writes require `records:write`; reads require `records:read`. The authenticated
+tenant is authoritative. A payload tenant and every source reference tenant must
+match it. Invalid bindings, unsupported versions, cross-tenant references,
+control bytes, and redaction canaries are quarantined without stopping valid
+records.
+
+Observational real-run evidence and controlled evaluation evidence remain
+separate aggregate series. Console does not compute a causal-lift field or infer
+acceptance, defects, gates, claims, or learning decisions. Producer data is
+untrusted text in the standard-view model; the supplied text renderer escapes
+markup and never executes the optional MCP Apps resource.
+
+This draft is stacked on Flow Agents PR #1122 at commit
+`adff692d2aa72bcf8b600b30089b3c8cc6effb76`. The exact Git dependency does not
+ship generated `build/` output, so `postinstall` runs
+`scripts/prepare-stacked-kit-contract.mjs`. Before making this Console PR ready,
+replace the Git pin with the released semver containing that commit, remove the
+temporary postinstall/prepare script, run `npm ci`, and rerun the public
+conformance test.
+
+Production installs that omit development dependencies skip the temporary
+build step. In that shape the optional peer is absent and Kit routes fail closed
+with `503 KIT_HOST_UNAVAILABLE`; the rest of Console remains available.
+
+The first slice explicitly reports these limitations in every workspace read:
+
+- `in_memory_not_durable`: hosted persistence/replay is not yet verified;
+- `causal_lift_not_computed`: modes cannot be collapsed into a lift claim;
+- `mcp_apps_not_executed`: Console uses the declarative standard-view fallback.
+
+The JSON standard-view contract is verified. Responsive, keyboard, and
+screen-reader UI presentation remains `NOT_VERIFIED` until a Console UI surface
+consumes it. Cross-host parity remains `NOT_VERIFIED` until Station consumes the
+same public conformance vectors.
+
 ## Local Emission
 
 For local development, Flow Agents should keep using local file emission:

@@ -95,6 +95,27 @@ export {
   resolveTelemetryRetentionDays,
   resolveTelemetryStorageAdapter
 } from "./config";
+
+export {
+  KitObservabilityHost,
+  loadKitObservabilityContractAdapter,
+  renderKitStandardViewText,
+} from "./kit-observability-host";
+export type {
+  KitAggregateRead,
+  KitContributionLifecycle,
+  KitContributionRead,
+  KitContributionRegistration,
+  KitEvidenceMode,
+  KitObservabilityContractAdapter,
+  KitQuarantineEntry,
+  KitQuarantineReason,
+  KitRecordIngest,
+  KitRecordProvenance,
+  KitRunRead,
+  KitSourceRef,
+  KitWorkspaceRead,
+} from "./kit-observability-host";
 export type {
   ConsoleConfigValidationIssue,
   ConsoleRuntimeConfig
