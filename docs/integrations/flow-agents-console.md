@@ -28,8 +28,11 @@ The authenticated routes are:
 Writes require `records:write`; reads require `records:read`. The authenticated
 tenant is authoritative. A payload tenant and every source reference tenant must
 match it. Invalid bindings, unsupported versions, cross-tenant references,
-control bytes, and redaction canaries are quarantined without stopping valid
-records.
+control bytes, redaction canaries, and conflicting replays are quarantined
+without stopping valid records. An identical normalized replay returns the
+original accepted record; a replay that reuses its identity with different
+content cannot replace accepted history and retains contribution, run, and
+record identity in the quarantine entry.
 
 Observational real-run evidence and controlled evaluation evidence remain
 separate aggregate series. Console does not compute a causal-lift field or infer
@@ -37,17 +40,12 @@ acceptance, defects, gates, claims, or learning decisions. Producer data is
 untrusted text in the standard-view model; the supplied text renderer escapes
 markup and never executes the optional MCP Apps resource.
 
-This draft is stacked on Flow Agents PR #1122 at commit
-`32c0939ab2a4e81ac7514cd51c91d682907fab58`. The exact Git dependency does not
-ship generated `build/` output, so `postinstall` runs
-`scripts/prepare-stacked-kit-contract.mjs`. Before making this Console PR ready,
-replace the Git pin with the released semver containing that commit, remove the
-temporary postinstall/prepare script, run `npm ci`, and rerun the public
-conformance test.
+This draft uses the exact published Flow Agents `5.6.0` package, which includes
+the public Kit observability contract and conformance subpaths. Console has no
+postinstall build step or private-source dependency for this integration.
 
-Production installs that omit development dependencies skip the temporary
-build step. In that shape the optional peer is absent and Kit routes fail closed
-with `503 KIT_HOST_UNAVAILABLE`; the rest of Console remains available.
+Production installs that omit the optional Flow Agents peer fail Kit routes
+closed with `503 KIT_HOST_UNAVAILABLE`; the rest of Console remains available.
 
 The first slice explicitly reports these limitations in every workspace read:
 

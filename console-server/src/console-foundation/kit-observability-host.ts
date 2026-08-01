@@ -45,7 +45,8 @@ export type KitQuarantineReason =
   | "invalid_record"
   | "cross_tenant_reference"
   | "invalid_source_reference"
-  | "unsafe_content";
+  | "unsafe_content"
+  | "conflicting_replay";
 
 export type KitQuarantineEntry = {
   id: string;
@@ -53,6 +54,7 @@ export type KitQuarantineEntry = {
   diagnostic: string;
   contribution_ref?: string;
   run_id?: string;
+  record_id?: string;
 };
 
 export type KitContributionRead = {
@@ -202,7 +204,22 @@ export class KitObservabilityHost {
       source_refs: structuredClone(input.provenance.source_refs),
       data: structuredClone(record.spec.data),
     };
-    this.runs.set(runKey(read), read);
+
+    const key = runKey(read);
+    const existing = this.runs.get(key);
+    if (existing) {
+      // A retry is safe only when it is the same normalized record. Never let a
+      // producer reuse a stable identity to replace accepted history.
+      if (sameRunRecord(existing, read)) return structuredClone(existing);
+      return this.quarantine(
+        "conflicting_replay",
+        "record identity conflicts with an already accepted record; accepted history is preserved",
+        contributionRef,
+        input.provenance.run_id,
+        record.metadata.name,
+      );
+    }
+    this.runs.set(key, read);
     return structuredClone(read);
   }
 
@@ -240,13 +257,14 @@ export class KitObservabilityHost {
     return [...this.runs.values()].filter((run) => run.run_id === runId).map((run) => structuredClone(run));
   }
 
-  private quarantine(reason: KitQuarantineReason, diagnostic: string, contributionRef?: string, runId?: string): KitQuarantineEntry {
+  private quarantine(reason: KitQuarantineReason, diagnostic: string, contributionRef?: string, runId?: string, recordId?: string): KitQuarantineEntry {
     const entry: KitQuarantineEntry = {
       id: `kit-quarantine-${this.quarantined.length + 1}`,
       reason,
       diagnostic: boundedDiagnostic(diagnostic),
       ...(contributionRef ? { contribution_ref: contributionRef } : {}),
       ...(runId ? { run_id: runId } : {}),
+      ...(recordId ? { record_id: recordId } : {}),
     };
     this.quarantined.push(entry);
     return structuredClone(entry);
@@ -328,6 +346,8 @@ function findUnsafeContent(value: unknown, path = "data"): string | undefined {
     }
   } else if (value && typeof value === "object") {
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      const unsafeKey = findUnsafeKey(key, path);
+      if (unsafeKey) return unsafeKey;
       const unsafe = findUnsafeContent(entry, `${path}.${key}`);
       if (unsafe) return unsafe;
     }
@@ -335,8 +355,28 @@ function findUnsafeContent(value: unknown, path = "data"): string | undefined {
   return undefined;
 }
 
+function findUnsafeKey(key: string, parentPath: string): string | undefined {
+  const unsafe = findUnsafeContent(key, `${parentPath} key`);
+  if (unsafe) return unsafe;
+  if (/^(?:api[_-]?key|(?:access|refresh|id|client)[_-]?token|token|password|secret|credential|private[_-]?key)$/i.test(key)) {
+    return `${parentPath} contains a secret-like key`;
+  }
+  return undefined;
+}
+
 function runKey(run: KitRunRead): string {
   return `${run.contribution_ref}\u0000${run.descriptor_digest}\u0000${run.evidence_mode}\u0000${run.run_id}\u0000${run.record_id}`;
+}
+
+function sameRunRecord(left: KitRunRead, right: KitRunRead): boolean {
+  return stableJson(left) === stableJson(right);
+}
+
+/** Canonicalize JSON-shaped validated records so key insertion order cannot turn a safe retry into a conflict. */
+function stableJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`).join(",")}}`;
 }
 
 function contributionKey(contributionRef: string, descriptorDigest: string): string {

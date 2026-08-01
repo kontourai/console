@@ -163,6 +163,8 @@ test("future, invalid-binding, cross-tenant, control-byte, and redaction inputs 
   assert.equal((host.ingest({ record: record(contribution, digest, "mismatched-authority"), provenance: mismatchedAuthority }) as any).reason, "invalid_source_reference");
   assert.equal((host.ingest({ record: record(contribution, digest, "control", { value: "bad\u0000value" }), provenance: provenance("observational", "control") }) as any).reason, "unsafe_content");
   assert.equal((host.ingest({ record: record(contribution, digest, "secret", { value: "api_key=abcdefghijklmnop" }), provenance: provenance("observational", "secret") }) as any).reason, "unsafe_content");
+  assert.equal((host.ingest({ record: record(contribution, digest, "control-key", { "bad\u0000key": "safe" }), provenance: provenance("observational", "control-key") }) as any).reason, "unsafe_content");
+  assert.equal((host.ingest({ record: record(contribution, digest, "secret-key", { api_key: "safe" }), provenance: provenance("observational", "secret-key") }) as any).reason, "unsafe_content");
 
   const valid = host.ingest({
     record: record(contribution, digest, "html-is-text", { value: '<img src=x onerror="alert(1)">' }),
@@ -171,7 +173,32 @@ test("future, invalid-binding, cross-tenant, control-byte, and redaction inputs 
   assert.equal("reason" in valid, false);
   assert.equal(renderKitStandardViewText((valid as any).data.value), "&lt;img src=x onerror=&quot;alert(1)&quot;&gt;");
   assert.equal(host.readWorkspace().runs.length, 1);
-  assert.equal(host.readWorkspace().quarantine.length, 6);
+  assert.equal(host.readWorkspace().quarantine.length, 8);
+});
+
+test("identical record replays are idempotent while conflicting identities quarantine without replacing accepted history", async () => {
+  const { adapter, host } = await fixture();
+  const contribution = descriptor("replay-safe-kit");
+  host.register({ contribution });
+  const digest = adapter.descriptorDigest(contribution);
+  const original = record(contribution, digest, "stable-record", { verdict: "CONFIRMED", nested: { order: ["a", "b"] } });
+  const accepted = host.ingest({ record: original, provenance: provenance("observational", "stable-run") });
+  const reorderedReplay = structuredClone(original);
+  reorderedReplay.spec.data = { nested: { order: ["a", "b"] }, verdict: "CONFIRMED" };
+  const replay = host.ingest({ record: reorderedReplay, provenance: provenance("observational", "stable-run") });
+  assert.equal("reason" in accepted, false);
+  assert.deepEqual(replay, accepted);
+  assert.equal(host.readWorkspace().runs.length, 1);
+
+  const conflictingReplay = structuredClone(original);
+  conflictingReplay.spec.data = { verdict: "FAIL" };
+  const conflict = host.ingest({ record: conflictingReplay, provenance: provenance("observational", "stable-run") });
+  assert.equal((conflict as any).reason, "conflicting_replay");
+  assert.equal((conflict as any).contribution_ref, "replay-safe-kit");
+  assert.equal((conflict as any).run_id, "stable-run");
+  assert.equal((conflict as any).record_id, "stable-record");
+  assert.deepEqual(host.readRun("stable-run")[0].data, { verdict: "CONFIRMED", nested: { order: ["a", "b"] } });
+  assert.equal(host.readWorkspace().runs.length, 1);
 });
 
 test("typed lifecycle reports not-installed, disabled, degraded, and incompatible states", async () => {
@@ -228,11 +255,28 @@ test("authenticated Kit endpoints bind the local tenant and expose aggregate-to-
     });
     assert.equal(ingested.statusCode, 202);
     assert.equal(ingested.body.run_id, "api-run");
+    const replayed = await requestJson("POST", `${base}/api/kits/records`, {
+      tenant_id: "default",
+      record: record(contribution, adapter.descriptorDigest(contribution), "api-run-record"),
+      provenance: provenance("observational", "api-run", "default"),
+    });
+    assert.equal(replayed.statusCode, 202);
+    assert.equal(replayed.body.run_id, "api-run");
+    const conflictingReplay = await requestJson("POST", `${base}/api/kits/records`, {
+      tenant_id: "default",
+      record: record(contribution, adapter.descriptorDigest(contribution), "api-run-record", { verdict: "FAIL" }),
+      provenance: provenance("observational", "api-run", "default"),
+    });
+    assert.equal(conflictingReplay.statusCode, 202);
+    assert.equal(conflictingReplay.body.reason, "conflicting_replay");
+    assert.equal(conflictingReplay.body.record_id, "api-run-record");
 
     const workspace = await requestJson("GET", `${base}/api/kits/workspace`);
     assert.equal(workspace.statusCode, 200);
     assert.equal(workspace.body.tenant_id, "default");
     assert.deepEqual(workspace.body.aggregates[0].run_ids, ["api-run"]);
+    assert.equal(workspace.body.runs.length, 1);
+    assert.deepEqual(workspace.body.runs[0].data, { verdict: "CONFIRMED" });
     const drill = await requestJson("GET", `${base}/api/kits/runs/api-run`);
     assert.equal(drill.statusCode, 200);
     assert.equal(drill.body.records[0].source_refs[0].tenant_id, "default");
