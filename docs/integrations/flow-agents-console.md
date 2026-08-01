@@ -38,7 +38,7 @@ untrusted text in the standard-view model; the supplied text renderer escapes
 markup and never executes the optional MCP Apps resource.
 
 This draft is stacked on Flow Agents PR #1122 at commit
-`adff692d2aa72bcf8b600b30089b3c8cc6effb76`. The exact Git dependency does not
+`32c0939ab2a4e81ac7514cd51c91d682907fab58`. The exact Git dependency does not
 ship generated `build/` output, so `postinstall` runs
 `scripts/prepare-stacked-kit-contract.mjs`. Before making this Console PR ready,
 replace the Git pin with the released semver containing that commit, remove the
