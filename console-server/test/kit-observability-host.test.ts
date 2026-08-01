@@ -12,6 +12,13 @@ import {
 import { createConsoleHubServer } from "../src/console-foundation/console-hub-server";
 import type { KitObservabilityContribution } from "@kontourai/flow-agents/kit-observability-contract" with { "resolution-mode": "import" };
 
+test("console-foundation runtime entrypoint retains Kit observability exports", () => {
+  const foundation = require("../src/console-foundation");
+  for (const name of ["KitObservabilityHost", "loadKitObservabilityContractAdapter", "renderKitStandardViewText"]) {
+    assert.equal(typeof foundation[name], "function", `expected console-foundation to export ${name}`);
+  }
+});
+
 function descriptor(name: string): KitObservabilityContribution {
   return {
     apiVersion: "flowagents.kontourai.io/v1alpha1",

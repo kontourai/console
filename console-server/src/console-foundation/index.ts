@@ -911,6 +911,7 @@ const migrations = require("./migrations");
 const telemetry = require("./telemetry");
 const economicsStore = require("./economics-store");
 const economicsProjection = require("./economics-projection");
+const kitObservabilityHost = require("./kit-observability-host");
 
 module.exports = {
   inspectFixtures,
@@ -940,6 +941,9 @@ module.exports = {
   MAX_LIVENESS_TTL_SECONDS,
   createEconomicsStore: economicsStore.createEconomicsStore,
   createEconomicsProjection: economicsProjection.createEconomicsProjection,
+  KitObservabilityHost: kitObservabilityHost.KitObservabilityHost,
+  loadKitObservabilityContractAdapter: kitObservabilityHost.loadKitObservabilityContractAdapter,
+  renderKitStandardViewText: kitObservabilityHost.renderKitStandardViewText,
   applyConsoleMigrations: migrations.applyConsoleMigrations,
   loadConsoleMigrations: migrations.loadConsoleMigrations,
   assertConsoleRuntimeConfig: config.assertConsoleRuntimeConfig,
