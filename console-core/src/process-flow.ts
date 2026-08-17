@@ -182,7 +182,12 @@ function provenanceForEvidence(state: OperatingState, foldedEvidenceId: string):
  * the owning workflow's own trust report carrying an evidence entry for it.
  */
 function claimHasEvidenceInState(state: OperatingState, claim: ConsoleClaim): boolean {
-  if ((claim.evidenceRefs || []).some((ref) => ref.kind === "evidence" && Boolean(ref.id))) return true;
+  // Delta review: a bare evidenceRef is a POINTER, not evidence. Counting the ref alone
+  // let a claim whose ref targets nothing that exists anywhere suppress its own dead node
+  // — fabricated presence, the inverse of the fabricated absence this predicate fixed.
+  // A ref counts only when its target resolves to an evidence record in the state.
+  const stateEvidenceIds = new Set((state.evidence || []).map((item) => item.id));
+  if ((claim.evidenceRefs || []).some((ref) => ref.kind === "evidence" && ref.id !== undefined && stateEvidenceIds.has(ref.id))) return true;
   if ((state.evidence || []).some((item) => (item.claimRefs || []).some((ref) => ref.kind === "claim" && ref.id === claim.id))) {
     return true;
   }

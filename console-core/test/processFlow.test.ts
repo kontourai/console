@@ -266,3 +266,23 @@ test("buildProcessFlow keeps recent timeline nodes but does not draw timeline re
   assert.equal(flow.nodes.find((node) => node.id === "timeline:evt-4")?.active, true);
   assert.equal(flow.edges.some((edge) => edge.to.startsWith("timeline:")), false);
 });
+
+test("a claim whose only evidenceRef targets nothing in the state still gets its dead node (delta review: pointers are not evidence)", () => {
+  const state: OperatingState = {
+    currentStage: "verify",
+    processes: [{
+      id: "wf", status: "running", currentStep: "verify", label: "WF",
+      claimRefs: [{ kind: "claim", id: "wf:claim:dangling" }]
+    }],
+    gates: [],
+    claims: [{
+      id: "wf:claim:dangling", label: "Dangling ref claim", status: "proposed",
+      evidenceRefs: [{ kind: "evidence", id: "wf:evidence:ghost" }]
+    }],
+    evidence: []
+  };
+  const flow = buildProcessFlow(state);
+  const dead = flow.nodes.find((n) => n.id === "evidence:absent:wf:claim:dangling");
+  assert.ok(dead, "expected a dead node: the ref target exists nowhere in the state");
+  assert.equal(dead?.dead, true);
+});
