@@ -1,8 +1,12 @@
-import { useEffect } from "react";
-import type { FlowNode } from "@kontourai/console-core";
+import React, { useEffect } from "react";
+import type { ConsoleEvidence, FlowNode } from "@kontourai/console-core";
 import type { OperatingState } from "@kontourai/console-core";
 import { Badge } from "@kontourai/ui/react";
 import { formatTime } from "../utils/format";
+import { isSafeExternalUrl } from "../utils/safeUrl";
+import { SourceRefLinks } from "./SourceRefLinks";
+import type { SourceRef } from "../utils/sourceRefs";
+import { collectTrustReportsForScope, workflowScopeOf } from "../utils/trustReport";
 
 interface NodeDetailDrawerProps {
   nodeId: string | null;
@@ -53,8 +57,18 @@ export function NodeDetailDrawer({ nodeId, nodes, state, onClose }: NodeDetailDr
 
         {node.meta ? <p className="node-detail-meta">{node.meta}</p> : null}
 
-        {record ? <RecordDetail node={node} record={record} state={state} /> : null}
+        {node.kind === "evidence" ? (
+          // console#274: the layered evidence panel renders for EVERY evidence
+          // node — including a dead node with no backing record, whose panel
+          // is the explicit rendering of that absence.
+          <EvidenceDetail node={node} evidence={record as ConsoleEvidence | null} state={state} />
+        ) : record ? (
+          <RecordDetail node={node} record={record} state={state} />
+        ) : null}
 
+        {/* ▸ verify · the raw — collapsed by default (console#274 keeps this
+            drawer's existing pattern; a test asserts no raw block is open on
+            initial render). */}
         <details className="node-detail-raw">
           <summary>Raw JSON</summary>
           <pre>{JSON.stringify(record ?? node, null, 2)}</pre>
@@ -83,6 +97,170 @@ function RecordDetail({
   }
   if (node.kind === "timeline") return <TimelineDetail item={record as ReturnType<typeof findTimeline>} />;
   return null;
+}
+
+// ── Evidence panel (console#274) ─────────────────────────────────────────────
+//
+// Layer order is the finding from the design iteration: (1) what was gleaned,
+// (2) how it moved the answer, (3) how it was determined (deeplinked via the
+// existing source-ref machinery), (4) the raw, collapsed (rendered by the
+// drawer's existing <details>, below this component).
+//
+// LOAD-BEARING BOUNDARY (product-boundaries.md; the console#255 verbatim-relay
+// pattern): the gleaned/impact layers render ONLY producer-side text — the
+// Surface trust report's evidence `excerptOrSummary`, verification-event
+// fields, and transparency-gap `message` text, all relayed verbatim (plus the
+// console#207 narrative envelope once that ships — same panel-order principle,
+// do not fork the pattern). Console never authors interpretation: a node with
+// no producer-side interpretation renders that absence explicitly, it never
+// gets one synthesized here.
+
+/** Mirrors console-core process-flow.ts's `splitQualifiedId`: recovers the raw report id from a bridge-qualified `<workflow>:evidence:<rawId>` subject id. */
+function rawEvidenceIdOf(qualifiedId: string): string {
+  const marker = ":evidence:";
+  const at = qualifiedId.lastIndexOf(marker);
+  return at > 0 ? qualifiedId.slice(at + marker.length) : qualifiedId;
+}
+
+function AbsenceLine({ children }: { children: string }) {
+  return <p className="node-detail-absence">{children}</p>;
+}
+
+function EvidenceDetail({
+  node,
+  evidence,
+  state,
+}: {
+  node: FlowNode;
+  evidence: ConsoleEvidence | null;
+  state: OperatingState;
+}) {
+  if (node.dead) return <DeadEvidenceDetail />;
+
+  const foldedId = node.id.replace(/^evidence:/, "");
+  const rawId = rawEvidenceIdOf(foldedId);
+  // console#274 review MED finding 2: raw report ids are bundle-local, so
+  // every join below (provenance record, gleaned text, verification events,
+  // gap mentions) is scoped to the OWNING workflow's own trust report(s) —
+  // never a first-match-wins scan over every folded report, which would let
+  // two workflows' same-named records collide and relay the wrong producer
+  // text.
+  const reports = collectTrustReportsForScope(state, workflowScopeOf(foldedId, ":evidence:"));
+  const reportRecord = reports.flatMap((report) => report.evidence).find((item) => item.id === rawId) ?? null;
+  const verificationEvents = reports
+    .flatMap((report) => report.events)
+    .filter((event) => event.evidenceIds?.includes(rawId));
+  const gapMentions = reports
+    .flatMap((report) => report.transparencyGaps)
+    .filter((gap) => gap.evidenceIds?.includes(rawId));
+
+  // Producer-side interpretation text, verbatim: the report's excerptOrSummary
+  // (the folded ConsoleEvidence.summary is the SAME relayed value).
+  const gleaned = reportRecord?.excerptOrSummary || (typeof evidence?.summary === "string" ? evidence.summary : undefined);
+
+  return (
+    <div className="node-detail-evidence">
+      <div className="node-detail-layer">
+        <p className="eyebrow">What was gleaned</p>
+        {gleaned ? <p className="node-detail-gleaned">{gleaned}</p> : <AbsenceLine>No producer interpretation recorded.</AbsenceLine>}
+      </div>
+
+      <div className="node-detail-layer">
+        <p className="eyebrow">How it moved the answer</p>
+        {verificationEvents.length === 0 && gapMentions.length === 0 ? (
+          <AbsenceLine>No producer interpretation recorded.</AbsenceLine>
+        ) : (
+          <div className="stack">
+            {verificationEvents.map((event) => (
+              // Surface's own verification event, field-by-field verbatim —
+              // never composed into a Console-authored sentence.
+              <dl key={event.id} className="node-detail-fields">
+                {event.claimId ? <div><dt>Claim</dt><dd><code>{event.claimId}</code></dd></div> : null}
+                {event.status ? <div><dt>Surface status</dt><dd>{event.status}</dd></div> : null}
+                {event.method ? <div><dt>Method</dt><dd>{event.method}</dd></div> : null}
+                {event.verifiedAt ? <div><dt>Verified at</dt><dd>{formatTime(event.verifiedAt)}</dd></div> : null}
+              </dl>
+            ))}
+            {gapMentions.map((gap, index) => (
+              <p key={gap.id ?? index} className="node-detail-gap-text">{gap.message || "Gap recorded without message text."}</p>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="node-detail-layer">
+        <p className="eyebrow">How it was determined</p>
+        <DeterminationRefs evidence={evidence} reportRecord={reportRecord} />
+        {/* This graph's rawest layer: nothing deeper backs this record. */}
+        <p className="node-detail-bottom">Belief bottoms out here.</p>
+        <p className="node-detail-source-line">
+          {reportRecord?.sourceRef
+            ? <>Evidence lives at <code>{reportRecord.sourceRef}</code></>
+            : "No source location recorded for this evidence."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Deeplinks via the existing source-ref machinery (`SourceRefLinks`,
+ * console#256): a producer ref becomes a live anchor ONLY when it carries a
+ * safe http(s) URL; every other ref renders as an honest labeled chip whose
+ * label is an id resolvable against the rendered OperatingState (the claim
+ * refs the fold attached) — never a dead or fabricated anchor.
+ */
+function DeterminationRefs({
+  evidence,
+  reportRecord,
+}: {
+  evidence: ConsoleEvidence | null;
+  reportRecord: { claimId?: string; sourceRef?: string; sourceLocator?: string; collectedBy?: string } | null;
+}) {
+  const refs: SourceRef[] = [];
+  for (const claimRef of evidence?.claimRefs || []) {
+    if (claimRef.id) refs.push({ kind: "claim", label: claimRef.id });
+  }
+  if (refs.length === 0 && reportRecord?.claimId) {
+    refs.push({ kind: "claim", label: reportRecord.claimId });
+  }
+  for (const candidate of [reportRecord?.sourceRef, reportRecord?.sourceLocator]) {
+    if (candidate && isSafeExternalUrl(candidate)) {
+      refs.push({ kind: "evidence-source", label: candidate, url: candidate });
+    }
+  }
+  if (reportRecord?.collectedBy) {
+    refs.push({ kind: "collected-by", label: reportRecord.collectedBy });
+  }
+  if (refs.length === 0) {
+    return <AbsenceLine>No determination references recorded.</AbsenceLine>;
+  }
+  return <SourceRefLinks refs={refs} ariaLabel="How it was determined" />;
+}
+
+/**
+ * A dead node (console#274): a gate/claim clause with no evidence behind it.
+ * First-class, never omitted — and its panel renders the absence in the same
+ * layer order, never a synthesized interpretation.
+ */
+function DeadEvidenceDetail() {
+  return (
+    <div className="node-detail-evidence node-detail-evidence-dead">
+      <div className="node-detail-layer">
+        <p className="eyebrow">What was gleaned</p>
+        <AbsenceLine>No producer interpretation recorded — no evidence exists for this clause.</AbsenceLine>
+      </div>
+      <div className="node-detail-layer">
+        <p className="eyebrow">How it moved the answer</p>
+        <AbsenceLine>Nothing recorded. This clause stands on no evidence.</AbsenceLine>
+      </div>
+      <div className="node-detail-layer">
+        <p className="eyebrow">How it was determined</p>
+        <AbsenceLine>No determination references recorded.</AbsenceLine>
+        <p className="node-detail-bottom">Belief bottoms out here — on nothing.</p>
+      </div>
+    </div>
+  );
 }
 
 function GateDetail({ gate }: { gate: ReturnType<typeof findGate> }) {
@@ -191,12 +369,20 @@ function TimelineDetail({ item }: { item: ReturnType<typeof findTimeline> }) {
 
 // ── Record finders ────────────────────────────────────────────────────────────
 function findRecord(node: FlowNode, state: OperatingState): unknown {
+  if (node.kind === "evidence") return findEvidence(node, state);
   if (node.kind === "gate") return findGate(node, state);
   if (node.kind === "claim") return findClaim(node, state);
   if (node.kind === "action") return findAction(node, state);
   if (node.kind === "process" || node.kind === "step") return findProcess(node, state);
   if (node.kind === "timeline") return findTimeline(node, state);
   return null;
+}
+
+function findEvidence(node: FlowNode, state: OperatingState): ConsoleEvidence | null {
+  // Dead nodes (`evidence:missing:<gate>:<clause>` / `evidence:absent:<claim>`)
+  // have no backing record by definition — the panel renders that absence.
+  const id = node.id.replace(/^evidence:/, "");
+  return (state?.evidence || []).find((item) => item.id === id) ?? null;
 }
 
 function findGate(node: FlowNode, state: OperatingState) {
