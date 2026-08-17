@@ -795,8 +795,31 @@ dd {
 .flow-node-step { border-left-color: var(--cyan); }
 .flow-node-gate { border-left-color: var(--warn); }
 .flow-node-claim { border-left-color: var(--good); }
+.flow-node-evidence { border-left-color: var(--good); }
 .flow-node-action { border-left-color: var(--muted); }
 .flow-node-timeline { border-left-color: var(--bad); }
+
+/* console#274: border style encodes provenance kind, keyed DIRECTLY on the raw
+   Surface `evidenceType`/`method` enum values (kontourai/surface#224 owns the
+   upcoming display-name table; no display synonyms are minted here — the data
+   attribute carries the producer's enum verbatim, and unknown enum values keep
+   the default evidence border). */
+.flow-node-evidence[data-provenance="test_output"] { border-left-style: double; border-left-width: 5px; }
+.flow-node-evidence[data-provenance="source_excerpt"] { border-left-style: solid; }
+.flow-node-evidence[data-provenance="human_attestation"],
+.flow-node-evidence[data-provenance="attestation"] { border-left-style: dotted; }
+.flow-node-evidence[data-provenance="calculation_trace"] { border-left-style: dashed; }
+.flow-node-evidence[data-provenance="document_citation"] { border-left-style: solid; border-left-width: 5px; }
+.flow-node-evidence[data-provenance="crawl_observation"] { border-left-style: dashed; border-left-width: 5px; }
+.flow-node-evidence[data-provenance="policy_rule"] { border-left-style: dotted; border-left-width: 5px; }
+
+/* console#274: a dead node — a gate/claim clause with no evidence behind it.
+   First-class and dashed, never omitted. */
+.flow-node-dead {
+  border-style: dashed;
+  border-left-style: dashed;
+  opacity: 0.72;
+}
 
 .flow-node-top {
   display: flex;
@@ -1009,6 +1032,48 @@ dd {
   font-size: 0.82rem;
   line-height: 1.35;
   border-bottom: 1px solid var(--line);
+}
+
+/* ── Evidence panel layers (console#274) ─────────────────────────────────── */
+.node-detail-layer {
+  margin-bottom: 14px;
+}
+
+.node-detail-layer .eyebrow {
+  margin-bottom: 4px;
+}
+
+.node-detail-gleaned {
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.node-detail-absence {
+  color: var(--k-negative);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+
+.node-detail-gap-text {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.node-detail-bottom {
+  margin-top: 8px;
+  color: var(--dim);
+  font-family: var(--k-font-mono);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+}
+
+.node-detail-source-line {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
 }
 
 .node-detail-raw {
@@ -3096,6 +3161,7 @@ flow-run-panel {
    All values are @kontourai/ui --k-* tokens; no ad-hoc colors/spacing.
    ═══════════════════════════════════════════════════════════════════════════ */
 .overview { display: flex; flex-direction: column; gap: var(--k-space-6); padding-top: var(--k-space-5); }
+
 .ov-section { display: flex; flex-direction: column; gap: var(--k-space-4); }
 .ov-head { display: flex; align-items: baseline; gap: var(--k-space-3); }
 .ov-title { font-family: var(--k-font-display); font-size: var(--k-text-xl); font-weight: 600; letter-spacing: -0.01em; color: var(--k-text); }

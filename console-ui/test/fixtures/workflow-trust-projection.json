@@ -1,0 +1,142 @@
+{
+  "schema": "kontour.console.projection",
+  "version": "0.1",
+  "generatedAt": "2026-07-20T12:00:00Z",
+  "scope": { "kind": "repo", "id": "flow-agents" },
+  "producer": { "id": "flow-agents-trust", "product": "flow-agents" },
+  "derivedFrom": {
+    "mode": "direct_snapshot",
+    "eventHistory": "unavailable",
+    "directSnapshot": {
+      "id": "flow-agents-trust:repo:flow-agents",
+      "emittedAt": "2026-07-20T12:00:00Z",
+      "producer": { "id": "flow-agents-trust", "product": "flow-agents" },
+      "reason": "workflow-trust projection is derived read-only from validated local trust.bundle files and workflow/assignment sidecars; Console event history is unavailable",
+      "sourceRef": {
+        "product": "flow-agents",
+        "kind": "workflow-trust",
+        "id": ".kontourai/flow-agents/*/trust.bundle",
+        "label": "Local workflow trust bundles"
+      }
+    }
+  },
+  "trusts": [
+    {
+      "id": "trust.workflow.checkout-banner.f00dcafe",
+      "family": "workflow",
+      "nonAuthority": true,
+      "subjectRef": { "product": "flow-agents", "kind": "workflow", "id": "checkout-banner", "label": "checkout-banner" },
+      "sourceRef": { "product": "flow-agents", "kind": "trust-bundle", "id": "checkout-banner", "label": "checkout-banner/trust.bundle" },
+      "payload": {
+        "schemaVersion": 5,
+        "source": "console-trust-projection-fixture",
+        "id": "report-checkout-banner",
+        "generatedAt": "2026-07-20T11:58:00Z",
+        "statusFunctionVersion": "1.0.0",
+        "claims": [
+          {
+            "id": "claim-tests",
+            "subjectType": "workflow",
+            "subjectId": "checkout-banner/gate/tests-evidence",
+            "facet": "flow-agents.workflow",
+            "claimType": "builder.verify.tests",
+            "fieldOrBehavior": "required tests pass",
+            "value": "pass",
+            "status": "verified",
+            "createdAt": "2026-07-20T10:00:00Z",
+            "updatedAt": "2026-07-20T10:05:00Z",
+            "freshness": { "asOf": "2026-07-20T11:58:00Z", "stale": false }
+          },
+          {
+            "id": "claim-review",
+            "subjectType": "workflow",
+            "subjectId": "checkout-banner/gate/review-evidence",
+            "facet": "flow-agents.workflow",
+            "claimType": "builder.review.independent",
+            "fieldOrBehavior": "independent review completed",
+            "value": "pending",
+            "status": "unverified",
+            "createdAt": "2026-07-20T10:00:00Z",
+            "updatedAt": "2026-07-20T10:00:00Z",
+            "freshness": { "asOf": "2026-07-20T11:58:00Z", "stale": false }
+          }
+        ],
+        "evidence": [
+          {
+            "id": "ev-tests",
+            "claimId": "claim-tests",
+            "evidenceType": "test_output",
+            "method": "validation",
+            "sourceRef": "checkout-banner/evidence.json",
+            "excerptOrSummary": "node --test passes: 42 tests, 0 failures",
+            "observedAt": "2026-07-20T10:04:00Z",
+            "collectedBy": "flow-agents/workflow-sidecar",
+            "passing": true
+          }
+        ],
+        "events": [
+          {
+            "id": "evt-tests",
+            "claimId": "claim-tests",
+            "status": "verified",
+            "actor": "flow-agents/workflow-sidecar",
+            "method": "validation",
+            "evidenceIds": ["ev-tests"],
+            "createdAt": "2026-07-20T10:04:30Z",
+            "verifiedAt": "2026-07-20T10:04:30Z"
+          }
+        ],
+        "policies": [],
+        "evidenceRequirementsByClaimId": {},
+        "transparencyGaps": [
+          {
+            "id": "gap-review",
+            "claimId": "claim-review",
+            "type": "unverified_claim",
+            "severity": "high",
+            "message": "independent review claim has no verification event or evidence",
+            "createdAt": "2026-07-19T09:00:00Z",
+            "blocking": false
+          }
+        ],
+        "changeRecords": [],
+        "subjectGroups": [],
+        "claimGroupRollups": [],
+        "summary": {
+          "totalClaims": 2,
+          "byStatus": { "verified": 1, "unverified": 1 },
+          "byFacet": {},
+          "confidenceBasis": {
+            "sourceQuality": {},
+            "reviewerAuthority": {},
+            "evidenceStrength": {},
+            "corroboratedClaims": 0,
+            "averageExtractionConfidence": null,
+            "freshnessAtRisk": [],
+            "conflictedClaims": []
+          },
+          "transparencyGapsByType": { "unverified_claim": 1 },
+          "highImpactUnsupported": [],
+          "staleClaims": [],
+          "disputedClaims": [],
+          "recomputeNeededClaims": []
+        }
+      },
+      "gateAssociations": [
+        { "gateId": "tests-evidence", "claimIds": ["claim-tests"], "evidenceIds": ["ev-tests"], "eventIds": ["evt-tests"] },
+        { "gateId": "review-evidence", "claimIds": ["claim-review"], "evidenceIds": [], "eventIds": [] }
+      ],
+      "sourceOfTruthRefs": [
+        {
+          "product": "github",
+          "kind": "work-item",
+          "id": "github:kontourai/console#274",
+          "label": "github:kontourai/console#274",
+          "url": "https://github.com/kontourai/console/issues/274",
+          "sourcePath": "checkout-banner/state.json"
+        }
+      ],
+      "extensions": { "flow-agents": { "task_slug": "checkout-banner", "source_path": "checkout-banner/trust.bundle" } }
+    }
+  ]
+}
