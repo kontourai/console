@@ -1,4 +1,7 @@
-import { useMemo, useState } from "react";
+// React default import: this section now renders inside SSR component tests
+// (ownerQueue.test.ts renders the whole OverviewSection via tsx's classic JSX
+// transform) — same convention as WorkerFleetSection/BoardSection.
+import React, { useMemo, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ConsoleTelemetryResponse } from "../serverApiTypes";
 import { deriveActivityBuckets, deriveCostByDimension, COST_DIMENSIONS, type CostDimensionId } from "./environment/derive";

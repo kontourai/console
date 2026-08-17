@@ -406,6 +406,16 @@ export default function App() {
               pushPath(serializeOperatePath(gateId));
               return;
             }
+            if (target === "board" && anchor) {
+              // console#273: an owner-queue row deep-links to the exact work
+              // item (`/run/:id`), reusing BoardSection's existing controlled
+              // selection — never the generic board.
+              setOperateAnchor(null);
+              setBoardFocusId(anchor);
+              setView(target);
+              pushPath(serializeBoardPath(anchor));
+              return;
+            }
             setOperateAnchor(null);
             selectView(target);
           }}

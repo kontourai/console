@@ -3161,6 +3161,51 @@ flow-run-panel {
    All values are @kontourai/ui --k-* tokens; no ad-hoc colors/spacing.
    ═══════════════════════════════════════════════════════════════════════════ */
 .overview { display: flex; flex-direction: column; gap: var(--k-space-6); padding-top: var(--k-space-5); }
+/* ── Owner-verb queue (console#273): pulse → DECIDE → ACCEPT → RISKS STANDING
+      → data feeds. The first screenful is the whole 90 seconds. ───────────── */
+.owner-queue { gap: var(--k-space-4); }
+.oq-pulse { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--k-space-2); font-size: 1rem; color: var(--text); }
+.oq-pulse-seg b { font-size: 1.2rem; font-weight: 600; }
+.oq-pulse-dot { color: var(--dim); }
+.oq-pulse-absent { color: var(--k-negative); font-style: italic; }
+.oq-block { display: flex; flex-direction: column; gap: var(--k-space-2); }
+.oq-head { display: flex; align-items: baseline; gap: var(--k-space-2); }
+.oq-title { margin: 0; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.oq-count { min-width: 1.4em; padding: 0 6px; text-align: center; font-size: 0.8rem; font-weight: 600; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; }
+.oq-empty { margin: 0; color: var(--dim); font-size: 0.84rem; }
+.oq-rows { display: flex; flex-direction: column; }
+.oq-row { display: flex; align-items: center; gap: var(--k-space-3); padding: 8px 0; border-bottom: 1px solid var(--line); }
+.oq-row-main { flex: 1; min-width: 0; }
+.oq-question { margin: 0; color: var(--text); font-size: 0.92rem; }
+.oq-row-label { margin: 0; color: var(--muted); font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; }
+.oq-row-status { margin: 0; color: var(--dim); font-size: 0.74rem; display: flex; align-items: baseline; gap: 6px; }
+.oq-claim { font-size: 0.7rem; color: var(--muted); }
+.oq-age { color: var(--muted); font-size: 0.76rem; white-space: nowrap; }
+.oq-absent { color: var(--k-negative); font-style: italic; }
+.oq-row-actions { display: flex; align-items: center; gap: var(--k-space-2); }
+.oq-btn { padding: 4px 10px; font-size: 0.78rem; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: var(--radius); cursor: pointer; }
+.oq-btn.primary { color: var(--text); border-color: var(--accent); }
+.oq-btn:hover { color: var(--text); border-color: var(--accent); }
+.oq-receipt summary { font-size: 0.76rem; color: var(--dim); cursor: pointer; list-style: none; padding: 4px 8px; border: 1px solid var(--line); border-radius: var(--radius); }
+.oq-receipt[open] summary { color: var(--text); border-color: var(--accent); }
+.oq-receipt-body { margin: 6px 0 0; display: grid; gap: 4px; font-size: 0.78rem; }
+.oq-receipt-body dt { color: var(--dim); text-transform: uppercase; font-size: 0.66rem; letter-spacing: 0.06em; }
+.oq-receipt-body dd { margin: 0; color: var(--muted); }
+.oq-badge { padding: 2px 8px; font-size: 0.74rem; white-space: nowrap; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; }
+.oq-badge-risk { color: var(--k-caution); border-color: var(--k-caution); }
+.oq-badge-absent { color: var(--k-negative); border-color: var(--k-negative); font-style: italic; }
+.oq-feeds { display: flex; flex-wrap: wrap; align-items: center; gap: var(--k-space-2); }
+.oq-feeds-label { color: var(--dim); font-size: 0.68rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+.oq-feed { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 0.74rem; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; }
+.oq-feed-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
+.oq-feed-wired .oq-feed-dot { background: var(--k-positive); }
+.oq-feed-quiet { color: var(--k-caution); border-color: var(--k-caution); }
+.oq-feed-quiet .oq-feed-dot { background: var(--k-caution); }
+/* Absence renders red (console#273): a missing feed is a red chip, not a hidden one. */
+.oq-feed-missing { color: var(--k-negative); border-color: var(--k-negative); }
+.oq-feed-missing .oq-feed-dot { background: var(--k-negative); }
+.oq-feed-state { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
+.oq-feed-quiet .oq-feed-state, .oq-feed-missing .oq-feed-state { color: inherit; }
 
 .ov-section { display: flex; flex-direction: column; gap: var(--k-space-4); }
 .ov-head { display: flex; align-items: baseline; gap: var(--k-space-3); }

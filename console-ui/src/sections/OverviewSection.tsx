@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import React, { useMemo } from "react";
 import type { OperatingState } from "@kontourai/console-core";
 import type { ConsoleTelemetryResponse } from "../serverApiTypes";
 import {
@@ -12,11 +12,14 @@ import type { FleetBucket } from "./workers/derive";
 import { HappeningNowSection } from "./HappeningNowSection";
 import { FleetSection } from "./FleetSection";
 import { CostSection } from "./CostSection";
+import { OwnerQueueSection } from "./OwnerQueueSection";
 
-// The unified operator home ("Overview"). This is the front door of the redesign: it answers
-// "what is the fleet of flow-agent workers doing right now?" FIRST (console#251's fleet grid),
-// backed by a gate/claim/source triage and an at-a-glance health strip, and links out to the
-// detailed views for the full picture.
+// The unified operator home ("Overview"). console#273 reorders it owner-verb-first: the
+// owner's three verbs (DECIDE / ACCEPT / RISKS STANDING, with one computed pulse line and
+// the data-feed strip) render as the first screenful — the whole 90 seconds — and the
+// fleet-first content (#251's fleet grid, triage, health strip, live flow) renders below.
+// The board (#177's "front door" claim, reconciled under epic #176) stays one click deep
+// as its own tab; nothing is deleted.
 //
 // console#251: the fleet grid (WorkerFleetSection) is the one place every operating-state
 // process renders as a card — with its stage, a relative last-activity timestamp, and a
@@ -95,6 +98,10 @@ export function OverviewSection({
 
   return (
     <div className="overview">
+      {/* ── ⓪ The owner-verb queue (console#273): pulse, DECIDE, ACCEPT, RISKS
+             STANDING, data feeds — the first screenful IS the 90 seconds. */}
+      <OwnerQueueSection state={state} telemetry={telemetry} now={now} onOpen={onOpen} />
+
       {/* ── ① The fleet — every worker, at a glance (console#251) ─────────────────── */}
       <WorkerFleetSection
         state={state}
