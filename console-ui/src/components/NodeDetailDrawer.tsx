@@ -6,7 +6,7 @@ import { formatTime } from "../utils/format";
 import { isSafeExternalUrl } from "../utils/safeUrl";
 import { SourceRefLinks } from "./SourceRefLinks";
 import type { SourceRef } from "../utils/sourceRefs";
-import { collectTrustReports } from "../utils/trustReport";
+import { collectTrustReportsForScope, workflowScopeOf } from "../utils/trustReport";
 
 interface NodeDetailDrawerProps {
   nodeId: string | null;
@@ -115,11 +115,11 @@ function RecordDetail({
 // no producer-side interpretation renders that absence explicitly, it never
 // gets one synthesized here.
 
-/** Mirrors console-core process-flow.ts's `rawEvidenceId`: recovers the raw report id from a bridge-qualified `<workflow>:evidence:<rawId>` subject id. */
+/** Mirrors console-core process-flow.ts's `splitQualifiedId`: recovers the raw report id from a bridge-qualified `<workflow>:evidence:<rawId>` subject id. */
 function rawEvidenceIdOf(qualifiedId: string): string {
   const marker = ":evidence:";
   const at = qualifiedId.lastIndexOf(marker);
-  return at >= 0 ? qualifiedId.slice(at + marker.length) : qualifiedId;
+  return at > 0 ? qualifiedId.slice(at + marker.length) : qualifiedId;
 }
 
 function AbsenceLine({ children }: { children: string }) {
@@ -139,7 +139,13 @@ function EvidenceDetail({
 
   const foldedId = node.id.replace(/^evidence:/, "");
   const rawId = rawEvidenceIdOf(foldedId);
-  const reports = collectTrustReports(state);
+  // console#274 review MED finding 2: raw report ids are bundle-local, so
+  // every join below (provenance record, gleaned text, verification events,
+  // gap mentions) is scoped to the OWNING workflow's own trust report(s) —
+  // never a first-match-wins scan over every folded report, which would let
+  // two workflows' same-named records collide and relay the wrong producer
+  // text.
+  const reports = collectTrustReportsForScope(state, workflowScopeOf(foldedId, ":evidence:"));
   const reportRecord = reports.flatMap((report) => report.evidence).find((item) => item.id === rawId) ?? null;
   const verificationEvents = reports
     .flatMap((report) => report.events)

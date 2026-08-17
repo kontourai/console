@@ -72,6 +72,8 @@ export const QUEUE_ABSENCE_STRINGS = {
   emptyAccept: "Nothing ready to accept.",
   emptyRisks: "No standing risks recorded.",
   noState: "No operating state received yet.",
+  /** The risks FEED itself is absent (zero folded trust reports) — rendered red instead of a computed-looking 0. */
+  noReportsFeed: "no trust reports feed",
 } as const;
 
 export const PULSE_SEGMENT_LABELS = {
@@ -264,8 +266,10 @@ export function deriveFeedChips(
     instrument: "state.source.acceptedEventCount from the hub's operating-state stream",
   });
 
-  const hasTrustReport = (state.processes || []).some((process) => process.trustReport !== undefined)
-    || (state.gates || []).some((gate) => gate.trustReport !== undefined);
+  // Same definition MED-4's risks-feed absence uses (report-SHAPED values via
+  // the narrowing, not mere attribute presence) so the chip and the risks
+  // section can never disagree about whether this feed exists.
+  const hasTrustReport = collectTrustReports(state).length > 0;
   chips.push({
     id: "trust-reports",
     label: "trust reports",
@@ -309,6 +313,14 @@ export interface OwnerQueue {
   feeds: FeedChip[];
   /** True when no operating state has arrived at all — the pulse renders that absence, never zeros pretending to be computed. */
   stateAbsent: boolean;
+  /**
+   * console#273 review MED finding 4: whether the risks FEED exists at all —
+   * at least one report-shaped `trustReport` folded anywhere in the state.
+   * With zero reports, `risks: []` is not a computed zero, it is an absent
+   * feed; the section and pulse render that absence (red), never a "0" under
+   * an instrument title citing reports that don't exist.
+   */
+  risksFeedPresent: boolean;
 }
 
 export function deriveOwnerQueue(
@@ -323,5 +335,6 @@ export function deriveOwnerQueue(
     risks: deriveRiskItems(state, now),
     feeds: deriveFeedChips(state, telemetry, now),
     stateAbsent,
+    risksFeedPresent: collectTrustReports(state).length > 0,
   };
 }

@@ -68,6 +68,7 @@
             "evidenceType": "test_output",
             "method": "validation",
             "sourceRef": "checkout-banner/evidence.json",
+            "sourceLocator": "https://ci.example.com/kontourai/console/runs/4242",
             "excerptOrSummary": "node --test passes: 42 tests, 0 failures",
             "observedAt": "2026-07-20T10:04:00Z",
             "collectedBy": "flow-agents/workflow-sidecar",

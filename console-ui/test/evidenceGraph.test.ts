@@ -133,8 +133,13 @@ test("'How determined' links are resolvable: every href passes safeUrl; every re
   const state = foldedFixtureState();
   const markup = renderDrawer(state, EVIDENCE_NODE_ID);
 
-  // (a) every live anchor's href passes the safeUrl allow-list.
+  // (a) every live anchor's href passes the safeUrl allow-list — and the
+  // check is NON-vacuous (console#274 review LOW finding 5): the fixture's
+  // evidence record carries an https sourceLocator, so a real anchor MUST
+  // render here.
   const hrefs = [...markup.matchAll(/href="([^"]+)"/g)].map((match) => match[1]);
+  assert.ok(hrefs.length > 0, "positive control: at least one real determination anchor must render");
+  assert.ok(hrefs.includes("https://ci.example.com/kontourai/console/runs/4242"));
   for (const href of hrefs) {
     assert.ok(isSafeExternalUrl(href), `rendered href must pass safeUrl: ${href}`);
   }
@@ -151,6 +156,60 @@ test("'How determined' links are resolvable: every href passes safeUrl; every re
   for (const chip of claimChips) {
     assert.ok(knownIds.has(chip), `claim chip must resolve to a rendered OperatingState id: ${chip}`);
   }
+});
+
+// console#274 review LOW finding 5 (negative control): an UNSAFE
+// sourceLocator must never become an anchor — nor leak into the markup at all.
+test("an unsafe (javascript:) sourceLocator never renders as a link", () => {
+  const state: OperatingState = {
+    claims: [{ id: "claim-x", status: "verified" }],
+    evidence: [{ id: "ev-x", label: "ev-x", claimRefs: [{ kind: "claim", id: "claim-x" }] }],
+    processes: [{
+      id: "wf-x",
+      trustReport: {
+        id: "report-x",
+        claims: [],
+        evidence: [{ id: "ev-x", claimId: "claim-x", evidenceType: "test_output", method: "validation", excerptOrSummary: "gleaned text", sourceLocator: "javascript:alert(1)" }],
+        transparencyGaps: [],
+      },
+    }],
+  };
+  const markup = renderDrawer(state, "evidence:ev-x");
+  assert.match(markup, /gleaned text/); // the record joined — the control is not vacuous
+  assert.doesNotMatch(markup, /javascript:/);
+});
+
+// console#274 review MED finding 2 (pin): raw report ids are bundle-local —
+// two folded workflows both carrying raw id "ev-1" must each relay their OWN
+// workflow's producer text in the drawer, never first-report-wins.
+test("the drawer's interpretation layers join only the owning workflow's report (two-workflow raw-id collision)", () => {
+  const wfA = "flow-agents:repo:acme:wf-a";
+  const wfB = "flow-agents:repo:acme:wf-b";
+  const report = (suffix: string, evidenceType: string, method: string) => ({
+    id: `report-${suffix}`,
+    claims: [],
+    evidence: [{ id: "ev-1", claimId: "c-1", evidenceType, method, excerptOrSummary: `${suffix}'s own gleaned text` }],
+    events: [],
+    transparencyGaps: [],
+  });
+  const state: OperatingState = {
+    processes: [
+      { id: wfA, trustReport: report("wf-a", "screenshot", "observation") },
+      { id: wfB, trustReport: report("wf-b", "test_output", "validation") },
+    ],
+    evidence: [
+      { id: `${wfA}:evidence:ev-1`, label: "A evidence" },
+      { id: `${wfB}:evidence:ev-1`, label: "B evidence" },
+    ],
+  };
+
+  const markupA = renderDrawer(state, `evidence:${wfA}:evidence:ev-1`);
+  assert.match(markupA, /wf-a&#x27;s own gleaned text/);
+  assert.doesNotMatch(markupA, /wf-b&#x27;s own gleaned text/);
+
+  const markupB = renderDrawer(state, `evidence:${wfB}:evidence:ev-1`);
+  assert.match(markupB, /wf-b&#x27;s own gleaned text/);
+  assert.doesNotMatch(markupB, /wf-a&#x27;s own gleaned text/);
 });
 
 test("an evidence node with no producer interpretation renders the explicit absence state", () => {

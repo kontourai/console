@@ -85,48 +85,112 @@ interface EvidenceProvenance {
 }
 
 /**
- * Structurally narrows the opaque `trustReport` (Surface's own
- * `buildTrustReport` output, folded verbatim onto gates/processes by
- * console#254's workflow-trust bridge) far enough to read each evidence
- * record's `evidenceType`/`method` enums — RELAY, not derivation: no verdict,
- * status, or freshness is read or recomputed here, and console-core still
- * takes no dependency on `@kontourai/surface` (same opaque-typing rationale
- * as `ConsoleProcess.trustReport` in operating-state.ts).
+ * The workflow-trust bridge qualifies subject ids as
+ * `<workflow>:<marker>:<rawId>` (workflow-trust-bridge.ts's
+ * `qualifiedEvidenceId`/`qualifiedClaimId`); the trust report's own records
+ * carry the raw, BUNDLE-LOCAL id. This splits a qualified id into its owning
+ * workflow scope and the raw id; a non-bridge producer's unqualified id has
+ * no scope (`null`) and passes through as the raw id.
  */
-function trustReportProvenanceIndex(state: OperatingState): Map<string, EvidenceProvenance> {
-  const index = new Map<string, EvidenceProvenance>();
-  const reports: unknown[] = [
-    ...(state.processes || []).map((process) => process.trustReport),
-    ...(state.gates || []).map((gate) => gate.trustReport),
-  ];
-  for (const report of reports) {
-    if (!report || typeof report !== "object") continue;
-    const evidence = (report as { evidence?: unknown }).evidence;
-    if (!Array.isArray(evidence)) continue;
-    for (const item of evidence) {
-      if (!item || typeof item !== "object") continue;
-      const record = item as { id?: unknown; evidenceType?: unknown; method?: unknown };
-      if (typeof record.id !== "string" || !record.id || index.has(record.id)) continue;
-      index.set(record.id, {
-        evidenceType: typeof record.evidenceType === "string" ? record.evidenceType : undefined,
-        method: typeof record.method === "string" ? record.method : undefined,
-      });
-    }
-  }
-  return index;
+function splitQualifiedId(id: string, marker: string): { scope: string | null; raw: string } {
+  const at = id.lastIndexOf(marker);
+  return at > 0 ? { scope: id.slice(0, at), raw: id.slice(at + marker.length) } : { scope: null, raw: id };
+}
+
+interface ReportEvidenceEntry {
+  id: string;
+  claimId?: string;
+  evidenceType?: string;
+  method?: string;
 }
 
 /**
- * The workflow-trust bridge qualifies evidence subject ids as
- * `<workflow>:evidence:<rawId>` (workflow-trust-bridge.ts's
- * `qualifiedEvidenceId`); the trust report's own records carry the raw id.
- * This recovers the raw id for the provenance join; a non-bridge producer's
- * unqualified id passes through unchanged.
+ * Structurally narrows one opaque `trustReport`'s evidence array (Surface's
+ * own `buildTrustReport` output, folded verbatim by console#254) — RELAY, not
+ * derivation: no verdict, status, or freshness is read or recomputed here,
+ * and console-core still takes no dependency on `@kontourai/surface` (same
+ * opaque-typing rationale as `ConsoleProcess.trustReport`).
  */
-function rawEvidenceId(id: string): string {
-  const marker = ":evidence:";
-  const at = id.lastIndexOf(marker);
-  return at >= 0 ? id.slice(at + marker.length) : id;
+function reportEvidenceEntries(report: unknown): ReportEvidenceEntry[] {
+  if (!report || typeof report !== "object") return [];
+  const evidence = (report as { evidence?: unknown }).evidence;
+  if (!Array.isArray(evidence)) return [];
+  const entries: ReportEvidenceEntry[] = [];
+  for (const item of evidence) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as { id?: unknown; claimId?: unknown; evidenceType?: unknown; method?: unknown };
+    if (typeof record.id !== "string" || !record.id) continue;
+    entries.push({
+      id: record.id,
+      claimId: typeof record.claimId === "string" ? record.claimId : undefined,
+      evidenceType: typeof record.evidenceType === "string" ? record.evidenceType : undefined,
+      method: typeof record.method === "string" ? record.method : undefined,
+    });
+  }
+  return entries;
+}
+
+/**
+ * The trust reports OWNED by one workflow scope (console#274 review MED
+ * finding 2): raw report ids are bundle-local, so a global first-report-wins
+ * join lets two folded workflows collide and relays the WRONG workflow's
+ * producer fields. The bridge attaches each report to the process whose id
+ * IS the workflow scope and to gates qualified `<scope>:gate:<raw>` — so a
+ * scoped subject only ever joins its own workflow's report(s). An
+ * unqualified subject (`scope === null`, a non-bridge producer's flat id
+ * space) keeps the every-report fallback.
+ */
+function trustReportsOwning(state: OperatingState, scope: string | null): unknown[] {
+  const raws: unknown[] =
+    scope === null
+      ? [
+          ...(state.processes || []).map((process) => process.trustReport),
+          ...(state.gates || []).map((gate) => gate.trustReport),
+        ]
+      : [
+          ...(state.processes || []).filter((process) => process.id === scope).map((process) => process.trustReport),
+          ...(state.gates || []).filter((gate) => gate.id.startsWith(`${scope}:gate:`)).map((gate) => gate.trustReport),
+        ];
+  const seen = new Set<unknown>();
+  const reports: unknown[] = [];
+  for (const raw of raws) {
+    if (raw === undefined || raw === null || seen.has(raw)) continue;
+    seen.add(raw);
+    reports.push(raw);
+  }
+  return reports;
+}
+
+/** Provenance enums for one folded evidence id, joined ONLY against the owning workflow's own trust report(s). */
+function provenanceForEvidence(state: OperatingState, foldedEvidenceId: string): EvidenceProvenance | undefined {
+  const { scope, raw } = splitQualifiedId(foldedEvidenceId, ":evidence:");
+  for (const report of trustReportsOwning(state, scope)) {
+    const entry = reportEvidenceEntries(report).find((item) => item.id === raw);
+    if (entry && (entry.evidenceType || entry.method)) {
+      return { evidenceType: entry.evidenceType, method: entry.method };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * STATE-derived (console#274 review HIGH finding 1): whether any evidence in
+ * the operating state backs this claim — the claim's own evidenceRefs, ANY
+ * folded evidence record's claimRefs (the FULL list, never the capped render
+ * set: deriving absence from a truncated edge list fabricates a false "no
+ * evidence recorded" for a claim whose only evidence fell past the cap), or
+ * the owning workflow's own trust report carrying an evidence entry for it.
+ */
+function claimHasEvidenceInState(state: OperatingState, claim: ConsoleClaim): boolean {
+  if ((claim.evidenceRefs || []).some((ref) => ref.kind === "evidence" && Boolean(ref.id))) return true;
+  if ((state.evidence || []).some((item) => (item.claimRefs || []).some((ref) => ref.kind === "claim" && ref.id === claim.id))) {
+    return true;
+  }
+  const { scope, raw } = splitQualifiedId(claim.id, ":claim:");
+  for (const report of trustReportsOwning(state, scope)) {
+    if (reportEvidenceEntries(report).some((entry) => entry.claimId === raw)) return true;
+  }
+  return false;
 }
 
 function evidenceMeta(item: ConsoleEvidence, provenance: EvidenceProvenance | undefined) {
@@ -227,13 +291,14 @@ export function buildProcessFlow(input: OperatingState | null | undefined): Proc
   // actions/timeline forensics. Provenance kind is relayed verbatim from the
   // trust report's `evidenceType`/`method` enums where the report carries the
   // record; never derived.
-  const provenanceIndex = trustReportProvenanceIndex(state);
   const renderedEvidence = (state.evidence || []).slice(0, 6);
   let evidenceOrder = 0;
   renderedEvidence.forEach((item) => {
     const id = `evidence:${item.id}`;
     const status = nodeStatus(item.status);
-    const provenance = provenanceIndex.get(rawEvidenceId(item.id));
+    // Scoped join (console#274 review MED finding 2): only the OWNING
+    // workflow's report is consulted — raw report ids are bundle-local.
+    const provenance = provenanceForEvidence(state, item.id);
     nodes.push({
       id,
       kind: "evidence",
@@ -291,7 +356,8 @@ export function buildProcessFlow(input: OperatingState | null | undefined): Proc
   (state.gates || []).slice(0, 4).forEach((gate) => {
     const from = nodesByRef.get(`gate:${gate.id}`);
     if (!from) return;
-    (gate.missingEvidence || []).slice(0, 3).forEach((clause) => {
+    const missing = gate.missingEvidence || [];
+    missing.slice(0, 3).forEach((clause) => {
       const id = `evidence:missing:${gate.id}:${clause}`;
       nodes.push({
         id,
@@ -306,12 +372,34 @@ export function buildProcessFlow(input: OperatingState | null | undefined): Proc
       });
       addEdge(edges, { id: `${from}-${id}`, from, to: id, active: false });
     });
+    // console#274 review MED finding 3: a render cap must never SILENTLY drop
+    // dead-class content ("never omitted") — clauses past the cap render as a
+    // dead truncation indicator carrying the exact dropped count.
+    if (missing.length > 3) {
+      const id = `evidence:missing-more:${gate.id}`;
+      nodes.push({
+        id,
+        kind: "evidence",
+        label: `+${missing.length - 3} more missing`,
+        meta: "truncated by the render cap — the gate record carries the full list",
+        status: "missing",
+        lane: 5,
+        order: evidenceOrder++,
+        active: false,
+        dead: true,
+      });
+      addEdge(edges, { id: `${from}-${id}`, from, to: id, active: false });
+    }
   });
-  (state.claims || []).slice(0, 4).forEach((claim) => {
+  const renderedClaims = (state.claims || []).slice(0, 4);
+  renderedClaims.forEach((claim) => {
     const from = nodesByRef.get(`claim:${claim.id}`);
     if (!from) return;
-    const hasEvidence = edges.some((edge) => edge.from === from && edge.to.startsWith("evidence:"));
-    if (hasEvidence) return;
+    // console#274 review HIGH finding 1: absence is derived from the STATE
+    // (full evidence list + the owning workflow's own trust report), NEVER
+    // from the capped render set's edge list — a claim whose only evidence
+    // fell past the evidence-lane cap is evidenced, not dead.
+    if (claimHasEvidenceInState(state, claim)) return;
     const id = `evidence:absent:${claim.id}`;
     nodes.push({
       id,
@@ -326,6 +414,23 @@ export function buildProcessFlow(input: OperatingState | null | undefined): Proc
     });
     addEdge(edges, { id: `${from}-${id}`, from, to: id, active: false });
   });
+  // console#274 review MED finding 3, claims side: evidence-less claims past
+  // the claims-lane cap would silently lose their dead nodes — surface them
+  // as one dead truncation indicator with the exact count.
+  const droppedDeadClaims = (state.claims || []).slice(4).filter((claim) => !claimHasEvidenceInState(state, claim)).length;
+  if (droppedDeadClaims > 0) {
+    nodes.push({
+      id: "evidence:absent-more",
+      kind: "evidence",
+      label: `+${droppedDeadClaims} more missing`,
+      meta: "claims beyond the render cap with no evidence recorded",
+      status: "missing",
+      lane: 5,
+      order: evidenceOrder++,
+      active: false,
+      dead: true,
+    });
+  }
 
   (state.actions || []).slice(0, 3).forEach((action, index) => {
     const id = `action:${action.id}`;

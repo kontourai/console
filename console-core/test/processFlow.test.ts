@@ -144,6 +144,99 @@ test("buildProcessFlow renders a gate's missingEvidence clauses as first-class d
   assert.ok(flow.edges.some((edge) => edge.id === "gate:gate-1-evidence:missing:gate-1:screenshot"));
 });
 
+// console#274 review HIGH finding 1 (pin): dead-claim status derives from the
+// STATE, never from the capped render set — a claim whose ONLY evidence is
+// the 7th record (past the evidence lane's slice(0, 6) cap) is evidenced,
+// and must NOT get a fabricated "No evidence recorded" node.
+test("a claim whose only evidence sits past the render cap is NOT marked dead (state-derived absence)", () => {
+  const evidence = Array.from({ length: 7 }, (_, index) => ({
+    id: `ev-${index + 1}`,
+    label: `evidence ${index + 1}`,
+    // Only ev-7 — beyond the cap — backs claim-1.
+    ...(index === 6 ? { claimRefs: [{ kind: "claim", id: "claim-1" }] } : {}),
+  }));
+  const flow = buildProcessFlow({
+    claims: [{ id: "claim-1", status: "verified" }],
+    evidence
+  });
+
+  // The render cap still applies to the lane…
+  assert.equal(flow.nodes.filter((node) => node.kind === "evidence" && !node.dead).length, 6);
+  assert.equal(flow.nodes.some((node) => node.id === "evidence:ev-7"), false);
+  // …but absence is a STATE fact, and the state says claim-1 IS evidenced.
+  assert.equal(
+    flow.nodes.some((node) => node.id === "evidence:absent:claim-1"),
+    false,
+    "a truncated render set must never fabricate a false absence"
+  );
+});
+
+// console#274 review MED finding 2 (pin): raw report ids are bundle-local —
+// two folded workflows both carrying raw id "ev-1" must each join their OWN
+// workflow's trust report, never first-report-wins.
+test("provenance joins are scoped to the owning workflow's own trust report (two-workflow raw-id collision)", () => {
+  const wfA = "flow-agents:repo:acme:wf-a";
+  const wfB = "flow-agents:repo:acme:wf-b";
+  const reportA = {
+    id: "report-a",
+    claims: [],
+    evidence: [{ id: "ev-1", claimId: "c-1", evidenceType: "screenshot", method: "observation" }],
+    transparencyGaps: []
+  };
+  const reportB = {
+    id: "report-b",
+    claims: [],
+    evidence: [{ id: "ev-1", claimId: "c-1", evidenceType: "test_output", method: "validation" }],
+    transparencyGaps: []
+  };
+  const flow = buildProcessFlow({
+    processes: [
+      { id: wfA, trustReport: reportA },
+      { id: wfB, trustReport: reportB }
+    ],
+    evidence: [
+      { id: `${wfA}:evidence:ev-1`, label: "A evidence" },
+      { id: `${wfB}:evidence:ev-1`, label: "B evidence" }
+    ]
+  });
+
+  const nodeA = flow.nodes.find((node) => node.id === `evidence:${wfA}:evidence:ev-1`);
+  const nodeB = flow.nodes.find((node) => node.id === `evidence:${wfB}:evidence:ev-1`);
+  assert.equal(nodeA?.provenanceKind, "screenshot");
+  assert.equal(nodeB?.provenanceKind, "test_output");
+});
+
+// console#274 review MED finding 3 (pin): the missingEvidence render cap must
+// never SILENTLY drop dead nodes — clauses past the cap surface as a dead
+// truncation indicator carrying the exact dropped count.
+test("a gate with 4 missingEvidence clauses renders 3 dead nodes plus a '+1 more missing' indicator", () => {
+  const flow = buildProcessFlow({
+    gates: [{ id: "gate-1", status: "blocked", missingEvidence: ["a", "b", "c", "d"] }]
+  });
+
+  const deadNodes = flow.nodes.filter((node) => node.dead);
+  assert.deepEqual(deadNodes.map((node) => node.label), ["a", "b", "c", "+1 more missing"]);
+  const indicator = deadNodes[3]!;
+  assert.equal(indicator.id, "evidence:missing-more:gate-1");
+  assert.equal(indicator.kind, "evidence");
+  assert.ok(flow.edges.some((edge) => edge.id === "gate:gate-1-evidence:missing-more:gate-1"));
+});
+
+// console#274 review MED finding 3, claims side (pin): evidence-less claims
+// past the claims-lane cap surface as one dead indicator with the count.
+test("evidence-less claims beyond the claims render cap surface as a dead truncation indicator", () => {
+  const flow = buildProcessFlow({
+    claims: Array.from({ length: 6 }, (_, index) => ({ id: `claim-${index + 1}`, status: "unverified" }))
+  });
+
+  // 4 rendered claims each get their own dead node; the 2 dropped
+  // evidence-less claims surface as one indicator.
+  const indicator = flow.nodes.find((node) => node.id === "evidence:absent-more");
+  assert.ok(indicator, "expected a dead truncation indicator for dropped claims");
+  assert.equal(indicator!.dead, true);
+  assert.equal(indicator!.label, "+2 more missing");
+});
+
 test("buildProcessFlow gives an evidence node no provenanceKind when no folded trust report carries the record (absence, not a guess)", () => {
   const flow = buildProcessFlow({
     claims: [{ id: "claim-1", status: "verified" }],

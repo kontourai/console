@@ -47,6 +47,9 @@ const COUNT_INSTRUMENTS = {
   risks: "Counted from transparencyGaps in the Surface trust reports folded by the workflow-trust bridge (console#254)",
 } as const;
 
+const RISKS_FEED_ABSENT_INSTRUMENT =
+  "No Surface trust reports are folded into the operating state (console#254) — the risks count has no producing feed";
+
 export function OwnerQueueSection({ state, telemetry, onOpen, now }: OwnerQueueSectionProps) {
   const clock = now ?? Date.now();
   const queue = useMemo(() => deriveOwnerQueue(state, telemetry, clock), [state, telemetry, clock]);
@@ -77,16 +80,32 @@ export function OwnerQueueSection({ state, telemetry, onOpen, now }: OwnerQueueS
         ))}
       </QueueBlock>
 
-      <QueueBlock
-        title={QUEUE_SECTION_TITLES.risks}
-        count={queue.risks.length}
-        instrument={COUNT_INSTRUMENTS.risks}
-        emptyText={QUEUE_ABSENCE_STRINGS.emptyRisks}
-      >
-        {queue.risks.map((item) => (
-          <RiskRow key={item.key} item={item} />
-        ))}
-      </QueueBlock>
+      {queue.risksFeedPresent ? (
+        <QueueBlock
+          title={QUEUE_SECTION_TITLES.risks}
+          count={queue.risks.length}
+          instrument={COUNT_INSTRUMENTS.risks}
+          emptyText={QUEUE_ABSENCE_STRINGS.emptyRisks}
+        >
+          {queue.risks.map((item) => (
+            <RiskRow key={item.key} item={item} />
+          ))}
+        </QueueBlock>
+      ) : (
+        // console#273 review MED finding 4: with ZERO folded trust reports the
+        // risks count has no producing feed — render the absence (red, like
+        // the feed strip), never a computed-looking 0 under a title citing
+        // reports that don't exist.
+        <section className="oq-block" aria-label={`${QUEUE_SECTION_TITLES.risks} (${QUEUE_ABSENCE_STRINGS.noReportsFeed})`}>
+          <header className="oq-head">
+            <h3 className="oq-title">{QUEUE_SECTION_TITLES.risks}</h3>
+            <span className="oq-count oq-count-absent" title={RISKS_FEED_ABSENT_INSTRUMENT}>
+              {QUEUE_ABSENCE_STRINGS.noReportsFeed}
+            </span>
+          </header>
+          <p className="oq-empty oq-absent">{QUEUE_ABSENCE_STRINGS.noReportsFeed}</p>
+        </section>
+      )}
 
       <FeedStrip feeds={queue.feeds} />
     </section>
@@ -115,9 +134,17 @@ function PulseLine({ queue }: { queue: OwnerQueue }) {
         <b>{queue.accept.length}</b> {PULSE_SEGMENT_LABELS.accept}
       </span>
       <span className="oq-pulse-dot" aria-hidden="true">·</span>
-      <span className="oq-pulse-seg" title={COUNT_INSTRUMENTS.risks}>
-        <b>{queue.risks.length}</b> {PULSE_SEGMENT_LABELS.risks}
-      </span>
+      {queue.risksFeedPresent ? (
+        <span className="oq-pulse-seg" title={COUNT_INSTRUMENTS.risks}>
+          <b>{queue.risks.length}</b> {PULSE_SEGMENT_LABELS.risks}
+        </span>
+      ) : (
+        // console#273 review MED finding 4: no reports feed ⇒ the pulse's
+        // risks segment renders the absence, never a computed-looking 0.
+        <span className="oq-pulse-seg oq-absent" title={RISKS_FEED_ABSENT_INSTRUMENT}>
+          {PULSE_SEGMENT_LABELS.risks}: {QUEUE_ABSENCE_STRINGS.noReportsFeed}
+        </span>
+      )}
     </p>
   );
 }

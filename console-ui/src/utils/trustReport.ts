@@ -146,18 +146,7 @@ export function narrowTrustReport(raw: unknown): TrustReportLike | null {
   };
 }
 
-/**
- * Every distinct trust report attached anywhere in the operating state.
- * console#254 attaches the SAME report to a process AND to each of its gate
- * associations, so reports are deduped by `id` (falling back to reference
- * identity of the raw value for id-less reports) — never double-counting one
- * workflow's gaps because its report was relayed onto three gates.
- */
-export function collectTrustReports(state: OperatingState | null | undefined): TrustReportLike[] {
-  const raws: unknown[] = [
-    ...((state?.processes || []).map((process) => process.trustReport)),
-    ...((state?.gates || []).map((gate) => gate.trustReport)),
-  ];
+function narrowAndDedupe(raws: unknown[]): TrustReportLike[] {
   const reports: TrustReportLike[] = [];
   const seenIds = new Set<string>();
   const seenRaw = new Set<unknown>();
@@ -174,4 +163,50 @@ export function collectTrustReports(state: OperatingState | null | undefined): T
     reports.push(report);
   }
   return reports;
+}
+
+/**
+ * Every distinct trust report attached anywhere in the operating state.
+ * console#254 attaches the SAME report to a process AND to each of its gate
+ * associations, so reports are deduped by `id` (falling back to reference
+ * identity of the raw value for id-less reports) — never double-counting one
+ * workflow's gaps because its report was relayed onto three gates.
+ */
+export function collectTrustReports(state: OperatingState | null | undefined): TrustReportLike[] {
+  return narrowAndDedupe([
+    ...((state?.processes || []).map((process) => process.trustReport)),
+    ...((state?.gates || []).map((gate) => gate.trustReport)),
+  ]);
+}
+
+/**
+ * Owning workflow scope of a bridge-qualified subject id
+ * (`<workflow>:<marker>:<rawId>`, workflow-trust-bridge.ts), or `null` for an
+ * unqualified id from a producer with a flat id space.
+ */
+export function workflowScopeOf(qualifiedId: string, marker: string): string | null {
+  const at = qualifiedId.lastIndexOf(marker);
+  return at > 0 ? qualifiedId.slice(0, at) : null;
+}
+
+/**
+ * The trust reports OWNED by one workflow scope (console#274 review MED
+ * finding 2): raw report ids (`ev-1`, `claim-tests`, ...) are BUNDLE-LOCAL,
+ * so joining them against every folded report first-match-wins lets two
+ * workflows collide and relays the WRONG workflow's producer text. The
+ * console#254 bridge attaches each report to the process whose id IS the
+ * workflow scope and to gates qualified `<scope>:gate:<raw>`, so a scoped
+ * subject joins only its own workflow's report(s). An unqualified subject
+ * (`scope === null`) keeps the every-report fallback — a flat id space has
+ * nothing to collide with across scopes.
+ */
+export function collectTrustReportsForScope(
+  state: OperatingState | null | undefined,
+  scope: string | null,
+): TrustReportLike[] {
+  if (scope === null) return collectTrustReports(state);
+  return narrowAndDedupe([
+    ...((state?.processes || []).filter((process) => process.id === scope).map((process) => process.trustReport)),
+    ...((state?.gates || []).filter((gate) => gate.id.startsWith(`${scope}:gate:`)).map((gate) => gate.trustReport)),
+  ]);
 }

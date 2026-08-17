@@ -3172,6 +3172,8 @@ flow-run-panel {
 .oq-head { display: flex; align-items: baseline; gap: var(--k-space-2); }
 .oq-title { margin: 0; font-size: 0.78rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .oq-count { min-width: 1.4em; padding: 0 6px; text-align: center; font-size: 0.8rem; font-weight: 600; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; }
+/* console#273 review MED-4: an absent feed's badge is red, like the feed strip — never a computed-looking 0. */
+.oq-count-absent { color: var(--k-negative); border-color: var(--k-negative); font-weight: 500; font-style: italic; }
 .oq-empty { margin: 0; color: var(--dim); font-size: 0.84rem; }
 .oq-rows { display: flex; flex-direction: column; }
 .oq-row { display: flex; align-items: center; gap: var(--k-space-3); padding: 8px 0; border-bottom: 1px solid var(--line); }

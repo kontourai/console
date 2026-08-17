@@ -193,6 +193,33 @@ test("the feed strip renders missing feeds red and wired feeds with their instru
   assert.match(markup, /oq-feed-wired"[^>]*title="Surface trust reports folded by the workflow-trust bridge \(console#254\)"/);
 });
 
+// console#273 review MED finding 4 (pin): an operating state with ZERO folded
+// trust reports has no risks FEED — the section and pulse must render that
+// absence (red, like the feed strip), never a computed-looking 0 under an
+// instrument title citing reports that don't exist.
+test("with a state but zero trust reports, the risks section and pulse render the feed absence — never 0", () => {
+  const noReports = state({
+    generatedAt: "2026-07-20T11:59:00Z",
+    source: { acceptedEventCount: 3 },
+    processes: [
+      proc({ id: "run-1", label: "Worker", status: "running", updatedAt: "2026-07-20T11:55:00Z" }),
+      proc({ id: "run-2", label: "Done worker", status: "completed", updatedAt: "2026-07-20T11:00:00Z" }),
+    ],
+  });
+  const markup = renderQueue(noReports);
+
+  // No computed-looking zero anywhere in the risks surfaces.
+  assert.doesNotMatch(markup, /<b>0<\/b> risks standing/);
+  assert.doesNotMatch(markup, /aria-label="Risks standing \(0\)"/);
+  // The absence renders instead, red-classed, with an honest instrument title.
+  assert.match(markup, /aria-label="Risks standing \(no trust reports feed\)"/);
+  assert.match(markup, /oq-count-absent[^>]*title="No Surface trust reports are folded into the operating state \(console#254\) — the risks count has no producing feed"/);
+  assert.match(markup, /oq-pulse-seg oq-absent/);
+  assert.match(markup, /risks standing: no trust reports feed/);
+  // The decide/accept counts, which DO have feeds, stay computed.
+  assert.match(markup, /<b>0<\/b> to decide/);
+});
+
 test("with no operating state at all, the pulse renders that absence — never zeros pretending to be computed", () => {
   const markup = renderQueue(state({}));
   assert.match(markup, /No operating state received yet\./);
