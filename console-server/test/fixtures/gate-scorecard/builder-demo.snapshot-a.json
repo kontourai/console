@@ -353,7 +353,7 @@
     "run_id": "run-builder-demo-1",
     "status": "active",
     "subject": "demo-slice",
-    "updated_at": "2026-08-22T23:10:54.722Z"
+    "updated_at": "2026-08-22T23:54:03.649Z"
   },
   "schema_version": "0.1",
   "steps": [
@@ -402,7 +402,7 @@
   ],
   "transitions": [
     {
-      "at": "2026-08-22T23:10:54.722Z",
+      "at": "2026-08-22T23:54:03.649Z",
       "evidence_refs": [
         "ev-plan-1"
       ],
@@ -414,7 +414,7 @@
       "gate_id": "plan.review",
       "id": "transition.1",
       "raw": {
-        "at": "2026-08-22T23:10:54.722Z",
+        "at": "2026-08-22T23:54:03.649Z",
         "attempt": 1,
         "evidence_refs": [
           "ev-plan-1"

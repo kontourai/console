@@ -8,7 +8,12 @@
 // masked review findings 1/4/5 (flat run identity, singular expectation_id, no
 // canonical route_backs[]) — anything the fold reads must come out of the producer.
 //
-//   node test/fixtures/generate-gate-scorecard-fixtures.mjs
+//   node test/fixtures/generate-gate-scorecard-fixtures.mjs [outDir]
+//
+// `outDir` defaults to test/fixtures/gate-scorecard/. The regenerate-and-compare
+// test runs this script against the INSTALLED @kontourai/flow into a temp dir and
+// diffs (timestamp-normalized) against the checked-in fixtures, so a Flow upgrade
+// that changes the wire shape reds that test instead of silently rotting these files.
 //
 // Deterministic apart from producer-written timestamps; regenerate only when Flow's
 // projection contract changes, and re-read the diff when you do.
@@ -18,7 +23,9 @@ import { fileURLToPath } from "node:url";
 import { projectFlowRun } from "@kontourai/flow/console-contract";
 import { applyEvaluation, evaluateGate, initialState } from "@kontourai/flow";
 
-const outDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "gate-scorecard");
+const outDir = process.argv[2]
+  ? path.resolve(process.argv[2])
+  : path.join(path.dirname(fileURLToPath(import.meta.url)), "gate-scorecard");
 mkdirSync(outDir, { recursive: true });
 
 // A three-step flow: a route-back-configured gate, a plain blocking gate, and an
@@ -133,6 +140,93 @@ const otherDefinition = {
 const otherState = initialState(otherDefinition, "run-other-flow-1", { subject: "other-subject" });
 const otherProjection = projectFlowRun({ definition: otherDefinition, state: otherState, manifest: { evidence: [] } });
 
+// THE INDETERMINATE PAIR (round-2 finding HIGH-1, reproducing the reviewer's
+// scenario): one gate with a REAL persisted "block" gate_outcome that the run
+// advanced past (evidence-less — its failing evaluation attached nothing), and
+// one gate on a FUTURE step whose "block" is only the producer's lazy computation.
+// Their projections are byte-identical on every field the fold can consume
+// (asserted below), which is exactly why the fold must classify BOTH as
+// `indeterminate` rather than guess refusal or never_invoked.
+const indeterminateDefinition = {
+  id: "indeterminate.demo",
+  version: "1",
+  steps: [
+    { id: "plan", label: "Plan", next: "build" },
+    { id: "build", label: "Build", next: "done" },
+    { id: "done", label: "Done", next: null }
+  ],
+  gates: {
+    "checks.static": {
+      step: "plan",
+      expects: [{ id: "static.clean", kind: "trust.bundle", required: true, description: "Static checks ran clean.", bundle_claim: { claimType: "static.clean" } }]
+    },
+    "review.approve": {
+      step: "plan",
+      expects: [{ id: "review.approved", kind: "trust.bundle", required: true, description: "Reviewer approved the plan.", bundle_claim: { claimType: "review.approved" } }]
+    },
+    "future.check": {
+      step: "done",
+      expects: [{ id: "future.report", kind: "trust.bundle", required: true, description: "Final report collected.", bundle_claim: { claimType: "future.report" } }]
+    }
+  }
+};
+const indeterminateState = initialState(indeterminateDefinition, "run-indeterminate-1", { subject: "indeterminate-subject" });
+const indeterminateManifest = { evidence: [] };
+
+// 1. REALLY evaluate checks.static with no evidence: a persisted "block" outcome.
+const persistedBlock = evaluateGate(indeterminateDefinition, indeterminateState, indeterminateManifest, "checks.static");
+if (persistedBlock.status !== "block") {
+  throw new Error(`expected a block outcome for checks.static, got ${persistedBlock.status}`);
+}
+applyEvaluation(indeterminateDefinition, indeterminateState, persistedBlock);
+
+// 2. Pass review.approve via an accepted exception so the run ADVANCES past the
+//    blocked gate's step (is_open goes false for checks.static).
+indeterminateState.exceptions.push({
+  id: "exc-review-1",
+  gate_id: "review.approve",
+  reason: "owner-accepted demo exception",
+  authority: "owner",
+  accepted_at: new Date().toISOString(),
+  evidence_refs: []
+});
+const advanceOutcome = evaluateGate(indeterminateDefinition, indeterminateState, indeterminateManifest, "review.approve");
+if (advanceOutcome.status !== "pass") {
+  throw new Error(`expected a pass outcome for review.approve, got ${advanceOutcome.status}`);
+}
+applyEvaluation(indeterminateDefinition, indeterminateState, advanceOutcome);
+
+// Ground truth: the state PROVES only checks.static was really evaluated.
+if (!indeterminateState.gate_outcomes.some((o) => o.gate_id === "checks.static" && o.status === "block")) {
+  throw new Error("expected a persisted block gate_outcome for checks.static");
+}
+if (indeterminateState.gate_outcomes.some((o) => o.gate_id === "future.check")) {
+  throw new Error("future.check must have NO persisted outcome (its block is lazily computed)");
+}
+
+const indeterminateProjection = projectFlowRun({
+  definition: indeterminateDefinition,
+  state: indeterminateState,
+  manifest: indeterminateManifest
+});
+
+// The projection must NOT be able to tell them apart on any consumed field —
+// if this ever throws, Flow gained an evaluation-provenance marker and the
+// fold's `indeterminate` state can finally be split honestly.
+const consumed = (gate) => JSON.stringify({
+  status: gate.status,
+  is_open: gate.is_open,
+  evidence: gate.evidence,
+  evidence_refs: gate.evidence_refs,
+  matched_expectations: gate.matched_expectations,
+  accepted_exception_id: gate.accepted_exception_id ?? null
+});
+const projectedReal = indeterminateProjection.gates.find((gate) => gate.id === "checks.static");
+const projectedLazy = indeterminateProjection.gates.find((gate) => gate.id === "future.check");
+if (consumed(projectedReal) !== consumed(projectedLazy)) {
+  throw new Error(`persisted-block and computed-block projections diverged on consumed fields:\n${consumed(projectedReal)}\n${consumed(projectedLazy)}`);
+}
+
 const write = (name, value) => {
   writeFileSync(path.join(outDir, name), `${JSON.stringify(value, null, 2)}\n`);
   console.log(`wrote ${name}`);
@@ -140,3 +234,4 @@ const write = (name, value) => {
 write("builder-demo.snapshot-a.json", snapshotA);
 write("builder-demo.snapshot-b.json", snapshotB);
 write("other-flow.json", otherProjection);
+write("indeterminate-demo.json", indeterminateProjection);

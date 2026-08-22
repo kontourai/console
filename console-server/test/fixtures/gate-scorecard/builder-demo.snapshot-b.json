@@ -134,14 +134,14 @@
   ],
   "exceptions": [
     {
-      "accepted_at": "2026-08-22T23:10:54.728Z",
+      "accepted_at": "2026-08-22T23:54:03.655Z",
       "authority": "owner",
       "evidence_refs": [],
       "external_links": [],
       "gate_id": "plan.review",
       "id": "exc-plan-1",
       "raw": {
-        "accepted_at": "2026-08-22T23:10:54.728Z",
+        "accepted_at": "2026-08-22T23:54:03.655Z",
         "authority": "owner",
         "evidence_refs": [],
         "gate_id": "plan.review",
@@ -409,7 +409,7 @@
     "run_id": "run-builder-demo-1",
     "status": "blocked",
     "subject": "demo-slice",
-    "updated_at": "2026-08-22T23:10:54.728Z"
+    "updated_at": "2026-08-22T23:54:03.656Z"
   },
   "schema_version": "0.1",
   "steps": [
@@ -458,7 +458,7 @@
   ],
   "transitions": [
     {
-      "at": "2026-08-22T23:10:54.722Z",
+      "at": "2026-08-22T23:54:03.649Z",
       "evidence_refs": [
         "ev-plan-1"
       ],
@@ -470,7 +470,7 @@
       "gate_id": "plan.review",
       "id": "transition.1",
       "raw": {
-        "at": "2026-08-22T23:10:54.722Z",
+        "at": "2026-08-22T23:54:03.649Z",
         "attempt": 1,
         "evidence_refs": [
           "ev-plan-1"
@@ -499,7 +499,7 @@
       "type": "route_back"
     },
     {
-      "at": "2026-08-22T23:10:54.728Z",
+      "at": "2026-08-22T23:54:03.655Z",
       "evidence_refs": [],
       "expectation_ids": [],
       "external_links": [],
@@ -507,7 +507,7 @@
       "gate_id": "plan.review",
       "id": "transition.2",
       "raw": {
-        "at": "2026-08-22T23:10:54.728Z",
+        "at": "2026-08-22T23:54:03.655Z",
         "from_step": "plan",
         "gate_id": "plan.review",
         "reason": "accepted exception",
@@ -521,7 +521,7 @@
       "type": "step"
     },
     {
-      "at": "2026-08-22T23:10:54.728Z",
+      "at": "2026-08-22T23:54:03.656Z",
       "evidence_refs": [],
       "expectation_ids": [],
       "external_links": [],
@@ -529,7 +529,7 @@
       "gate_id": "verify.tests",
       "id": "transition.3",
       "raw": {
-        "at": "2026-08-22T23:10:54.728Z",
+        "at": "2026-08-22T23:54:03.656Z",
         "from_step": "build",
         "gate_id": "verify.tests",
         "reason": "Test suite ran green on the candidate tree. missing",

@@ -1,0 +1,391 @@
+{
+  "continuation": "resume from build, not chat memory",
+  "current_step": "build",
+  "definition": {
+    "description": null,
+    "id": "indeterminate.demo",
+    "raw": {
+      "gates": {
+        "checks.static": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "claimType": "static.clean"
+              },
+              "description": "Static checks ran clean.",
+              "id": "static.clean",
+              "kind": "trust.bundle",
+              "required": true
+            }
+          ],
+          "step": "plan"
+        },
+        "future.check": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "claimType": "future.report"
+              },
+              "description": "Final report collected.",
+              "id": "future.report",
+              "kind": "trust.bundle",
+              "required": true
+            }
+          ],
+          "step": "done"
+        },
+        "review.approve": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "claimType": "review.approved"
+              },
+              "description": "Reviewer approved the plan.",
+              "id": "review.approved",
+              "kind": "trust.bundle",
+              "required": true
+            }
+          ],
+          "step": "plan"
+        }
+      },
+      "id": "indeterminate.demo",
+      "steps": [
+        {
+          "id": "plan",
+          "label": "Plan",
+          "next": "build"
+        },
+        {
+          "id": "build",
+          "label": "Build",
+          "next": "done"
+        },
+        {
+          "id": "done",
+          "label": "Done",
+          "next": null
+        }
+      ],
+      "version": "1"
+    },
+    "title": null,
+    "version": "1"
+  },
+  "evidence": [],
+  "exceptions": [
+    {
+      "accepted_at": "2026-08-22T23:54:03.656Z",
+      "authority": "owner",
+      "evidence_refs": [],
+      "external_links": [],
+      "gate_id": "review.approve",
+      "id": "exc-review-1",
+      "raw": {
+        "accepted_at": "2026-08-22T23:54:03.656Z",
+        "authority": "owner",
+        "evidence_refs": [],
+        "gate_id": "review.approve",
+        "id": "exc-review-1",
+        "reason": "owner-accepted demo exception"
+      },
+      "reason": "owner-accepted demo exception"
+    }
+  ],
+  "expectations": [
+    {
+      "description": "Static checks ran clean.",
+      "gate_id": "checks.static",
+      "id": "static.clean",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "claimType": "static.clean"
+        },
+        "description": "Static checks ran clean.",
+        "id": "static.clean",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "Final report collected.",
+      "gate_id": "future.check",
+      "id": "future.report",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "claimType": "future.report"
+        },
+        "description": "Final report collected.",
+        "id": "future.report",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "Reviewer approved the plan.",
+      "gate_id": "review.approve",
+      "id": "review.approved",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "claimType": "review.approved"
+        },
+        "description": "Reviewer approved the plan.",
+        "id": "review.approved",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    }
+  ],
+  "external_links": [],
+  "gates": [
+    {
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [
+        {
+          "description": "Static checks ran clean.",
+          "id": "static.clean",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "claimType": "static.clean"
+            },
+            "description": "Static checks ran clean.",
+            "id": "static.clean",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "checks.static",
+      "is_open": false,
+      "matched_expectations": [],
+      "missing": [
+        "static.clean"
+      ],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "claimType": "static.clean"
+            },
+            "description": "Static checks ran clean.",
+            "id": "static.clean",
+            "kind": "trust.bundle",
+            "required": true
+          }
+        ],
+        "id": "checks.static",
+        "step": "plan"
+      },
+      "status": "block",
+      "step_id": "plan",
+      "summary": "Static checks ran clean. missing"
+    },
+    {
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [
+        {
+          "description": "Final report collected.",
+          "id": "future.report",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "claimType": "future.report"
+            },
+            "description": "Final report collected.",
+            "id": "future.report",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "future.check",
+      "is_open": false,
+      "matched_expectations": [],
+      "missing": [
+        "future.report"
+      ],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "claimType": "future.report"
+            },
+            "description": "Final report collected.",
+            "id": "future.report",
+            "kind": "trust.bundle",
+            "required": true
+          }
+        ],
+        "id": "future.check",
+        "step": "done"
+      },
+      "status": "block",
+      "step_id": "done",
+      "summary": "Final report collected. missing"
+    },
+    {
+      "accepted_exception_id": "exc-review-1",
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [
+        {
+          "description": "Reviewer approved the plan.",
+          "id": "review.approved",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "claimType": "review.approved"
+            },
+            "description": "Reviewer approved the plan.",
+            "id": "review.approved",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "review.approve",
+      "is_open": false,
+      "matched_expectations": [],
+      "missing": [],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "claimType": "review.approved"
+            },
+            "description": "Reviewer approved the plan.",
+            "id": "review.approved",
+            "kind": "trust.bundle",
+            "required": true
+          }
+        ],
+        "id": "review.approve",
+        "step": "plan"
+      },
+      "status": "pass",
+      "step_id": "plan",
+      "summary": "accepted exception"
+    }
+  ],
+  "next_action": "no open gate",
+  "open_gates": [],
+  "report": null,
+  "route_backs": [],
+  "run": {
+    "current_step": "build",
+    "definition_id": "indeterminate.demo",
+    "definition_version": "1",
+    "params": {
+      "subject": "indeterminate-subject"
+    },
+    "run_id": "run-indeterminate-1",
+    "status": "active",
+    "subject": "indeterminate-subject",
+    "updated_at": "2026-08-22T23:54:03.656Z"
+  },
+  "schema_version": "0.1",
+  "steps": [
+    {
+      "gates": [
+        "checks.static",
+        "review.approve"
+      ],
+      "id": "plan",
+      "index": 0,
+      "label": "Plan",
+      "next": "build",
+      "raw": {
+        "id": "plan",
+        "label": "Plan",
+        "next": "build"
+      }
+    },
+    {
+      "gates": [],
+      "id": "build",
+      "index": 1,
+      "label": "Build",
+      "next": "done",
+      "raw": {
+        "id": "build",
+        "label": "Build",
+        "next": "done"
+      }
+    },
+    {
+      "gates": [
+        "future.check"
+      ],
+      "id": "done",
+      "index": 2,
+      "label": "Done",
+      "next": null,
+      "raw": {
+        "id": "done",
+        "label": "Done",
+        "next": null
+      }
+    }
+  ],
+  "transitions": [
+    {
+      "at": "2026-08-22T23:54:03.656Z",
+      "evidence_refs": [],
+      "expectation_ids": [],
+      "external_links": [],
+      "from_step": "plan",
+      "gate_id": "checks.static",
+      "id": "transition.1",
+      "raw": {
+        "at": "2026-08-22T23:54:03.656Z",
+        "from_step": "plan",
+        "gate_id": "checks.static",
+        "reason": "Static checks ran clean. missing",
+        "status": "blocked",
+        "to_step": "build"
+      },
+      "reason": "Static checks ran clean. missing",
+      "route_reason": null,
+      "status": "blocked",
+      "to_step": "build",
+      "type": "step"
+    },
+    {
+      "at": "2026-08-22T23:54:03.656Z",
+      "evidence_refs": [],
+      "expectation_ids": [],
+      "external_links": [],
+      "from_step": "plan",
+      "gate_id": "review.approve",
+      "id": "transition.2",
+      "raw": {
+        "at": "2026-08-22T23:54:03.656Z",
+        "from_step": "plan",
+        "gate_id": "review.approve",
+        "reason": "accepted exception",
+        "status": "allowed",
+        "to_step": "build"
+      },
+      "reason": "accepted exception",
+      "route_reason": null,
+      "status": "allowed",
+      "to_step": "build",
+      "type": "step"
+    }
+  ]
+}

@@ -36,7 +36,7 @@
  *  - it never reports cost. Flow's projection knows what happened, not what it cost.
  *    Cost is an optional enrichment (layer 2) and its absence is stated, never zero.
  *
- * Four states, because three of them are routinely mistaken for each other:
+ * Five states, because most of them are routinely mistaken for each other:
  *
  *   invoked      the gate was reached and evaluated to a recognized verdict
  *   never_invoked  the flow ran and this gate never produced one — NOT a zero. This
@@ -47,6 +47,18 @@
  *                projections of runs OUTSIDE the window, never from a fleet-wide
  *                declaration this projection has no producer for
  *   withheld     a verdict exists but does not qualify — see below
+ *   indeterminate  a refusal-shaped verdict the projection cannot prove was
+ *                evaluated. Flow's projection emits a lazily COMPUTED "block" for
+ *                a gate the run never reached, and persists a REAL evaluated
+ *                "block" for an evidence-less gate, in byte-identical shapes
+ *                (review round 2 reproduced both; see
+ *                test/fixtures/gate-scorecard/indeterminate-demo.json). Counting
+ *                it as a refusal fabricates gate activity; counting it as
+ *                never_invoked erases a real verdict. The fold does neither and
+ *                says so. Disambiguation needs an upstream evaluation-provenance
+ *                marker on FlowConsoleGateProjection (e.g. status_source:
+ *                "gate_outcome" | "computed", or an evaluated_at stamp) — the
+ *                producer discards that bit at `outcome?.status ?? computed.status`.
  *
  * `withheld` is the state kontourai/evals#220 forced into existence. An experiment
  * whose arms were not comparable produces no verdict, and the analysis emits `null`
@@ -58,60 +70,70 @@
 
 import type { FlowConsoleProjection } from "@kontourai/flow/console-contract" with { "resolution-mode": "import" };
 
-/** Evidence as the producer projects it — note PLURAL `expectation_ids`. */
+/** Evidence as the producer projects it — note PLURAL `expectation_ids`. The
+ *  fields this fold CONSUMES are REQUIRED (review round 2: an all-optional shape
+ *  makes the drift alarm below vacuous — a producer rename would still be
+ *  assignable). The RUNTIME stays defensive about violations; the type states
+ *  the contract real payloads satisfy. */
 export interface FlowProjectionEvidence {
-  id?: string | null;
+  id: string;
+  status: string | null;
+  expectation_ids: ReadonlyArray<string>;
   gate_id?: string | null;
-  status?: string | null;
-  expectation_ids?: ReadonlyArray<string> | null;
 }
 
 /** A gate as it appears inside a real ingested Flow console projection. */
 export interface FlowProjectionGate {
-  id?: string | null;
-  status?: string | null;
-  is_open?: boolean | null;
-  expectations?: ReadonlyArray<{ id?: string | null }> | null;
-  evidence_refs?: ReadonlyArray<string> | null;
-  evidence?: ReadonlyArray<FlowProjectionEvidence> | null;
-  matched_expectations?: ReadonlyArray<Record<string, unknown>> | null;
+  id: string;
+  status: string;
+  is_open: boolean;
+  expectations: ReadonlyArray<{ id: string }>;
+  evidence_refs: ReadonlyArray<string>;
+  evidence: ReadonlyArray<FlowProjectionEvidence>;
+  matched_expectations: ReadonlyArray<Record<string, unknown>>;
   accepted_exception_id?: string | null;
 }
 
 export interface FlowProjectionTransition {
-  id?: string | null;
-  type?: string | null;
-  status?: string | null;
-  gate_id?: string | null;
+  id: string;
+  type: string;
+  status: string | null;
+  gate_id: string | null;
 }
 
 export interface FlowProjectionRouteBack {
-  id?: string | null;
+  id: string;
   /** "gate_outcome" | "transition" in the real producer. */
-  source?: string | null;
-  gate_id?: string | null;
+  source: string;
+  gate_id: string | null;
 }
 
 /** The subset of a Flow console projection this fold reads. Structurally typed so
  *  console's RUNTIME takes no dependency on `@kontourai/flow`, exactly as
- *  OperatingState does; the type-only import above pins the shape at compile time. */
+ *  OperatingState does; the type-only import above pins the shape at compile time.
+ *  Every CONSUMED field is required so the drift alarm has teeth; `apply()` still
+ *  degrades gracefully at runtime when a legacy/foreign producer omits pieces
+ *  (see the legacy route-back fallback), because a type cannot police the wire. */
 export interface FlowProjectionLike {
-  run?: { run_id?: string | null; definition_id?: string | null; updated_at?: string | null } | null;
+  run: { run_id: string; definition_id?: string | null; updated_at?: string | null };
   definition?: { id?: string | null } | null;
-  gates?: ReadonlyArray<FlowProjectionGate> | null;
-  evidence?: ReadonlyArray<FlowProjectionEvidence> | null;
-  transitions?: ReadonlyArray<FlowProjectionTransition> | null;
-  route_backs?: ReadonlyArray<FlowProjectionRouteBack> | null;
+  gates: ReadonlyArray<FlowProjectionGate>;
+  evidence: ReadonlyArray<FlowProjectionEvidence>;
+  transitions: ReadonlyArray<FlowProjectionTransition>;
+  route_backs: ReadonlyArray<FlowProjectionRouteBack>;
 }
 
 // COMPILE-TIME DRIFT ALARM: the real producer payload must stay assignable to the
-// structural shape this fold reads. If Flow's exported `FlowConsoleProjection`
-// moves a field this fold depends on, typecheck fails here — instead of the fold
-// silently reading `undefined` forever (the exact defect review round 1 caught).
+// structural shape this fold reads. Because every consumed field above is
+// REQUIRED, a Flow release that renames/removes run.run_id, gates[].expectations,
+// evidence expectation_ids, route_backs, etc. fails typecheck here — instead of
+// the fold silently reading `undefined` forever (the exact defect review round 1
+// caught). The captured fixtures are pinned by the regenerate-and-compare test in
+// gate-scorecard-projection.test.ts, which covers the runtime half of the same drift.
 const flowConsoleProjectionIsFoldable: FlowConsoleProjection extends FlowProjectionLike ? true : never = true;
 void flowConsoleProjectionIsFoldable;
 
-export type GateOutcomeState = "invoked" | "never_invoked" | "unexercised" | "withheld";
+export type GateOutcomeState = "invoked" | "never_invoked" | "unexercised" | "withheld" | "indeterminate";
 
 export interface GateScorecardEntry {
   flow_id: string;
@@ -129,9 +151,17 @@ export interface GateScorecardEntry {
    *  refusal count, is the evidence that a gate changed an outcome: a rejected
    *  claim that is re-submitted in the same shape cost time and changed nothing. */
   route_backs: number;
-  /** Runs whose snapshot shows a verdict this fold does not recognize as pass or
-   *  refusal — reported as "does not qualify", never guessed into a bucket. */
+  /** Runs whose snapshot shows a PROVEN-evaluated verdict this fold does not
+   *  recognize as pass or refusal — reported as "does not qualify", never
+   *  guessed into a bucket. */
   withheld: number;
+  /** Runs whose snapshot shows a refusal-shaped (or unrecognized) verdict the
+   *  projection CANNOT PROVE was evaluated. Flow persists a real "block"
+   *  gate_outcome byte-identically to the lazy computed "block" of a gate the
+   *  run never reached (no is_open, no evidence, no matches — review round 2
+   *  reproduced both from the same producer), so this fold refuses to guess in
+   *  either direction: not a refusal, not never_invoked, its own number. */
+  indeterminate: number;
   /** Runs of this flow observed in the window, so a rate has a denominator. */
   runs_observed: number;
   /** Absent, never zero: this projection has no cost producer (layer 2). */
@@ -199,7 +229,8 @@ function flowIdOf(projection: FlowProjectionLike): string {
   return nonEmpty(id) ? id : "unknown";
 }
 
-/** Was this gate actually REACHED in the run this snapshot describes?
+/** Can the projection PROVE this gate was reached in the run this snapshot
+ *  describes?
  *
  *  The producer runs `evaluateGate` lazily over every declared gate, so an
  *  UNREACHED gate with required expectations projects a computed "block" — bare
@@ -208,8 +239,13 @@ function flowIdOf(projection: FlowProjectionLike): string {
  *  attached to it, or expectations matched, or an exception was accepted.
  *  "pass" and "route-back" cannot be computed for an untouched gate (pass needs
  *  matched evidence or an accepted exception; route-back needs a recorded
- *  outcome), so they stand on their own. */
-function gateWasReached(gate: FlowProjectionGate, status: string): boolean {
+ *  outcome), so they stand on their own.
+ *
+ *  The converse does NOT hold (review round 2): a REAL persisted "block" outcome
+ *  for an evidence-less gate the run advanced past projects with none of these
+ *  corroborations either. `false` therefore means INDETERMINATE, never "was not
+ *  reached" — the caller must not fold it into either bucket. */
+function gateWasProvablyReached(gate: FlowProjectionGate, status: string): boolean {
   if (PASS_STATUSES.has(status) || ROUTE_BACK_STATUSES.has(status)) return true;
   return Boolean(gate.is_open)
     || (gate.evidence?.length ?? 0) > 0
@@ -336,7 +372,7 @@ export function createGateScorecardProjection(): GateScorecardProjection {
       if (!entry) {
         entry = {
           flow_id: flow, gate_id: gate, state: "unexercised",
-          invocations: 0, refusals: 0, route_backs: 0, withheld: 0, runs_observed: 0,
+          invocations: 0, refusals: 0, route_backs: 0, withheld: 0, indeterminate: 0, runs_observed: 0,
           cost: null, cost_availability: "unavailable",
         };
         tally.set(k, entry);
@@ -385,7 +421,15 @@ export function createGateScorecardProjection(): GateScorecardProjection {
         const entry = ensure(flow, gateId);
         const status = normalizeStatus(gate.status);
         if (IDLE_STATUSES.has(status)) continue; // no verdict — never an invocation
-        if (!gateWasReached(gate, status)) continue; // computed verdict for an unreached gate
+        if (!gateWasProvablyReached(gate, status)) {
+          // A verdict-shaped status with no proof of evaluation. The projection
+          // cannot distinguish a lazily computed "block" for an unreached gate
+          // from a REAL persisted "block" on an evidence-less gate the run moved
+          // past (round-2 finding HIGH-1) — so this is neither a refusal nor
+          // never_invoked. It is its own, explicitly indeterminate, number.
+          entry.indeterminate += 1;
+          continue;
+        }
         if (PASS_STATUSES.has(status) || REFUSAL_STATUSES.has(status) || ROUTE_BACK_STATUSES.has(status)) {
           entry.invocations += 1;
           invokedThisRun.add(gateId);
@@ -393,7 +437,8 @@ export function createGateScorecardProjection(): GateScorecardProjection {
           // carries: the run was refused once.
           if (REFUSAL_STATUSES.has(status) || ROUTE_BACK_STATUSES.has(status)) entry.refusals += 1;
         } else {
-          // A verdict exists but does not qualify under this fold's vocabulary.
+          // A PROVEN-evaluated verdict that does not qualify under this fold's
+          // vocabulary.
           entry.withheld += 1;
         }
       }
@@ -479,12 +524,16 @@ export function createGateScorecardProjection(): GateScorecardProjection {
     for (const entry of tally.values()) {
       entry.runs_observed = runsByFlow.get(entry.flow_id) ?? 0;
       // Precedence: any qualifying verdict makes the gate invoked; a
-      // non-qualifying verdict alone is withheld; a flow that ran without this
-      // gate producing a verdict is never_invoked; a flow with no run in the
-      // window is unexercised. Collapsing the last two buries the single idle
-      // gate in the flow that DID run under every gate of every flow that did not.
+      // proven-but-non-qualifying verdict alone is withheld; an unprovable
+      // verdict alone is indeterminate (it outranks never_invoked because
+      // "this gate did not fire" is exactly the claim it cannot support); a
+      // flow that ran without this gate producing a verdict is never_invoked;
+      // a flow with no run in the window is unexercised. Collapsing the last
+      // two buries the single idle gate in the flow that DID run under every
+      // gate of every flow that did not.
       if (entry.invocations > 0) entry.state = "invoked";
       else if (entry.withheld > 0) entry.state = "withheld";
+      else if (entry.indeterminate > 0) entry.state = "indeterminate";
       else if (entry.runs_observed > 0) entry.state = "never_invoked";
       else entry.state = "unexercised";
     }

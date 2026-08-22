@@ -24,7 +24,9 @@
  *  - a verdict quoted without the caveat that disqualified it (kontourai/evals#220).
  */
 const assert = require("node:assert/strict");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const { createGateScorecardProjection } = require("../src/console-foundation/gate-scorecard-projection");
@@ -34,25 +36,50 @@ const { createGateScorecardProjection } = require("../src/console-foundation/gat
 // any and `npm run typecheck` fails -- which the test RUNNER does not notice, so a green
 // run here is not evidence the file typechecks.
 import type {
+  FlowProjectionEvidence,
+  FlowProjectionGate,
   FlowProjectionLike,
   GateScorecardEntry,
   GateScorecardFinding,
 } from "../src/console-foundation/gate-scorecard-projection";
 
 const FIXTURE_DIR = path.join(__dirname, "fixtures", "gate-scorecard");
+const GENERATOR = path.join(__dirname, "fixtures", "generate-gate-scorecard-fixtures.mjs");
+const FIXTURE_NAMES = ["builder-demo.snapshot-a", "builder-demo.snapshot-b", "other-flow", "indeterminate-demo"];
 
 /** A REAL producer payload, captured — never hand-written (finding HIGH-7). */
 function fixture(name: string): FlowProjectionLike {
   return JSON.parse(fs.readFileSync(path.join(FIXTURE_DIR, `${name}.json`), "utf8"));
 }
 
-/** Hand-shaped projection in the REAL nested shape, for cases the producer cannot emit. */
+/** Hand-shaped projection in the REAL nested shape, for cases the producer cannot
+ *  emit. The consumed fields are REQUIRED on FlowProjectionLike (so the drift
+ *  alarm has teeth), hence the full-shape defaults here. */
 const proj = (over: Partial<FlowProjectionLike> = {}): FlowProjectionLike => ({
   run: {
     run_id: `run-${Math.random().toString(36).slice(2)}`,
     definition_id: "builder.build",
     updated_at: "2026-08-22T00:00:00.000Z",
   },
+  gates: [],
+  evidence: [],
+  transitions: [],
+  route_backs: [],
+  ...over,
+});
+
+const gate = (over: Partial<FlowProjectionGate> & Pick<FlowProjectionGate, "id" | "status">): FlowProjectionGate => ({
+  is_open: false,
+  expectations: [],
+  evidence: [],
+  evidence_refs: [],
+  matched_expectations: [],
+  ...over,
+});
+
+const evidenceItem = (over: Partial<FlowProjectionEvidence> & Pick<FlowProjectionEvidence, "id">): FlowProjectionEvidence => ({
+  status: null,
+  expectation_ids: [],
   ...over,
 });
 
@@ -79,32 +106,71 @@ test("REAL PRODUCER: run identity is read from the nested payload.run, not a fla
   assert.equal(card.entries.every((e: GateScorecardEntry) => e.flow_id === "builder.demo"), true);
 });
 
-test("REAL PRODUCER: a declared-but-idle wait gate and an UNREACHED computed-block gate are not invocations", () => {
+test("REAL PRODUCER: a declared-but-idle wait gate is not an invocation; an unprovable block is INDETERMINATE", () => {
   // The producer projects EVERY declared gate. In snapshot A the run is still on
   // step `plan`: `publish.window` projects "wait" (idle), and `verify.tests`
   // projects a lazily COMPUTED "block" (required evidence missing) although the
   // run never reached it (not open, no evidence). Counting either as invoked was
-  // the round-1 defect.
+  // the round-1 defect — and round 2 proved the mirror image: a REAL persisted
+  // block can project identically, so the unprovable block is neither a refusal
+  // NOR never_invoked. It is indeterminate, explicitly.
   const snapshot = fixture("builder-demo.snapshot-a");
-  const verifyGate = snapshot.gates!.find((g) => g.id === "verify.tests")!;
+  const verifyGate = snapshot.gates.find((g) => g.id === "verify.tests")!;
   assert.equal(verifyGate.status, "block");        // fixture precondition: the trap is real
   assert.equal(verifyGate.is_open, false);
   const card = fold([snapshot]);
 
   const idle = entryFor(card, "builder.demo", "publish.window");
-  assert.equal(idle.state, "never_invoked");
+  assert.equal(idle.state, "never_invoked");       // "wait" is no verdict at all
   assert.equal(idle.invocations, 0);
   assert.equal(idle.refusals, 0);
+  assert.equal(idle.indeterminate, 0);
 
-  const unreached = entryFor(card, "builder.demo", "verify.tests");
-  assert.equal(unreached.state, "never_invoked");
-  assert.equal(unreached.invocations, 0);
-  assert.equal(unreached.refusals, 0);
+  const unprovable = entryFor(card, "builder.demo", "verify.tests");
+  assert.equal(unprovable.state, "indeterminate");
+  assert.equal(unprovable.indeterminate, 1);
+  assert.equal(unprovable.invocations, 0);
+  assert.equal(unprovable.refusals, 0);
 
   // ... while the gate the run actually stood at IS invoked, exactly once.
   const reached = entryFor(card, "builder.demo", "plan.review");
   assert.equal(reached.state, "invoked");
   assert.equal(reached.invocations, 1);
+});
+
+test("REAL PRODUCER: a persisted block the run advanced past and a lazy computed block are byte-identical — BOTH are indeterminate", () => {
+  // Round-2 HIGH-1, the reviewer's scenario reproduced via the generator:
+  // `checks.static` carries a REAL evaluated `gate_outcome` "block" (the run
+  // then advanced past its step via a sibling gate), `future.check` is only the
+  // producer's lazy computation for an unreached step. The projection exposes
+  // no field that separates them, so the fold must refuse to guess in EITHER
+  // direction for both.
+  const snapshot = fixture("indeterminate-demo");
+  const real = snapshot.gates.find((g) => g.id === "checks.static")!;
+  const lazy = snapshot.gates.find((g) => g.id === "future.check")!;
+  const consumedFields = (g: FlowProjectionGate) => ({
+    status: g.status,
+    is_open: g.is_open,
+    evidence: g.evidence,
+    evidence_refs: g.evidence_refs,
+    matched_expectations: g.matched_expectations,
+    accepted_exception_id: g.accepted_exception_id ?? null,
+  });
+  // Fixture precondition: indistinguishable on every field the fold can consume.
+  assert.deepEqual(consumedFields(real), consumedFields(lazy));
+
+  const card = fold([snapshot]);
+  for (const gateId of ["checks.static", "future.check"]) {
+    const entry = entryFor(card, "indeterminate.demo", gateId);
+    assert.equal(entry.state, "indeterminate", `${gateId} must be indeterminate`);
+    assert.equal(entry.indeterminate, 1);
+    assert.equal(entry.invocations, 0, `${gateId}: never folded into invocations`);
+    assert.equal(entry.refusals, 0, `${gateId}: never folded into refusals`);
+  }
+  // The gate whose evaluation IS provable (accepted exception) stays invoked.
+  const proven = entryFor(card, "indeterminate.demo", "review.approve");
+  assert.equal(proven.state, "invoked");
+  assert.equal(proven.refusals, 0);
 });
 
 test("REAL PRODUCER: one route-back event reported under two sources counts exactly once", () => {
@@ -234,7 +300,7 @@ test("an OPEN wait gate — reached, but no verdict yet — is still not an invo
   // Without this fixture, "idle gates count as invoked" survives the suite as
   // long as it also checks reach.
   const card = fold([proj({
-    gates: [{ id: "waiting-gate", status: "wait", is_open: true }],
+    gates: [gate({ id: "waiting-gate", status: "wait", is_open: true })],
   })]);
   const entry = entryFor(card, "builder.build", "waiting-gate");
   assert.equal(entry.state, "never_invoked");
@@ -247,7 +313,7 @@ test("state withheld: a verdict this fold cannot qualify is 'does not qualify', 
   // missing data. The producer's own vocabulary is pass/block/wait/route-back, so
   // this is hand-shaped by necessity — a third-party flow's verdict.
   const card = fold([proj({
-    gates: [{ id: "g", status: "not-comparable", is_open: true }],
+    gates: [gate({ id: "g", status: "not-comparable", is_open: true })],
   })]);
   const entry = entryFor(card, "builder.build", "g");
   assert.equal(entry.state, "withheld");
@@ -256,14 +322,28 @@ test("state withheld: a verdict this fold cannot qualify is 'does not qualify', 
   assert.equal(entry.refusals, 0); // "we could not tell" is NOT "it refused"
 });
 
+test("an UNPROVEN unknown verdict is indeterminate, not withheld and not never_invoked", () => {
+  // withheld claims "this WAS evaluated and did not qualify" — a claim the
+  // projection cannot support without corroboration. Same discipline as the
+  // block case: no proof either way, its own number.
+  const card = fold([proj({
+    gates: [gate({ id: "g", status: "not-comparable" })], // is_open false, nothing attached
+  })]);
+  const entry = entryFor(card, "builder.build", "g");
+  assert.equal(entry.state, "indeterminate");
+  assert.equal(entry.indeterminate, 1);
+  assert.equal(entry.withheld, 0);
+  assert.equal(entry.invocations, 0);
+});
+
 // ── refusals and route-backs are independent, exact counts (HIGH-5/HIGH-6) ────
 
 test("a refused gate with a refused evidence item is ONE refusal, not two", () => {
   const card = fold([proj({
-    gates: [{
+    gates: [gate({
       id: "verify-gate", status: "refused", is_open: true,
-      evidence: [{ id: "e1", status: "refused", expectation_ids: [] }],
-    }],
+      evidence: [evidenceItem({ id: "e1", status: "refused" })],
+    })],
   })]);
   const entry = entryFor(card, "builder.build", "verify-gate");
   assert.equal(entry.refusals, 1);
@@ -273,7 +353,7 @@ test("a refused gate with a refused evidence item is ONE refusal, not two", () =
 
 test("Flow's real gate status 'block' is a refusal", () => {
   const card = fold([proj({
-    gates: [{ id: "g", status: "block", is_open: true }],
+    gates: [gate({ id: "g", status: "block", is_open: true })],
   })]);
   assert.equal(entryFor(card, "builder.build", "g").refusals, 1);
 });
@@ -283,7 +363,7 @@ test("a route-back does not add a refusal", () => {
   // — a panel folding one into the other reports an apparatus catching 81 things
   // while catching nothing). A passed gate with a historical route-back:
   const card = fold([proj({
-    gates: [{ id: "verify-gate", status: "pass" }],
+    gates: [gate({ id: "verify-gate", status: "pass" })],
     route_backs: [{ id: "transition.1", source: "transition", gate_id: "verify-gate" }],
   })]);
   const entry = entryFor(card, "builder.build", "verify-gate");
@@ -294,7 +374,7 @@ test("a route-back does not add a refusal", () => {
 
 test("a refusal does not add a route-back", () => {
   const card = fold([proj({
-    gates: [{ id: "g", status: "refused", is_open: true }],
+    gates: [gate({ id: "g", status: "refused", is_open: true })],
     route_backs: [],
   })]);
   const entry = entryFor(card, "builder.build", "g");
@@ -305,16 +385,21 @@ test("a refusal does not add a route-back", () => {
 test("legacy producer forms without the canonical array: route_back / route-back / status route-back, deduped by id", () => {
   // HIGH-5's fallback: when route_backs[] is absent, recognize every form the
   // producer family has used — and the same stable id emitted twice counts once.
-  const card = fold([proj({
+  // A legacy payload predates the canonical array entirely, so it is DELETED
+  // here (the strict FlowProjectionLike type requires it; the runtime tolerates
+  // its absence by design).
+  const legacy = proj({
     transitions: [
-      { id: "t1", type: "route_back", gate_id: "a" },
-      { id: "t2", type: "route-back", gate_id: "a" },
-      { id: "t2", type: "route-back", gate_id: "a" },     // duplicate re-emission
+      { id: "t1", type: "route_back", status: null, gate_id: "a" },
+      { id: "t2", type: "route-back", status: null, gate_id: "a" },
+      { id: "t2", type: "route-back", status: null, gate_id: "a" },     // duplicate re-emission
       { id: "t3", type: "step", status: "route-back", gate_id: "b" },
       { id: "t4", type: "step", status: "allowed", gate_id: "b" }, // not a route-back
     ],
-    gates: [{ id: "a", status: "pass" }, { id: "b", status: "pass" }],
-  })]);
+    gates: [gate({ id: "a", status: "pass" }), gate({ id: "b", status: "pass" })],
+  });
+  delete (legacy as { route_backs?: unknown }).route_backs;
+  const card = fold([legacy]);
   assert.equal(entryFor(card, "builder.build", "a").route_backs, 2);
   assert.equal(entryFor(card, "builder.build", "b").route_backs, 1);
 });
@@ -323,7 +408,7 @@ test("a route-back whose gate lost its outcome still proves the gate evaluated i
   // e.g. a cascade cleared the gate back to wait: the durable route-back event
   // keeps the invocation honest, without re-counting the historical refusal.
   const card = fold([proj({
-    gates: [{ id: "g", status: "wait" }],
+    gates: [gate({ id: "g", status: "wait" })],
     route_backs: [{ id: "transition.1", source: "transition", gate_id: "g" }],
   })]);
   const entry = entryFor(card, "builder.build", "g");
@@ -337,13 +422,13 @@ test("a route-back whose gate lost its outcome still proves the gate evaluated i
 
 test("apply() takes a defensive deep copy: mutating the caller's object later changes nothing", () => {
   const projection = createGateScorecardProjection();
-  const input = proj({ gates: [{ id: "g", status: "pass" }] });
+  const input = proj({ gates: [gate({ id: "g", status: "pass" })] });
   projection.apply(input);
   const before = projection.materialize();
 
   // The caller now vandalizes its own reference every way that would change the fold.
-  (input.gates as Array<Record<string, unknown>>).push({ id: "forged", status: "pass" });
-  (input.gates as Array<Record<string, unknown>>)[0].status = "refused";
+  (input.gates as unknown as Array<Record<string, unknown>>).push({ id: "forged", status: "pass" });
+  (input.gates as unknown as Array<Record<string, unknown>>)[0].status = "refused";
   (input.run as Record<string, unknown>).definition_id = "forged.flow";
 
   assert.deepEqual(projection.materialize(), before);
@@ -372,8 +457,8 @@ test("cost is absent and says so, never zero", () => {
 
 test("evidence naming an undeclared gate is reported, not dropped", () => {
   const card = fold([proj({
-    gates: [{ id: "verify-gate", status: "pass" }],
-    evidence: [{ id: "e1", gate_id: "ghost-gate", expectation_ids: [] }],
+    gates: [gate({ id: "verify-gate", status: "pass" })],
+    evidence: [evidenceItem({ id: "e1", gate_id: "ghost-gate" })],
   })]);
   const findings = card.unattributable.filter((f: GateScorecardFinding) => f.kind === "undeclared_gate");
   assert.equal(findings.length, 1);
@@ -386,8 +471,8 @@ test("folds gates from any flow, not an allow-list of one kit's", () => {
   // Builder's gate ids would be blind to every other flow — and would put kit
   // vocabulary in a kit-neutral surface.
   const card = fold([
-    proj({ run: { run_id: "r1", definition_id: "knowledge.ingest" }, gates: [{ id: "classify-gate", status: "pass" }] }),
-    proj({ run: { run_id: "r2", definition_id: "some.third-party" }, gates: [{ id: "whatever-gate", status: "pass" }] }),
+    proj({ run: { run_id: "r1", definition_id: "knowledge.ingest" }, gates: [gate({ id: "classify-gate", status: "pass" })] }),
+    proj({ run: { run_id: "r2", definition_id: "some.third-party" }, gates: [gate({ id: "whatever-gate", status: "pass" })] }),
   ]);
   assert.deepEqual(card.flows_observed, ["knowledge.ingest", "some.third-party"]);
   assert.deepEqual(card.entries.map((e: GateScorecardEntry) => e.gate_id), ["classify-gate", "whatever-gate"]);
@@ -402,7 +487,7 @@ test("an unparseable window is reported as no window, not silently applied", () 
 test("a run that does not say when it ran stays in the windowed denominator", () => {
   // Dropping it silently would shrink the denominator — the exact move the
   // unattributable list exists to prevent.
-  const undated = proj({ gates: [{ id: "g", status: "pass" }] });
+  const undated = proj({ gates: [gate({ id: "g", status: "pass" })] });
   (undated.run as { updated_at?: string | null }).updated_at = null;
   const card = fold([undated], { since: "2026-01-01T00:00:00.000Z" });
   assert.equal(card.runs_folded, 1);
@@ -413,6 +498,41 @@ test("malformed input is ignored rather than throwing", () => {
   const projection = createGateScorecardProjection();
   projection.apply(null as unknown as FlowProjectionLike);
   projection.apply({} as FlowProjectionLike);
-  projection.apply({ gates: [{ status: "pass" }] }); // gate with no id
+  projection.apply({ gates: [{ status: "pass" }] } as unknown as FlowProjectionLike); // gate with no id
   assert.equal(projection.materialize().entries.length, 0);
+});
+
+// ── producer drift (round-2 MEDIUM: the alarm must not be vacuous) ────────────
+
+/** Producer-written timestamps are the only non-deterministic bytes; everything
+ *  else must reproduce exactly. */
+function normalizeTimestamps(value: unknown): unknown {
+  if (typeof value === "string") {
+    return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value) ? "<timestamp>" : value;
+  }
+  if (Array.isArray(value)) return value.map(normalizeTimestamps);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, normalizeTimestamps(v)]));
+  }
+  return value;
+}
+
+test("DRIFT: regenerating the fixtures against the INSTALLED @kontourai/flow reproduces the checked-in files", () => {
+  // The compile-time alarm pins the TYPE; this pins the WIRE. A Flow upgrade
+  // that changes what projectFlowRun emits — field renames, new derivations,
+  // reordered arrays — must red this test instead of silently invalidating the
+  // fixture spine the whole suite stands on. Timestamps are normalized; nothing
+  // else is.
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-scorecard-regen-"));
+  try {
+    execFileSync(process.execPath, [GENERATOR, outDir], { stdio: "pipe" });
+    for (const name of FIXTURE_NAMES) {
+      const regenerated = normalizeTimestamps(JSON.parse(fs.readFileSync(path.join(outDir, `${name}.json`), "utf8")));
+      const checkedIn = normalizeTimestamps(JSON.parse(fs.readFileSync(path.join(FIXTURE_DIR, `${name}.json`), "utf8")));
+      assert.deepEqual(regenerated, checkedIn,
+        `${name}.json no longer matches the installed producer — regenerate the fixtures and re-review the fold against the new shape`);
+    }
+  } finally {
+    fs.rmSync(outDir, { recursive: true, force: true });
+  }
 });

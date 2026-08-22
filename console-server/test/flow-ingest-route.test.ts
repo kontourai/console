@@ -268,13 +268,18 @@ test("GET /api/gates/scorecard serves the fold of everything accepted at POST /i
   }
 });
 
-test("GET /api/gates/scorecard rejects an unparseable since with 400 and accepts a valid one", async () => {
+test("GET /api/gates/scorecard rejects a non-ISO since with 400 and accepts a valid one", async () => {
   const app = createConsoleHubServer({ rootDir: tempRoot(), port: 0, ingestToken: INGEST_TOKEN });
   await listen(app);
   try {
     const baseUrl = serverUrl(app);
-    const bad = await requestJson("GET", `${baseUrl}/api/gates/scorecard?since=yesterday-ish`);
-    assert.equal(bad.statusCode, 400);
+    // The contract documents 400 for non-ISO input. Date.parse alone would
+    // happily accept most of these (round-2 LOW), so the strict-shape check is
+    // what each of them exercises.
+    for (const since of ["yesterday-ish", "0", "2026", "08/22/2026", "2026-08-22", "2026-08-22T00:00", "2026-08-22T00:00:00"]) {
+      const bad = await requestJson("GET", `${baseUrl}/api/gates/scorecard?since=${encodeURIComponent(since)}`);
+      assert.equal(bad.statusCode, 400, `since=${since} must be rejected`);
+    }
 
     await requestJson("POST", `${baseUrl}/ingest/flow`, {
       contractVersion: "1",
