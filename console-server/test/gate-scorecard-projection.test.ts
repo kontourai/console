@@ -227,6 +227,21 @@ test("state unexercised: a flow with no run in the window, its universe derived 
   assert.equal(card.unattributable.filter((f: GateScorecardFinding) => f.kind === "expectation_collision").length, 2);
 });
 
+test("an OPEN wait gate — reached, but no verdict yet — is still not an invocation", () => {
+  // The discriminating case fault injection 1c exposed: reach-corroboration
+  // (is_open) is true, but "wait" is not a verdict. A run standing at a
+  // no-expectations gate that is waiting for evidence has not invoked it.
+  // Without this fixture, "idle gates count as invoked" survives the suite as
+  // long as it also checks reach.
+  const card = fold([proj({
+    gates: [{ id: "waiting-gate", status: "wait", is_open: true }],
+  })]);
+  const entry = entryFor(card, "builder.build", "waiting-gate");
+  assert.equal(entry.state, "never_invoked");
+  assert.equal(entry.invocations, 0);
+  assert.equal(entry.withheld, 0); // no verdict at all is NOT a withheld verdict
+});
+
 test("state withheld: a verdict this fold cannot qualify is 'does not qualify', not a guess", () => {
   // kontourai/evals#220: an uncomparable result must not land beside genuinely
   // missing data. The producer's own vocabulary is pass/block/wait/route-back, so
