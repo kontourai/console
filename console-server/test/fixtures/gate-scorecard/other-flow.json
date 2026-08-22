@@ -1,0 +1,142 @@
+{
+  "continuation": "resume from intake, not chat memory",
+  "current_step": "intake",
+  "definition": {
+    "description": null,
+    "id": "other.flow",
+    "raw": {
+      "gates": {
+        "intake.review": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "claimType": "plan.approved"
+              },
+              "description": "Plan approved by an owner-authorized reviewer.",
+              "id": "plan.approved",
+              "kind": "trust.bundle",
+              "required": true
+            }
+          ],
+          "step": "intake"
+        }
+      },
+      "id": "other.flow",
+      "steps": [
+        {
+          "id": "intake",
+          "label": "Intake",
+          "next": null
+        }
+      ],
+      "version": "1"
+    },
+    "title": null,
+    "version": "1"
+  },
+  "evidence": [],
+  "exceptions": [],
+  "expectations": [
+    {
+      "description": "Plan approved by an owner-authorized reviewer.",
+      "gate_id": "intake.review",
+      "id": "plan.approved",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "claimType": "plan.approved"
+        },
+        "description": "Plan approved by an owner-authorized reviewer.",
+        "id": "plan.approved",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    }
+  ],
+  "external_links": [],
+  "gates": [
+    {
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [
+        {
+          "description": "Plan approved by an owner-authorized reviewer.",
+          "id": "plan.approved",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "claimType": "plan.approved"
+            },
+            "description": "Plan approved by an owner-authorized reviewer.",
+            "id": "plan.approved",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "intake.review",
+      "is_open": true,
+      "matched_expectations": [],
+      "missing": [
+        "plan.approved"
+      ],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "claimType": "plan.approved"
+            },
+            "description": "Plan approved by an owner-authorized reviewer.",
+            "id": "plan.approved",
+            "kind": "trust.bundle",
+            "required": true
+          }
+        ],
+        "id": "intake.review",
+        "step": "intake"
+      },
+      "status": "block",
+      "step_id": "intake",
+      "summary": "Plan approved by an owner-authorized reviewer. missing"
+    }
+  ],
+  "next_action": "attach evidence for intake.review",
+  "open_gates": [
+    "intake.review"
+  ],
+  "report": null,
+  "route_backs": [],
+  "run": {
+    "current_step": "intake",
+    "definition_id": "other.flow",
+    "definition_version": "1",
+    "params": {
+      "subject": "other-subject"
+    },
+    "run_id": "run-other-flow-1",
+    "status": "active",
+    "subject": "other-subject",
+    "updated_at": "2026-08-22T23:10:54.728Z"
+  },
+  "schema_version": "0.1",
+  "steps": [
+    {
+      "gates": [
+        "intake.review"
+      ],
+      "id": "intake",
+      "index": 0,
+      "label": "Intake",
+      "next": null,
+      "raw": {
+        "id": "intake",
+        "label": "Intake",
+        "next": null
+      }
+    }
+  ],
+  "transitions": []
+}

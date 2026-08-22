@@ -109,6 +109,10 @@ export const API_ROUTES: ApiRoute[] = [
   { method: "GET", path: "/api/economics/delegations", auth: "gate", scope: "economics:read", knownRoute: true, summary: "Delegation efficiency per (role, model): outcome mix + acceptance rate (excluding `unavailable`), outcome coverage, and MODEL-GRANULARITY PROXY cost (no runtime isolates per-sub-agent tokens) (flow-agents #415).", tags: ["economics"],
     responses: { "200": { description: "EconomicsDelegationRollup read-model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
 
+  { method: "GET", path: "/api/gates/scorecard", auth: "gate", scope: "records:read", knownRoute: true, summary: "Per-gate outcome scorecard folded from ingested Flow projections: invoked / never_invoked / unexercised / withheld, refusal and route-back counts, and unattributable evidence (console #277).", tags: ["records"],
+    query: [{ name: "since", type: "string", description: "ISO 8601 window start; older runs still contribute declared gates (shown as unexercised)." }],
+    responses: { "200": { description: "GateScorecard read-model." }, "400": ERR("Invalid query."), "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
+
   { method: "POST", path: "/mcp", auth: "gate", scope: "telemetry:read", knownRoute: true, summary: "MCP server (JSON-RPC 2.0) over the telemetry/cost analytics.", tags: ["mcp"],
     request: { description: "JSON-RPC 2.0 request: initialize | ping | tools/list | tools/call." },
     responses: { "200": { description: "JSON-RPC 2.0 response (result or error)." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } }

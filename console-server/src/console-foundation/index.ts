@@ -124,6 +124,20 @@ export { createEconomicsStore } from "./economics-store";
 export type { EconomicsStore } from "./economics-store";
 export { createEconomicsProjection } from "./economics-projection";
 export type { EconomicsProjection } from "./economics-projection";
+export { createGateScorecardProjection } from "./gate-scorecard-projection";
+export type {
+  FlowProjectionEvidence,
+  FlowProjectionGate,
+  FlowProjectionLike,
+  FlowProjectionRouteBack,
+  FlowProjectionTransition,
+  GateOutcomeState,
+  GateScorecard,
+  GateScorecardEntry,
+  GateScorecardFinding,
+  GateScorecardProjection,
+  GateScorecardWindow
+} from "./gate-scorecard-projection";
 export { validateEconomicsRecordBody } from "./console-hub-server";
 export type {
   ConsoleEconomicsRecord,
@@ -890,6 +904,7 @@ const migrations = require("./migrations");
 const telemetry = require("./telemetry");
 const economicsStore = require("./economics-store");
 const economicsProjection = require("./economics-projection");
+const gateScorecardProjection = require("./gate-scorecard-projection");
 
 module.exports = {
   inspectFixtures,
@@ -919,6 +934,7 @@ module.exports = {
   MAX_LIVENESS_TTL_SECONDS,
   createEconomicsStore: economicsStore.createEconomicsStore,
   createEconomicsProjection: economicsProjection.createEconomicsProjection,
+  createGateScorecardProjection: gateScorecardProjection.createGateScorecardProjection,
   applyConsoleMigrations: migrations.applyConsoleMigrations,
   loadConsoleMigrations: migrations.loadConsoleMigrations,
   assertConsoleRuntimeConfig: config.assertConsoleRuntimeConfig,
