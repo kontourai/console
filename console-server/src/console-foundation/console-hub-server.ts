@@ -51,8 +51,7 @@ const { LocalConsoleHub } = require("./console-hub");
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/api/gates/scorecard", "/healthz", "/readyz", "/version", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
-export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/api/kits/contributions", "/api/kits/records", "/api/kits/workspace", "/healthz", "/readyz", "/version", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
+export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/api/gates/scorecard", "/api/kits/contributions", "/api/kits/records", "/api/kits/workspace", "/healthz", "/readyz", "/version", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
 
 const KIT_RUN_PREFIX = "/api/kits/runs/";
 
