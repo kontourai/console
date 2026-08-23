@@ -36,6 +36,17 @@ export function resolveConsoleVersion(moduleDir: string = __dirname): string {
       }
       const parent = path.dirname(dir);
       if (parent === dir) break;
+      // Stop at the checkout that owns this module. A linked worktree lives INSIDE the
+      // repository that hosts it (console-worktrees/<lane>/), so an unbounded walk keeps
+      // climbing past the lane's own root into the host checkout and reports ITS version —
+      // observed live: a lane at 2.8.0 reporting the host's 2.6.0 and failing the no-drift
+      // test on every branch cut there. The repository root is the boundary of "this
+      // package"; nothing above it can be the version of the code that is running.
+      try {
+        if (fs.existsSync(path.join(dir, ".git"))) break;
+      } catch {
+        // an unreadable .git probe must not stop the walk from finding a legitimate root
+      }
       dir = parent;
     }
     return found ?? UNKNOWN_VERSION;
