@@ -5,7 +5,7 @@ Console is the suite operating plane over the primitives — it renders and corr
 ## Source Of Truth
 
 - Product framing and boundaries: `README.md`, [docs/product-boundaries.md](docs/product-boundaries.md), `CONTEXT.md`.
-- Five workspaces: `console-core` (shapes), `cli` (`@kontourai/cli` suite router), `telemetry` (`@kontourai/telemetry` event/pricing contract), `console-server` (hub, sinks, bridge, bins), `console-ui` (React app, not published).
+- Four workspaces: `console-core` (shapes), `telemetry` (`@kontourai/telemetry` event/pricing contract), `console-server` (hub, sinks, bridge, bins), `console-ui` (React app, not published). The offline-first `@kontourai/cli` suite router used to be a fifth workspace here; it now lives in its own [`kontourai/cli`](https://github.com/kontourai/cli) repository.
 - Event/projection contracts: [docs/specs/](docs/specs/); cross-product example streams: `docs/examples/event-streams/`.
 - `dist/` outputs are generated; the golden demo lives at [docs/examples/golden-demo.md](docs/examples/golden-demo.md).
 

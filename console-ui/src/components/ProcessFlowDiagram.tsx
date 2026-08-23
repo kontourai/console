@@ -1,3 +1,4 @@
+import React from "react";
 import type { FlowEdge, FlowNode } from "@kontourai/console-core";
 
 const NODE_WIDTH = 184;
@@ -7,7 +8,9 @@ const ROW_HEIGHT = 112;
 const PADDING_X = 28;
 const PADDING_Y = 30;
 
-const LANE_LABELS = ["stage", "process", "step", "gates", "claims", "actions", "timeline"];
+// console#274: the evidence lane sits between the claims it supports and the
+// actions/timeline forensics (mirrors buildProcessFlow's lane numbering).
+const LANE_LABELS = ["stage", "process", "step", "gates", "claims", "evidence", "actions", "timeline"];
 
 function xFor(lane: number) {
   return PADDING_X + lane * LANE_WIDTH;
@@ -43,10 +46,22 @@ function FlowEdgePath({ edge, nodesById }: { edge: FlowEdge; nodesById: Map<stri
 
 function FlowNodeCard({ node }: { node: FlowNode }) {
   const statusClass = node.status.replace(/[^a-z0-9-]/g, "-");
+  // console#274: border encodes provenance kind, keyed DIRECTLY on the raw
+  // Surface `evidenceType`/`method` enum value (as a data attribute, so CSS
+  // keys on the producer's vocabulary verbatim). Display text stays the raw
+  // enum too — kontourai/surface#224 is building the shared display-name
+  // table; renderers must not mint display synonyms here in the meantime.
+  const classes = [
+    "flow-node",
+    `flow-node-${node.kind}`,
+    `tone-${statusClass}`,
+    node.active ? "flow-node-active" : "",
+    node.dead ? "flow-node-dead" : "",
+  ].filter(Boolean).join(" ");
 
   return (
     <foreignObject x={xFor(node.lane)} y={yFor(node.order)} width={NODE_WIDTH} height={NODE_HEIGHT}>
-      <article className={`flow-node flow-node-${node.kind} tone-${statusClass} ${node.active ? "flow-node-active" : ""}`}>
+      <article className={classes} data-provenance={node.provenanceKind}>
         <div className="flow-node-top">
           <span>{node.kind}</span>
           <b>{node.status}</b>

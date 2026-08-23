@@ -40,6 +40,11 @@ import { buildAuthorizeRedirect, exchangeCodeForToken, signLoginState, verifyLog
 import { handleMcpRequest } from "./mcp-server";
 import { buildOpenApiDocument } from "./openapi";
 import { resolveBuildInfo } from "./version";
+import {
+  KitObservabilityHost,
+  loadKitObservabilityContractAdapter,
+  type KitObservabilityContractAdapter,
+} from "./kit-observability-host";
 
 const { LocalConsoleHub } = require("./console-hub");
 
@@ -47,6 +52,9 @@ export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
 export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/api/gates/scorecard", "/healthz", "/readyz", "/version", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
+export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/api/kits/contributions", "/api/kits/records", "/api/kits/workspace", "/healthz", "/readyz", "/version", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
+
+const KIT_RUN_PREFIX = "/api/kits/runs/";
 
 /** Matches `/ingest/flow/<runId>` (the read-only projection-fetch path). */
 const INGEST_FLOW_RUN_PREFIX = "/ingest/flow/";
@@ -129,6 +137,21 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
   // local adapter); hosted mode is Postgres-backed (console #155) so the
   // Economics read-models survive redeploys and re-relays dedup on run_id.
   const economics = new Map<string, TenantEconomics>();
+  // First-slice Kit contribution state is deliberately in-memory and tenant
+  // partitioned. The read model reports that durability limitation explicitly.
+  const kitHosts = new Map<string, KitObservabilityHost>();
+  let kitAdapterPromise: Promise<KitObservabilityContractAdapter> | undefined;
+  const kitAdapter = () => {
+    const pending = kitAdapterPromise ??= loadKitObservabilityContractAdapter();
+    return pending.catch(() => {
+      kitAdapterPromise = undefined;
+      const error = new Error("Kit contribution host dependency is unavailable") as RequestError;
+      error.statusCode = 503;
+      error.code = "KIT_HOST_UNAVAILABLE";
+      error.safeMessage = "Kit contribution hosting is not configured on this Console instance";
+      throw error;
+    });
+  };
   // Flow ingest in-memory dedup + read store, scoped to this server instance.
   // `ingestSeen` maps idempotencyKey -> the recordId returned the first time, so
   // a re-POST is a no-op that returns the same recordId (no second append).
@@ -172,6 +195,8 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
       hostedHubs,
       hostedEvents,
       economics,
+      kitHosts,
+      kitAdapter,
       telemetry,
       ingestState,
       options,
@@ -238,6 +263,8 @@ async function routeRequest(input: {
   hostedHubs: Map<string, Hub>;
   hostedEvents: Map<string, SseBroker>;
   economics: Map<string, TenantEconomics>;
+  kitHosts: Map<string, KitObservabilityHost>;
+  kitAdapter: () => Promise<KitObservabilityContractAdapter>;
   telemetry: TelemetryStore;
   ingestState: FlowIngestServerState;
   options: ConsoleHubServerOptions;
@@ -248,7 +275,7 @@ async function routeRequest(input: {
   request: IncomingMessage;
   response: ServerResponse;
 }): Promise<void> {
-  const { telemetry, ingestState, economics, options, runtimeConfig, coreSqlClient, revocationStore, uiDistDir, request, response } = input;
+  const { telemetry, ingestState, economics, kitHosts, kitAdapter, options, runtimeConfig, coreSqlClient, revocationStore, uiDistDir, request, response } = input;
   const url = new URL(request.url || "/", `http://${request.headers.host || DEFAULT_HOST}`);
   if (!applyCorsPolicy(request, response, runtimeConfig)) return;
 
@@ -445,6 +472,46 @@ async function routeRequest(input: {
 
     if (request.method === "POST" && url.pathname === "/records") {
       await handleRecords(hub, events, request, response, context, () => economicsForTenant(economics, context.tenantId, economicsSqlClient));
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/kits/contributions") {
+      const body = await readJsonBody(request);
+      assertKitRequestTenant(body, context.tenantId);
+      const host = kitHostForTenant(kitHosts, context.tenantId, await kitAdapter());
+      const result = host.register(body as any);
+      writeJson(response, "reason" in result ? 202 : 201, result);
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/kits/records") {
+      const body = await readJsonBody(request);
+      assertKitRequestTenant(body, context.tenantId);
+      const host = kitHostForTenant(kitHosts, context.tenantId, await kitAdapter());
+      const result = host.ingest(body as any);
+      writeJson(response, 202, result);
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname === "/api/kits/workspace") {
+      const host = kitHostForTenant(kitHosts, context.tenantId, await kitAdapter());
+      writeJson(response, 200, host.readWorkspace());
+      return;
+    }
+
+    if (request.method === "GET" && url.pathname.startsWith(KIT_RUN_PREFIX)) {
+      const runId = decodePathSegment(url.pathname.slice(KIT_RUN_PREFIX.length));
+      if (!runId) {
+        writeApiError(response, 400, "INVALID_RUN_ID", "run id is invalid");
+        return;
+      }
+      const host = kitHostForTenant(kitHosts, context.tenantId, await kitAdapter());
+      const runs = host.readRun(runId);
+      if (runs.length === 0) {
+        writeApiError(response, 404, "NOT_FOUND", "Kit run was not found");
+        return;
+      }
+      writeJson(response, 200, { tenant_id: context.tenantId, run_id: runId, records: runs });
       return;
     }
 
@@ -1104,6 +1171,16 @@ function safeDecodePath(pathname: string): string | null {
   }
 }
 
+function decodePathSegment(value: string): string | null {
+  try {
+    const decoded = decodeURIComponent(value);
+    if (!decoded || decoded === "." || decoded === ".." || decoded.includes("/") || decoded.includes("\\") || /[\u0000-\u001f\u007f]/.test(decoded)) return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve whether to serve the UI.
  * Disabled when CONSOLE_SERVE_UI=0 (env) or options.serveUi === false.
@@ -1731,6 +1808,8 @@ export function requiredScopeForRoute(method: string, pathname: string): string 
     return m === "POST" ? "telemetry:write" : "telemetry:read";
   }
   if (pathname === "/records") return "records:write"; // only POST is handled at /records
+  if (pathname === "/api/kits/contributions" || pathname === "/api/kits/records") return "records:write";
+  if (pathname === "/api/kits/workspace" || pathname.startsWith(KIT_RUN_PREFIX)) return "records:read";
   if (pathname === "/api/economics" || pathname === "/api/economics/value" || pathname === "/api/economics/delegations") return "economics:read"; // only GET is handled
   if (pathname === "/api/gates/scorecard") return "records:read"; // a read over folded ingest records; only GET is handled
   if (pathname === "/mcp") return "telemetry:read"; // MCP tools expose telemetry/cost analytics
@@ -1738,6 +1817,30 @@ export function requiredScopeForRoute(method: string, pathname: string): string 
     return "records:read";
   }
   return undefined;
+}
+
+function kitHostForTenant(
+  hosts: Map<string, KitObservabilityHost>,
+  tenantId: string,
+  adapter: KitObservabilityContractAdapter,
+): KitObservabilityHost {
+  let host = hosts.get(tenantId);
+  if (!host) {
+    host = new KitObservabilityHost(tenantId, adapter);
+    hosts.set(tenantId, host);
+  }
+  return host;
+}
+
+function assertKitRequestTenant(body: unknown, tenantId: string): void {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return;
+  const advisory = (body as { tenant_id?: unknown }).tenant_id;
+  if (advisory === undefined || advisory === tenantId) return;
+  const error = new Error("payload tenant does not match authenticated tenant") as RequestError;
+  error.statusCode = 403;
+  error.code = "TENANT_MISMATCH";
+  error.safeMessage = "payload tenant does not match authenticated tenant";
+  throw error;
 }
 
 /**

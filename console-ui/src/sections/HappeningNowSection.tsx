@@ -1,4 +1,7 @@
-import { useMemo } from "react";
+// React default import: this section now renders inside SSR component tests
+// (ownerQueue.test.ts renders the whole OverviewSection via tsx's classic JSX
+// transform) — same convention as WorkerFleetSection/BoardSection.
+import React, { useMemo } from "react";
 import type { OperatingState, TimelineItem } from "@kontourai/console-core";
 import { toneForValue } from "@kontourai/ui/react";
 import { deriveProcessList } from "./environment/derive";

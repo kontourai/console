@@ -40,8 +40,16 @@
     "@kontourai/console-core": "0.3.0",
     "@kontourai/flow": "^1.4.0",
     "@kontourai/surface": "^1.0.1",
-    "jose": "^6.2.3",
-    "@kontourai/telemetry": "^0.1.0"
+    "@kontourai/telemetry": "^0.1.0",
+    "jose": "^6.2.3"
+  },
+  "peerDependencies": {
+    "@kontourai/flow-agents": ">=5.5.0"
+  },
+  "peerDependenciesMeta": {
+    "@kontourai/flow-agents": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public"

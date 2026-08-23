@@ -1,6 +1,5 @@
 {
   ".": "2.8.0",
-  "cli": "0.5.0",
   "console-core": "0.3.0",
   "console-server": "1.0.0",
   "console-ui": "0.2.0"

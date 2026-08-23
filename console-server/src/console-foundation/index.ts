@@ -95,6 +95,27 @@ export {
   resolveTelemetryRetentionDays,
   resolveTelemetryStorageAdapter
 } from "./config";
+
+export {
+  KitObservabilityHost,
+  loadKitObservabilityContractAdapter,
+  renderKitStandardViewText,
+} from "./kit-observability-host";
+export type {
+  KitAggregateRead,
+  KitContributionLifecycle,
+  KitContributionRead,
+  KitContributionRegistration,
+  KitEvidenceMode,
+  KitObservabilityContractAdapter,
+  KitQuarantineEntry,
+  KitQuarantineReason,
+  KitRecordIngest,
+  KitRecordProvenance,
+  KitRunRead,
+  KitSourceRef,
+  KitWorkspaceRead,
+} from "./kit-observability-host";
 export type {
   ConsoleConfigValidationIssue,
   ConsoleRuntimeConfig
@@ -905,6 +926,7 @@ const telemetry = require("./telemetry");
 const economicsStore = require("./economics-store");
 const economicsProjection = require("./economics-projection");
 const gateScorecardProjection = require("./gate-scorecard-projection");
+const kitObservabilityHost = require("./kit-observability-host");
 
 module.exports = {
   inspectFixtures,
@@ -935,6 +957,9 @@ module.exports = {
   createEconomicsStore: economicsStore.createEconomicsStore,
   createEconomicsProjection: economicsProjection.createEconomicsProjection,
   createGateScorecardProjection: gateScorecardProjection.createGateScorecardProjection,
+  KitObservabilityHost: kitObservabilityHost.KitObservabilityHost,
+  loadKitObservabilityContractAdapter: kitObservabilityHost.loadKitObservabilityContractAdapter,
+  renderKitStandardViewText: kitObservabilityHost.renderKitStandardViewText,
   applyConsoleMigrations: migrations.applyConsoleMigrations,
   loadConsoleMigrations: migrations.loadConsoleMigrations,
   assertConsoleRuntimeConfig: config.assertConsoleRuntimeConfig,

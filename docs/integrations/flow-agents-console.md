@@ -8,6 +8,56 @@ Definition gates, route-back behavior, typed `expects`, provider policy, skill
 execution, and workflow-learning source records. Console displays, correlates,
 and routes through those records.
 
+## Kit observability contribution host
+
+Console's first Kit-host slice consumes the public Flow Agents package surfaces
+`@kontourai/flow-agents/kit-observability-contract` and
+`@kontourai/flow-agents/kit-observability-conformance`. It does not inspect Kit
+private files or branch on Builder, Knowledge, or third-party Kit identifiers.
+
+The authenticated routes are:
+
+- `POST /api/kits/contributions` to register or quarantine a descriptor;
+- `POST /api/kits/records` to validate a descriptor-bound record and its
+  tenant/source provenance;
+- `GET /api/kits/workspace` for generic standard-view registry, aggregate, run,
+  and quarantine data;
+- `GET /api/kits/runs/{runId}` to trace an aggregate to exact producer-owned
+  source references.
+
+Writes require `records:write`; reads require `records:read`. The authenticated
+tenant is authoritative. A payload tenant and every source reference tenant must
+match it. Invalid bindings, unsupported versions, cross-tenant references,
+control bytes, redaction canaries, and conflicting replays are quarantined
+without stopping valid records. An identical normalized replay returns the
+original accepted record; a replay that reuses its identity with different
+content cannot replace accepted history and retains contribution, run, and
+record identity in the quarantine entry.
+
+Observational real-run evidence and controlled evaluation evidence remain
+separate aggregate series. Console does not compute a causal-lift field or infer
+acceptance, defects, gates, claims, or learning decisions. Producer data is
+untrusted text in the standard-view model; the supplied text renderer escapes
+markup and never executes the optional MCP Apps resource.
+
+This draft uses the exact published Flow Agents `5.6.0` package, which includes
+the public Kit observability contract and conformance subpaths. Console has no
+postinstall build step or private-source dependency for this integration.
+
+Production installs that omit the optional Flow Agents peer fail Kit routes
+closed with `503 KIT_HOST_UNAVAILABLE`; the rest of Console remains available.
+
+The first slice explicitly reports these limitations in every workspace read:
+
+- `in_memory_not_durable`: hosted persistence/replay is not yet verified;
+- `causal_lift_not_computed`: modes cannot be collapsed into a lift claim;
+- `mcp_apps_not_executed`: Console uses the declarative standard-view fallback.
+
+The JSON standard-view contract is verified. Responsive, keyboard, and
+screen-reader UI presentation remains `NOT_VERIFIED` until a Console UI surface
+consumes it. Cross-host parity remains `NOT_VERIFIED` until Station consumes the
+same public conformance vectors.
+
 ## Local Emission
 
 For local development, Flow Agents should keep using local file emission:

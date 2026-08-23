@@ -1,7 +1,0 @@
-{
-  "name": "@kontourai/flow",
-  "version": "3.1.4",
-  "type": "module",
-  "bin": { "flow": "bin/record.mjs" },
-  "files": ["bin"]
-}

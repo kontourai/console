@@ -30,12 +30,29 @@ test("primary npm publish path fails closed and confirms the released version", 
   assert.doesNotMatch(primary, /npm bootstrap required/);
 });
 
-test("Core is a first-class release and CLI publication waits for its exact public dependency", async () => {
+test("Core is a first-class release and Console Server publication waits for its exact public dependency", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   assert.match(workflow, /target_tag:/);
   assert.match(workflow, /resolve-release-target\.sh/);
-  assert.match(workflow, /Verify CLI Core Dependency Is Public/);
-  assert.match(workflow, /node --import tsx scripts\/verify-cli-core-release\.ts/);
+  assert.match(workflow, /Verify Console Server Core Dependency Is Public/);
+  // console#264 (Route A): the gate must execute main's (fixable) copy of the
+  // policy script, never the immutable tag's own frozen copy, so a policy fix
+  // lands retroactively for already-tagged releases.
+  assert.match(workflow, /node --import tsx \.\.\/console-main\/scripts\/verify-cli-core-release\.ts/);
+  assert.doesNotMatch(workflow, /run: node --import tsx scripts\/verify-cli-core-release\.ts/);
+});
+
+test("publish job sources release-policy scripts from a separate current-main checkout while manifests stay tag-authoritative", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const publishJob = workflow.slice(workflow.indexOf("\n  publish:\n"));
+
+  assert.match(publishJob, /name: Checkout Main Release-Policy Scripts[\s\S]*?ref: main/);
+  assert.match(publishJob, /name: Checkout Main Release-Policy Scripts[\s\S]*?path: console-main/);
+  // The main checkout must never become the working directory for a step that
+  // reads package manifests — every job step keeps reading from the tag
+  // checkout (`console`).
+  assert.doesNotMatch(publishJob, /working-directory: console-main/);
+  assert.match(publishJob, /working-directory: console\n/);
 });
 
 test("tag ancestry is checked against an authoritative main ref with complete history", async () => {
@@ -146,13 +163,14 @@ test("target-tag authority is used for package-specific release gates", async ()
   const workflow = await readFile(workflowPath, "utf8");
 
   assert.match(workflow, /TARGET_TAG: \$\{\{ inputs\.target_tag \}\}/);
-  // The anti-drift "Verify … Core Dependency Is Public" gate must fire for BOTH
-  // exact-core-pinned packages — cli AND console-server — and must pass the
-  // resolved manifest so it checks the RIGHT package's core pin. Pinning the
-  // full condition (not just a `cli-v` substring) means dropping the
-  // console-server branch or the manifest env — which would let a console-server
+  // The anti-drift "Verify Console Server Core Dependency Is Public" gate
+  // must fire for console-server (the only remaining exact-core-pinned
+  // package in this repo — @kontourai/cli used to share this gate before it
+  // was extracted to its own kontourai/cli repository) and must pass the
+  // resolved manifest so it checks the RIGHT package's core pin. Dropping the
+  // console-server branch or the manifest env would let a console-server
   // release publish against an unverified core pin (#70) — fails this test.
-  assert.match(workflow, /if: startsWith\(inputs\.target_tag, 'cli-v'\) \|\| startsWith\(inputs\.target_tag, 'console-server-v'\)/);
+  assert.match(workflow, /if: startsWith\(inputs\.target_tag, 'console-server-v'\)/);
   assert.match(workflow, /PACKAGE_MANIFEST: \$\{\{ needs\.gate\.outputs\.manifest \}\}/);
   assert.match(workflow, /if: startsWith\(inputs\.target_tag, 'v'\)/);
   assert.doesNotMatch(workflow, /startsWith\(github\.ref/);
