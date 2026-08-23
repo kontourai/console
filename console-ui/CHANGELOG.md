@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.3.0](https://github.com/kontourai/console/compare/console-ui-v0.2.0...console-ui-v0.3.0) (2026-08-23)
+
+
+### Features
+
+* **console-ui:** /run/:id drill-in — stage position, gate history, run timeline ([#253](https://github.com/kontourai/console/issues/253)) ([#259](https://github.com/kontourai/console/issues/259)) ([e6f9095](https://github.com/kontourai/console/commit/e6f9095f9a10e4648bde6afaee50626e77be6f4d))
+* **console-ui:** deep-linkable routes + live SSE updates ([#252](https://github.com/kontourai/console/issues/252)) ([#258](https://github.com/kontourai/console/issues/258)) ([3054034](https://github.com/kontourai/console/commit/3054034ae96b5760c9d4a68237d58b1b2802ed02))
+* **console-ui:** fleet view — stage, last activity, stall health, archive ([#251](https://github.com/kontourai/console/issues/251)) ([#257](https://github.com/kontourai/console/issues/257)) ([77024f5](https://github.com/kontourai/console/commit/77024f515961f79e3aa5f112d2bc8da3fd0684ab))
+* **console-ui:** gate trust panel — mount &lt;surface-trust-panel&gt; live ([#255](https://github.com/kontourai/console/issues/255)) ([#262](https://github.com/kontourai/console/issues/262)) ([293bfb4](https://github.com/kontourai/console/commit/293bfb4e32a6508c738ba33ada734fb9819b2bbf))
+* **console-ui:** provider-grounded source-of-truth link-outs ([#256](https://github.com/kontourai/console/issues/256)) ([#261](https://github.com/kontourai/console/issues/261)) ([45f0b69](https://github.com/kontourai/console/commit/45f0b69e33d1482ecca7ea398e83eb0b0a48bec5))
+* **console:** owner-verb queue as default + evidence graph with interpretation-first panels ([#273](https://github.com/kontourai/console/issues/273), [#274](https://github.com/kontourai/console/issues/274)) ([#276](https://github.com/kontourai/console/issues/276)) ([d92093d](https://github.com/kontourai/console/commit/d92093d07ea4067e2c04c9d4633605113d2bf5af))
+* **overview:** owner-verb queue (Decide / Accept / Risks standing) as the default surface ([#273](https://github.com/kontourai/console/issues/273)) ([75446bd](https://github.com/kontourai/console/commit/75446bdd282c628830003d7f60a68141aa73e45d))
+* **process-flow:** evidence graph from trust projections — interpretation first, raw collapsed, dead nodes first-class ([#274](https://github.com/kontourai/console/issues/274)) ([414ce41](https://github.com/kontourai/console/commit/414ce41946921b7fcd9e94e9f2133772ed517cb3))
+
+
+### Bug Fixes
+
+* **process-flow,queue:** review round 1 — state-derived absence, report-scoped joins, truncation honesty ([#273](https://github.com/kontourai/console/issues/273) [#274](https://github.com/kontourai/console/issues/274)) ([9f86176](https://github.com/kontourai/console/commit/9f86176a4a2c7cd6a37bbf19ab4ec3fc5a6b8cda))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @kontourai/console-core bumped from 0.3.0 to 0.4.0
+
 ## [0.2.0](https://github.com/kontourai/console/compare/console-ui-v0.1.0...console-ui-v0.2.0) (2026-07-23)
 
 
