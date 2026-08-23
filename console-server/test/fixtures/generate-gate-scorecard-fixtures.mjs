@@ -17,15 +17,14 @@
 //
 // Deterministic apart from producer-written timestamps; regenerate only when Flow's
 // projection contract changes, and re-read the diff when you do.
-import { writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { projectFlowRun } from "@kontourai/flow/console-contract";
 import { applyEvaluation, evaluateGate, initialState } from "@kontourai/flow";
 
-const outDir = process.argv[2]
-  ? path.resolve(process.argv[2])
-  : path.join(path.dirname(fileURLToPath(import.meta.url)), "gate-scorecard");
+const here = path.dirname(fileURLToPath(import.meta.url));
+const outDir = process.argv[2] ? path.resolve(process.argv[2]) : path.join(here, "gate-scorecard");
 mkdirSync(outDir, { recursive: true });
 
 // A three-step flow: a route-back-configured gate, a plain blocking gate, and an
@@ -227,6 +226,43 @@ if (consumed(projectedReal) !== consumed(projectedLazy)) {
   throw new Error(`persisted-block and computed-block projections diverged on consumed fields:\n${consumed(projectedReal)}\n${consumed(projectedLazy)}`);
 }
 
+// ── THE COST-ENRICHMENT JOIN TARGET (console#277 layer 2) ─────────────────────
+//
+// The transition fixtures under test/fixtures/flow-agents-transitions/ are REAL
+// records copied out of a live `.flow-agents/telemetry/transitions.jsonl`, and
+// they name real expectation ids of the real `builder.shape` flow. So the flow
+// side of the join must be that same real flow, not a stand-in: `builder-shape.flow.json`
+// is `kits/builder/flows/shape.flow.json` copied VERBATIM out of kontourai/flow-agents,
+// and the projection below is what Flow's own producer emits for a run of it.
+//
+// Both halves of the join are therefore producer-emitted: the fixture cannot
+// agree with a shape no producer writes, which is the #278 round-1 defect
+// (fixture-vs-reality) applied to layer 2's new record kind.
+const shapeDefinition = JSON.parse(readFileSync(path.join(here, "gate-scorecard", "builder-shape.flow.json"), "utf8"));
+const shapeState = initialState(shapeDefinition, "run-builder-shape-1", { subject: "shape-subject" });
+const shapeProjection = projectFlowRun({ definition: shapeDefinition, state: shapeState, manifest: { evidence: [] } });
+
+// A SECOND flow declaring `shaped-problem` — the expectation-id collision, on
+// the transition side this time. flow-agents' own transition log carries the
+// hazard in its module doc ("expectation ids are unique within a flow but not
+// across flows — the shipped kits share one"), which is why the producer derives
+// `targets.flow` from run state at all. A transition naming a shared id with no
+// `--flow` to disambiguate must be reported, never posted to a gate that may not
+// have seen it. Mirrors `other-flow` on the layer-1 (evidence) side.
+const shapeRivalDefinition = {
+  id: "other.shape",
+  version: "1",
+  steps: [{ id: "shape", next: null }],
+  gates: {
+    "rival-shape-gate": {
+      step: "shape",
+      expects: [{ id: "shaped-problem", kind: "trust.bundle", required: true, description: "A rival flow declaring the same expectation id.", bundle_claim: { claimType: "builder.shape.problem" } }]
+    }
+  }
+};
+const shapeRivalState = initialState(shapeRivalDefinition, "run-other-shape-1", { subject: "rival-subject" });
+const shapeRivalProjection = projectFlowRun({ definition: shapeRivalDefinition, state: shapeRivalState, manifest: { evidence: [] } });
+
 const write = (name, value) => {
   writeFileSync(path.join(outDir, name), `${JSON.stringify(value, null, 2)}\n`);
   console.log(`wrote ${name}`);
@@ -235,3 +271,5 @@ write("builder-demo.snapshot-a.json", snapshotA);
 write("builder-demo.snapshot-b.json", snapshotB);
 write("other-flow.json", otherProjection);
 write("indeterminate-demo.json", indeterminateProjection);
+write("builder-shape.json", shapeProjection);
+write("other-shape.json", shapeRivalProjection);

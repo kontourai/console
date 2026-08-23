@@ -1,0 +1,866 @@
+{
+  "continuation": "resume from shape, not chat memory",
+  "current_step": "shape",
+  "definition": {
+    "description": null,
+    "id": "builder.shape",
+    "raw": {
+      "gates": {
+        "breakdown-gate": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "accepted_statuses": [
+                  "verified",
+                  "trusted",
+                  "accepted"
+                ],
+                "claimType": "builder.breakdown.slices",
+                "subjectType": "work-item"
+              },
+              "description": "The shaped work is split into independently useful slices.",
+              "id": "slices-defined",
+              "kind": "trust.bundle",
+              "required": true
+            }
+          ],
+          "step": "breakdown"
+        },
+        "file-issues-gate": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "accepted_statuses": [
+                  "verified",
+                  "trusted",
+                  "accepted"
+                ],
+                "claimType": "builder.file-issues.work-items",
+                "subjectType": "work-item"
+              },
+              "description": "Work items are filed or otherwise recorded with enough context to pull later.",
+              "id": "work-items-filed",
+              "kind": "trust.bundle",
+              "required": true
+            }
+          ],
+          "step": "file-issues"
+        },
+        "shape-gate": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "accepted_statuses": [
+                  "verified",
+                  "trusted",
+                  "accepted"
+                ],
+                "claimType": "builder.shape.problem",
+                "subjectType": "decision"
+              },
+              "description": "The problem is stated in terms a builder can act on.",
+              "id": "shaped-problem",
+              "kind": "trust.bundle",
+              "required": true
+            },
+            {
+              "bundle_claim": {
+                "accepted_statuses": [
+                  "verified",
+                  "trusted",
+                  "accepted"
+                ],
+                "claimType": "builder.shape.outcome",
+                "subjectType": "flow-run"
+              },
+              "description": "The intended outcome is explicit enough to evaluate later.",
+              "id": "shaped-outcome",
+              "kind": "trust.bundle",
+              "required": true
+            },
+            {
+              "bundle_claim": {
+                "accepted_statuses": [
+                  "verified",
+                  "trusted",
+                  "accepted"
+                ],
+                "claimType": "builder.shape.constraints",
+                "subjectType": "decision"
+              },
+              "description": "Constraints that affect implementation are captured.",
+              "id": "shaped-constraints",
+              "kind": "trust.bundle",
+              "required": true
+            },
+            {
+              "bundle_claim": {
+                "accepted_statuses": [
+                  "verified",
+                  "trusted",
+                  "accepted"
+                ],
+                "claimType": "builder.shape.non-goals",
+                "subjectType": "decision"
+              },
+              "description": "Non-goals are named so the build stays scoped.",
+              "id": "shaped-non-goals",
+              "kind": "trust.bundle",
+              "required": true
+            },
+            {
+              "bundle_claim": {
+                "accepted_statuses": [
+                  "verified",
+                  "trusted",
+                  "accepted"
+                ],
+                "claimType": "builder.shape.success",
+                "subjectType": "artifact"
+              },
+              "description": "Success criteria are concrete enough for verification.",
+              "id": "shaped-success",
+              "kind": "trust.bundle",
+              "required": true
+            },
+            {
+              "bundle_claim": {
+                "accepted_statuses": [
+                  "verified",
+                  "trusted",
+                  "accepted"
+                ],
+                "claimType": "builder.shape.risk",
+                "subjectType": "decision"
+              },
+              "description": "Material delivery risks are recorded before breakdown.",
+              "id": "shaped-risk",
+              "kind": "trust.bundle",
+              "required": true
+            },
+            {
+              "bundle_claim": {
+                "accepted_statuses": [
+                  "verified",
+                  "trusted",
+                  "accepted",
+                  "advisory"
+                ],
+                "claimType": "builder.shape.open-decisions",
+                "subjectType": "decision"
+              },
+              "description": "Open decisions are recorded when the shape is not fully settled.",
+              "explore_hint": "Attach when unresolved choices could affect slices or issue boundaries.",
+              "id": "open-decisions",
+              "kind": "trust.bundle",
+              "required": false
+            }
+          ],
+          "step": "shape"
+        }
+      },
+      "id": "builder.shape",
+      "steps": [
+        {
+          "id": "shape",
+          "next": "breakdown"
+        },
+        {
+          "id": "breakdown",
+          "next": "file-issues"
+        },
+        {
+          "id": "file-issues",
+          "next": "shape-done"
+        },
+        {
+          "id": "shape-done",
+          "next": null
+        }
+      ],
+      "version": "1.0"
+    },
+    "title": null,
+    "version": "1.0"
+  },
+  "evidence": [],
+  "exceptions": [],
+  "expectations": [
+    {
+      "description": "The shaped work is split into independently useful slices.",
+      "gate_id": "breakdown-gate",
+      "id": "slices-defined",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "accepted_statuses": [
+            "verified",
+            "trusted",
+            "accepted"
+          ],
+          "claimType": "builder.breakdown.slices",
+          "subjectType": "work-item"
+        },
+        "description": "The shaped work is split into independently useful slices.",
+        "id": "slices-defined",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "Work items are filed or otherwise recorded with enough context to pull later.",
+      "gate_id": "file-issues-gate",
+      "id": "work-items-filed",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "accepted_statuses": [
+            "verified",
+            "trusted",
+            "accepted"
+          ],
+          "claimType": "builder.file-issues.work-items",
+          "subjectType": "work-item"
+        },
+        "description": "Work items are filed or otherwise recorded with enough context to pull later.",
+        "id": "work-items-filed",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "The problem is stated in terms a builder can act on.",
+      "gate_id": "shape-gate",
+      "id": "shaped-problem",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "accepted_statuses": [
+            "verified",
+            "trusted",
+            "accepted"
+          ],
+          "claimType": "builder.shape.problem",
+          "subjectType": "decision"
+        },
+        "description": "The problem is stated in terms a builder can act on.",
+        "id": "shaped-problem",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "The intended outcome is explicit enough to evaluate later.",
+      "gate_id": "shape-gate",
+      "id": "shaped-outcome",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "accepted_statuses": [
+            "verified",
+            "trusted",
+            "accepted"
+          ],
+          "claimType": "builder.shape.outcome",
+          "subjectType": "flow-run"
+        },
+        "description": "The intended outcome is explicit enough to evaluate later.",
+        "id": "shaped-outcome",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "Constraints that affect implementation are captured.",
+      "gate_id": "shape-gate",
+      "id": "shaped-constraints",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "accepted_statuses": [
+            "verified",
+            "trusted",
+            "accepted"
+          ],
+          "claimType": "builder.shape.constraints",
+          "subjectType": "decision"
+        },
+        "description": "Constraints that affect implementation are captured.",
+        "id": "shaped-constraints",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "Non-goals are named so the build stays scoped.",
+      "gate_id": "shape-gate",
+      "id": "shaped-non-goals",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "accepted_statuses": [
+            "verified",
+            "trusted",
+            "accepted"
+          ],
+          "claimType": "builder.shape.non-goals",
+          "subjectType": "decision"
+        },
+        "description": "Non-goals are named so the build stays scoped.",
+        "id": "shaped-non-goals",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "Success criteria are concrete enough for verification.",
+      "gate_id": "shape-gate",
+      "id": "shaped-success",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "accepted_statuses": [
+            "verified",
+            "trusted",
+            "accepted"
+          ],
+          "claimType": "builder.shape.success",
+          "subjectType": "artifact"
+        },
+        "description": "Success criteria are concrete enough for verification.",
+        "id": "shaped-success",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "Material delivery risks are recorded before breakdown.",
+      "gate_id": "shape-gate",
+      "id": "shaped-risk",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "accepted_statuses": [
+            "verified",
+            "trusted",
+            "accepted"
+          ],
+          "claimType": "builder.shape.risk",
+          "subjectType": "decision"
+        },
+        "description": "Material delivery risks are recorded before breakdown.",
+        "id": "shaped-risk",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "Open decisions are recorded when the shape is not fully settled.",
+      "gate_id": "shape-gate",
+      "id": "open-decisions",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "accepted_statuses": [
+            "verified",
+            "trusted",
+            "accepted",
+            "advisory"
+          ],
+          "claimType": "builder.shape.open-decisions",
+          "subjectType": "decision"
+        },
+        "description": "Open decisions are recorded when the shape is not fully settled.",
+        "explore_hint": "Attach when unresolved choices could affect slices or issue boundaries.",
+        "id": "open-decisions",
+        "kind": "trust.bundle",
+        "required": false
+      },
+      "required": false
+    }
+  ],
+  "external_links": [],
+  "gates": [
+    {
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [
+        {
+          "description": "The shaped work is split into independently useful slices.",
+          "id": "slices-defined",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.breakdown.slices",
+              "subjectType": "work-item"
+            },
+            "description": "The shaped work is split into independently useful slices.",
+            "id": "slices-defined",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "breakdown-gate",
+      "is_open": false,
+      "matched_expectations": [],
+      "missing": [
+        "slices-defined"
+      ],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.breakdown.slices",
+              "subjectType": "work-item"
+            },
+            "description": "The shaped work is split into independently useful slices.",
+            "id": "slices-defined",
+            "kind": "trust.bundle",
+            "required": true
+          }
+        ],
+        "id": "breakdown-gate",
+        "step": "breakdown"
+      },
+      "status": "block",
+      "step_id": "breakdown",
+      "summary": "The shaped work is split into independently useful slices. missing"
+    },
+    {
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [
+        {
+          "description": "Work items are filed or otherwise recorded with enough context to pull later.",
+          "id": "work-items-filed",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.file-issues.work-items",
+              "subjectType": "work-item"
+            },
+            "description": "Work items are filed or otherwise recorded with enough context to pull later.",
+            "id": "work-items-filed",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "file-issues-gate",
+      "is_open": false,
+      "matched_expectations": [],
+      "missing": [
+        "work-items-filed"
+      ],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.file-issues.work-items",
+              "subjectType": "work-item"
+            },
+            "description": "Work items are filed or otherwise recorded with enough context to pull later.",
+            "id": "work-items-filed",
+            "kind": "trust.bundle",
+            "required": true
+          }
+        ],
+        "id": "file-issues-gate",
+        "step": "file-issues"
+      },
+      "status": "block",
+      "step_id": "file-issues",
+      "summary": "Work items are filed or otherwise recorded with enough context to pull later. missing"
+    },
+    {
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [
+        {
+          "description": "The problem is stated in terms a builder can act on.",
+          "id": "shaped-problem",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.problem",
+              "subjectType": "decision"
+            },
+            "description": "The problem is stated in terms a builder can act on.",
+            "id": "shaped-problem",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        },
+        {
+          "description": "The intended outcome is explicit enough to evaluate later.",
+          "id": "shaped-outcome",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.outcome",
+              "subjectType": "flow-run"
+            },
+            "description": "The intended outcome is explicit enough to evaluate later.",
+            "id": "shaped-outcome",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        },
+        {
+          "description": "Constraints that affect implementation are captured.",
+          "id": "shaped-constraints",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.constraints",
+              "subjectType": "decision"
+            },
+            "description": "Constraints that affect implementation are captured.",
+            "id": "shaped-constraints",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        },
+        {
+          "description": "Non-goals are named so the build stays scoped.",
+          "id": "shaped-non-goals",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.non-goals",
+              "subjectType": "decision"
+            },
+            "description": "Non-goals are named so the build stays scoped.",
+            "id": "shaped-non-goals",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        },
+        {
+          "description": "Success criteria are concrete enough for verification.",
+          "id": "shaped-success",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.success",
+              "subjectType": "artifact"
+            },
+            "description": "Success criteria are concrete enough for verification.",
+            "id": "shaped-success",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        },
+        {
+          "description": "Material delivery risks are recorded before breakdown.",
+          "id": "shaped-risk",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.risk",
+              "subjectType": "decision"
+            },
+            "description": "Material delivery risks are recorded before breakdown.",
+            "id": "shaped-risk",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        },
+        {
+          "description": "Open decisions are recorded when the shape is not fully settled.",
+          "id": "open-decisions",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted",
+                "advisory"
+              ],
+              "claimType": "builder.shape.open-decisions",
+              "subjectType": "decision"
+            },
+            "description": "Open decisions are recorded when the shape is not fully settled.",
+            "explore_hint": "Attach when unresolved choices could affect slices or issue boundaries.",
+            "id": "open-decisions",
+            "kind": "trust.bundle",
+            "required": false
+          },
+          "required": false
+        }
+      ],
+      "id": "shape-gate",
+      "is_open": true,
+      "matched_expectations": [],
+      "missing": [
+        "shaped-problem",
+        "shaped-outcome",
+        "shaped-constraints",
+        "shaped-non-goals",
+        "shaped-success",
+        "shaped-risk"
+      ],
+      "optional_missing": [
+        "open-decisions"
+      ],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.problem",
+              "subjectType": "decision"
+            },
+            "description": "The problem is stated in terms a builder can act on.",
+            "id": "shaped-problem",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.outcome",
+              "subjectType": "flow-run"
+            },
+            "description": "The intended outcome is explicit enough to evaluate later.",
+            "id": "shaped-outcome",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.constraints",
+              "subjectType": "decision"
+            },
+            "description": "Constraints that affect implementation are captured.",
+            "id": "shaped-constraints",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.non-goals",
+              "subjectType": "decision"
+            },
+            "description": "Non-goals are named so the build stays scoped.",
+            "id": "shaped-non-goals",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.success",
+              "subjectType": "artifact"
+            },
+            "description": "Success criteria are concrete enough for verification.",
+            "id": "shaped-success",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted"
+              ],
+              "claimType": "builder.shape.risk",
+              "subjectType": "decision"
+            },
+            "description": "Material delivery risks are recorded before breakdown.",
+            "id": "shaped-risk",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          {
+            "bundle_claim": {
+              "accepted_statuses": [
+                "verified",
+                "trusted",
+                "accepted",
+                "advisory"
+              ],
+              "claimType": "builder.shape.open-decisions",
+              "subjectType": "decision"
+            },
+            "description": "Open decisions are recorded when the shape is not fully settled.",
+            "explore_hint": "Attach when unresolved choices could affect slices or issue boundaries.",
+            "id": "open-decisions",
+            "kind": "trust.bundle",
+            "required": false
+          }
+        ],
+        "id": "shape-gate",
+        "step": "shape"
+      },
+      "status": "block",
+      "step_id": "shape",
+      "summary": "The problem is stated in terms a builder can act on. missing"
+    }
+  ],
+  "next_action": "attach evidence for shape gate",
+  "open_gates": [
+    "shape-gate"
+  ],
+  "report": null,
+  "route_backs": [],
+  "run": {
+    "current_step": "shape",
+    "definition_id": "builder.shape",
+    "definition_version": "1.0",
+    "params": {
+      "subject": "shape-subject"
+    },
+    "run_id": "run-builder-shape-1",
+    "status": "active",
+    "subject": "shape-subject",
+    "updated_at": "2026-08-23T20:39:17.502Z"
+  },
+  "schema_version": "0.1",
+  "steps": [
+    {
+      "gates": [
+        "shape-gate"
+      ],
+      "id": "shape",
+      "index": 0,
+      "label": "shape",
+      "next": "breakdown",
+      "raw": {
+        "id": "shape",
+        "next": "breakdown"
+      }
+    },
+    {
+      "gates": [
+        "breakdown-gate"
+      ],
+      "id": "breakdown",
+      "index": 1,
+      "label": "breakdown",
+      "next": "file-issues",
+      "raw": {
+        "id": "breakdown",
+        "next": "file-issues"
+      }
+    },
+    {
+      "gates": [
+        "file-issues-gate"
+      ],
+      "id": "file-issues",
+      "index": 2,
+      "label": "file issues",
+      "next": "shape-done",
+      "raw": {
+        "id": "file-issues",
+        "next": "shape-done"
+      }
+    },
+    {
+      "gates": [],
+      "id": "shape-done",
+      "index": 3,
+      "label": "shape done",
+      "next": null,
+      "raw": {
+        "id": "shape-done",
+        "next": null
+      }
+    }
+  ],
+  "transitions": []
+}

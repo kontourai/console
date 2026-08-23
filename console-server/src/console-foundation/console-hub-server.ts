@@ -9,7 +9,8 @@ import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./ss
 import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
 import { createRevocationStore, newSessionId, type RevocationStore } from "./session-revocation";
 import { validateFlowIngestRequest, wrapFlowIngestRecord } from "./flow-ingest";
-import { createGateScorecardProjection, type FlowProjectionLike, type GateScorecardProjection } from "./gate-scorecard-projection";
+import { createGateScorecardProjection, transitionIdentity, type FlowProjectionLike, type GateScorecardProjection } from "./gate-scorecard-projection";
+import { validateTransitionRecord, TRANSITION_SCHEMA, type ConsoleTransitionRecord } from "./transition-records";
 import { isLivenessRecord, normalizeLivenessRecord, validateLivenessRecord, LIVENESS_SCHEMA } from "./liveness";
 import type {
   ConsoleEconomicsRecord,
@@ -246,6 +247,15 @@ interface FlowIngestServerState {
 /** Lazily create the per-tenant scorecard fold — the exact `economicsForTenant`
  *  shape, minus the durable branch (the hub persists the raw ingest records;
  *  rebuilding this in-memory fold from them is the documented follow-up). */
+/** A short, stable id for one transition delivery. The producer emits no record
+ *  id, so this is derived from the SAME natural key the fold dedups on — a
+ *  re-delivery of one invocation therefore returns the same id, exactly as the
+ *  economics path returns the same `run_id`. It is a digest of the record, not a
+ *  server-assigned identifier: two responses carrying it name one invocation. */
+function transitionRecordId(record: ConsoleTransitionRecord): string {
+  return `transition-${crypto.createHash("sha256").update(transitionIdentity(record)).digest("hex").slice(0, 16)}`;
+}
+
 function scorecardForTenant(scorecards: Map<string, GateScorecardProjection>, tenantId: string): GateScorecardProjection {
   const key = safePathToken(tenantId);
   let existing = scorecards.get(key);
@@ -470,7 +480,11 @@ async function routeRequest(input: {
     }
 
     if (request.method === "POST" && url.pathname === "/records") {
-      await handleRecords(hub, events, request, response, context, () => economicsForTenant(economics, context.tenantId, economicsSqlClient));
+      await handleRecords(
+        hub, events, request, response, context,
+        () => economicsForTenant(economics, context.tenantId, economicsSqlClient),
+        () => scorecardForTenant(ingestState.scorecards, context.tenantId)
+      );
       return;
     }
 
@@ -1204,7 +1218,8 @@ async function handleRecords(
   request: IncomingMessage,
   response: ServerResponse,
   context: ConsoleRequestContext,
-  economicsForContext: () => TenantEconomics
+  economicsForContext: () => TenantEconomics,
+  scorecardForContext: () => GateScorecardProjection
 ): Promise<void> {
   const body = await readJsonBody(request);
   const record = validateRecordBody(body);
@@ -1251,6 +1266,30 @@ async function handleRecords(
     entry.projection.apply(economicsRecord);
     events.broadcast("record.accepted", { delivery: { recordKind: "economics", recordId: economicsRecord.run_id, outcome: "accepted" }, state: hub.currentOperatingState() });
     writeJson(response, 202, { recordKind: "economics", recordId: economicsRecord.run_id, outcome: "accepted" });
+    return;
+  }
+
+  // Transition records are the gate scorecard's OPTIONAL cost producer (console
+  // #277 layer 2). Like economics they are a telemetry-plane kind and bypass
+  // `hub.append` (the control plane), folding into the per-tenant scorecard
+  // instead.
+  //
+  // TENANCY: the fold is keyed by `context.tenantId`, the authoritative principal
+  // tenant — the SAME key GET /api/gates/scorecard reads, so a producer can only
+  // ever enrich its own tenant's gates. This deliberately differs from the flow
+  // ingest route, which is bound to `runtimeConfig.defaultTenantId` because
+  // /ingest/flow carries a single per-product ingest token rather than a
+  // principal. In local/self-hosted mode the two are the same tenant. In hosted
+  // mode a non-default tenant's transitions land in a fold with no projections,
+  // where they surface as unattributable findings — the honest outcome; writing
+  // them into the default tenant's fold to force a join would be a cross-tenant
+  // write.
+  if (stamped.record.schema === TRANSITION_SCHEMA) {
+    const transition = stamped.record as unknown as ConsoleTransitionRecord;
+    scorecardForContext().applyTransition(transition);
+    const delivery = { recordKind: "transition", recordId: transitionRecordId(transition), outcome: "accepted" };
+    events.broadcast("record.accepted", { delivery, state: hub.currentOperatingState() });
+    writeJson(response, 202, delivery);
     return;
   }
 
@@ -1491,8 +1530,15 @@ function validateRecordBody(body: unknown): ConsoleRecord {
   if (body.schema === LIVENESS_SCHEMA) {
     return validateLivenessRecordBody(body);
   }
+  // The gate scorecard's OPTIONAL cost producer (console #277 layer 2, producer
+  // flow-agents #1273). Additive on the same `/records` ingress, validated by the
+  // producer's own schema and routed to the per-tenant scorecard fold — NOT
+  // `hub.append` — on the economics precedent.
+  if (body.schema === TRANSITION_SCHEMA) {
+    return validateTransitionRecordBody(body);
+  }
   if (body.schema !== "kontour.console.event" && body.schema !== "kontour.console.projection") {
-    throw requestError("INVALID_RECORD", 400, "record.schema must be kontour.console.event, kontour.console.projection, kontour.console.liveness, or kontour.console.economics");
+    throw requestError("INVALID_RECORD", 400, `record.schema must be kontour.console.event, kontour.console.projection, kontour.console.liveness, kontour.console.economics, or ${TRANSITION_SCHEMA}`);
   }
 
   const record = body as ConsoleRecord;
@@ -1516,6 +1562,30 @@ function validateRecordBody(body: unknown): ConsoleRecord {
  * record stays idempotent under the core-records (tenant_id, record_id)
  * primary key (see normalizeLivenessRecord).
  */
+/**
+ * Validate a `kontour.flow-agents.transition` record (console #277 layer 2).
+ *
+ * The shape is the PRODUCER's — `TransitionRecord` in flow-agents'
+ * `src/transition-log.ts`, published as its
+ * `scripts/telemetry/transition-record.schema.json` — and this validator is a
+ * field-for-field mirror of it, nothing more. See transition-records.ts for what
+ * it deliberately does not "improve", including accepting unknown extra fields
+ * because the producer schema declares `additionalProperties: true` and a
+ * producer minor-version addition must not become a fleet-wide 400.
+ */
+export function validateTransitionRecordBody(body: unknown): ConsoleTransitionRecord {
+  if (!isOpenRecord(body)) {
+    throw requestError("INVALID_BODY", 400, "request body must be a JSON object");
+  }
+  const issues = validateTransitionRecord(body, "record");
+  if (issues.length) {
+    const error = requestError("INVALID_RECORD", 400, "record validation failed");
+    error.validation = issues;
+    throw error;
+  }
+  return body as unknown as ConsoleTransitionRecord;
+}
+
 export function validateLivenessRecordBody(body: unknown): ConsoleLivenessRecord {
   if (!isOpenRecord(body)) {
     throw requestError("INVALID_BODY", 400, "request body must be a JSON object");

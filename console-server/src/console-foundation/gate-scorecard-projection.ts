@@ -33,8 +33,44 @@
  *    controlled counterfactual, it is run and graded in kontourai/evals, and Console
  *    displays its result as an ingested record. A projection that derived value from
  *    the gates' own telemetry would be the apparatus grading itself;
- *  - it never reports cost. Flow's projection knows what happened, not what it cost.
- *    Cost is an optional enrichment (layer 2) and its absence is stated, never zero.
+ *  - it never computes cost from Flow's projection. Flow knows what happened, not
+ *    what it cost. Cost arrives — if at all — as an OPTIONAL enrichment from a
+ *    separate producer (layer 2, below), and its absence is stated, never zero.
+ *
+ * LAYER 2 — the optional cost enrichment (console#277, producer flow-agents#1273/
+ * src/transition-log.ts). A runtime MAY additionally emit one
+ * `kontour.flow-agents.transition` record per CLI invocation; those are folded in
+ * through `applyTransition()` and joined to the entries above. Everything about
+ * that join is stated rather than assumed:
+ *
+ *  - THE JOIN KEY IS THE EXPECTATION ID, disambiguated by the flow id — NOT a gate
+ *    id and not a run id. A transition record carries neither: it names
+ *    `targets.expectation` and (when the command resolved one from run state)
+ *    `targets.flow`. The gate is DERIVED from the declarations this fold already
+ *    holds (`gates[].expectations[].id`), exactly as flow-agents'
+ *    `scripts/telemetry/gate-scorecard.mjs` derives it, so console never has to be
+ *    told which gate a write belongs to by the thing being measured.
+ *  - A GATE WITH NO COST PRODUCER READS "unavailable", never zero. Three availability
+ *    states, because they are three different claims: `unavailable` (no producer
+ *    reached this gate at all), `activity_only` (invocations were observed — counts
+ *    and durations are real — but nothing attributed spend to them), and `floor`
+ *    (a token attribution exists and is a LOWER BOUND, see below).
+ *  - COST IS A FLOOR AND THE FIELD NAME SAYS SO (`output_tokens_floor`), following
+ *    the `EconomicsDelegationCostGranularity = "model-proxy"` precedent of labelling
+ *    attribution granularity instead of implying precision. It under-attributes by
+ *    construction in three independent ways, all disclosed in `attribution`: only
+ *    OUTPUT tokens are attributed (roughly 6.6% of spend on flow-agents' own corpus,
+ *    and not proportional to it); a turn is consumed by AT MOST ONE transition, so a
+ *    transition sharing a turn with an earlier one gets nothing
+ *    (`transitions_without_turn`); and it is tokens, not currency.
+ *  - UNATTRIBUTABLE TRANSITIONS ARE SHOWN, NOT DROPPED. A record naming an
+ *    expectation no declared gate expects, an id declared by two flows with no
+ *    `--flow` to break the tie, or a flow that does not declare the id it names,
+ *    each surface in `unattributable` with their own kinds. Denominators are
+ *    untouched: they never enter any gate's tally, and a transition that never
+ *    named an expectation at all is not a finding — it is counted in
+ *    `transition_coverage.without_expectation`, because a `capability-matrix`
+ *    invocation was never claiming a gate.
  *
  * Five states, because most of them are routinely mistaken for each other:
  *
@@ -69,6 +105,7 @@
  */
 
 import type { FlowConsoleProjection } from "@kontourai/flow/console-contract" with { "resolution-mode": "import" };
+import type { ConsoleTransitionRecord, TransitionOutcome } from "./transition-records";
 
 /** Evidence as the producer projects it — note PLURAL `expectation_ids`. The
  *  fields this fold CONSUMES are REQUIRED (review round 2: an all-optional shape
@@ -165,22 +202,97 @@ export interface GateScorecardEntry {
   indeterminate: number;
   /** Runs of this flow observed in the window, so a rate has a denominator. */
   runs_observed: number;
-  /** Absent, never zero: this projection has no cost producer (layer 2). */
-  cost: null;
-  cost_availability: "unavailable";
+  /** The OPTIONAL layer-2 enrichment, or null when no cost producer emitted a
+   *  transition that resolved to this gate. `null` means "not measured" and is
+   *  never to be rendered as zero — that conflation is the live defect this card
+   *  was rebuilt to fix (a gate recorded as proven and costed had never received
+   *  an evidence write). */
+  cost: GateCostEnrichment | null;
+  /** DERIVED from `cost`, never declared: what kind of claim the block supports. */
+  cost_availability: GateCostAvailability;
+}
+
+/**
+ * What the cost block can honestly claim about a gate.
+ *
+ *   unavailable    no transition producer resolved to this gate. Not zero cost,
+ *                  not zero activity — unmeasured.
+ *   activity_only  invocations were observed (their counts, durations and exit
+ *                  classes are real) but nothing attributed spend to any of them,
+ *                  so cost itself is STILL unavailable. A producer that records
+ *                  invocations without a token source lands here permanently.
+ *   floor          at least one resolved transition carried a token attribution;
+ *                  `output_tokens_floor` is a strict lower bound on output tokens
+ *                  alone, which is a lower bound on spend.
+ */
+export type GateCostAvailability = "unavailable" | "activity_only" | "floor";
+
+/** Everything the attribution cannot see, carried beside the number rather than
+ *  in a footnote — a caveated number gets quoted without its caveat. */
+export interface GateCostAttribution {
+  /** The `EconomicsDelegationCostGranularity = "model-proxy"` precedent: name the
+   *  granularity instead of implying precision. Output tokens are the only class
+   *  the producer attributes; cache-read dominates real spend and is invisible here. */
+  granularity: "output-tokens-only";
+  /** Resolved transitions that carried an attribution (won their turn). */
+  transitions_with_turn: number;
+  /** Resolved transitions that did NOT. A turn is consumed by at most one
+   *  transition, so these contribute ZERO tokens to the figure above — which is
+   *  precisely why it is a floor and not a total. */
+  transitions_without_turn: number;
+}
+
+/**
+ * Per-gate enrichment folded from `kontour.flow-agents.transition` records.
+ *
+ * Only `output_tokens_floor` is a spend claim. The other fields describe the
+ * INVOCATIONS and are named for what they hold: a gate can be slow and free, and
+ * duration must never be read as cost.
+ */
+export interface GateCostEnrichment {
+  /** Transition records resolved to this gate in the window. The denominator. */
+  transitions: number;
+  /** Wall-clock the producer spent inside those invocations. LATENCY, NOT SPEND. */
+  duration_ms: number;
+  /** The GATE's own verdict, which the exit code does not carry: `workflow
+   *  evidence` exits 0 both when the gate advanced and when it is still awaiting
+   *  the rest of its expectations (flow-agents' transition-log.ts, noteGateOutcome). */
+  gate_advanced: number;
+  gate_awaiting: number;
+  /** The PROCESS exit classification, in the producer's own vocabulary. Note that
+   *  `unhandled-error` (exit 70) mixes genuine contract refusals with real faults
+   *  — the producer names it for what it observably is rather than "crashed", and
+   *  this fold must not re-launder it into a refusal count. Layer 1's `refusals`
+   *  is the refusal number; this is not. */
+  exit_outcomes: Record<TransitionOutcome, number>;
+  /** THE COST FIGURE, AND IT IS A FLOOR — see GateCostAttribution. `null` when no
+   *  resolved transition carried an attribution: unmeasured, not free. */
+  output_tokens_floor: number | null;
+  attribution: GateCostAttribution;
 }
 
 /** A datum the fold could not attribute — reported, never dropped. Silently
  *  discarding it shrinks the denominator and reads as full coverage of a smaller
- *  problem. */
+ *  problem. The `transition_*` kinds are layer 2's; they sit in the SAME list
+ *  because they are the same class of finding about the same gates. */
 export interface GateScorecardFinding {
-  kind: "undeclared_expectation" | "expectation_collision" | "undeclared_gate";
+  kind:
+    | "undeclared_expectation"
+    | "expectation_collision"
+    | "undeclared_gate"
+    | "transition_undeclared_expectation"
+    | "transition_expectation_collision"
+    | "transition_flow_mismatch";
   flow_id: string;
   reason: string;
   expectation_id?: string;
   gate_id?: string;
   evidence_id?: string;
   run_id?: string;
+  /** Transition records that produced this finding. Findings dedup by identity,
+   *  and a count that collapsed to 1 would understate a systematic producer
+   *  mismatch as a one-off. Set on the `transition_*` kinds only. */
+  transitions?: number;
 }
 
 export interface GateScorecard {
@@ -196,6 +308,30 @@ export interface GateScorecard {
   /** The window this scorecard covers; `since: null` means "everything retained".
    *  Stated so a number is never quoted without its scope. */
   window: { since: string | null };
+  /** Layer 2's denominator, so the per-gate cost blocks are never read as full
+   *  coverage of a smaller problem. All-zero means no cost producer is emitting. */
+  transition_coverage: GateTransitionCoverage;
+}
+
+/** Where every transition record went. `folded` is the total, and the other four
+ *  partition it exactly — asserted by a test, because a coverage summary whose
+ *  parts do not sum to its whole is how dropped data hides. */
+export interface GateTransitionCoverage {
+  /** Transitions retained AND inside the window. */
+  folded: number;
+  /** Resolved to a (flow, gate) and folded into that entry's cost block. */
+  attributed: number;
+  /** Named no expectation at all (`capability-matrix`, `workflow start`, …).
+   *  NOT a finding: these never claimed a gate. */
+  without_expectation: number;
+  /** Named an expectation that could not be resolved to exactly one gate — each
+   *  one also appears in `unattributable` with its reason. */
+  unattributable: number;
+  /** Retained transitions OUTSIDE the window. Stated rather than silently
+   *  excluded, so a suspiciously empty window is legible as a window problem. */
+  outside_window: number;
+  /** Byte-identical re-deliveries suppressed at apply() time (see applyTransition). */
+  duplicates_suppressed: number;
 }
 
 export interface GateScorecardWindow {
@@ -206,6 +342,10 @@ export interface GateScorecardWindow {
 
 export interface GateScorecardProjection {
   apply(projection: FlowProjectionLike): void;
+  /** Layer 2, OPTIONAL: fold one `kontour.flow-agents.transition` record. A fold
+   *  that never receives one produces exactly the layer-1 scorecard, with every
+   *  `cost` null and `cost_availability: "unavailable"`. */
+  applyTransition(record: ConsoleTransitionRecord): void;
   materialize(window?: GateScorecardWindow): GateScorecard;
 }
 
@@ -319,6 +459,13 @@ export function createGateScorecardProjection(): GateScorecardProjection {
   // `run.run_id` upstream, so this list only ever holds direct-API oddities —
   // retained (never silently dropped) but unable to dedup.
   const unidentified: FlowProjectionLike[] = [];
+  // Layer 2, retained on the same terms so materialize() stays a pure replay.
+  // Keyed by a DERIVED natural key because the producer emits no record id (see
+  // transitionIdentity): a re-delivery of the same invocation is byte-identical
+  // and collapses; two genuinely distinct invocations would have to agree on
+  // session, start instant, duration, exit code and every argument to collide.
+  const transitions = new Map<string, ConsoleTransitionRecord>();
+  let duplicateTransitions = 0;
 
   function apply(projection: FlowProjectionLike): void {
     if (!projection || typeof projection !== "object") return;
@@ -328,6 +475,20 @@ export function createGateScorecardProjection(): GateScorecardProjection {
     const runId = retained.run?.run_id;
     if (nonEmpty(runId)) runs.set(runId, retained);
     else unidentified.push(retained);
+  }
+
+  function applyTransition(record: ConsoleTransitionRecord): void {
+    if (!record || typeof record !== "object") return;
+    const retained = structuredClone(record) as ConsoleTransitionRecord;
+    const key = transitionIdentity(retained);
+    if (transitions.has(key)) {
+      // Counted, not ignored: a producer re-delivering at scale is a fact about
+      // the pipeline, and suppression can only ever UNDER-count — which keeps
+      // every figure downstream a floor rather than an invention.
+      duplicateTransitions += 1;
+      return;
+    }
+    transitions.set(key, retained);
   }
 
   function materialize(window: GateScorecardWindow = {}): GateScorecard {
@@ -351,6 +512,10 @@ export function createGateScorecardProjection(): GateScorecardProjection {
     // expectation id -> declaring flows (from gates[].expectations[], i.e. from
     // DECLARATIONS — evidence merely naming an id does not make the id yours).
     const expectationOwnersByFlow = new Map<string, Set<string>>();
+    // expectation id -> every (flow, gate) that DECLARES it. Layer 2's join
+    // index, from the same declarations: a transition names an expectation, and
+    // this is the only thing that can say which gate that is.
+    const expectationClaimants = new Map<string, Array<{ flow: string; gate: string }>>();
     const declaredGatesByFlow = new Map<string, Set<string>>();
     const declaredExpectationsByFlow = new Map<string, Set<string>>();
     const findings: GateScorecardFinding[] = [];
@@ -360,6 +525,22 @@ export function createGateScorecardProjection(): GateScorecardProjection {
       if (findingKeys.has(key)) return;
       findingKeys.add(key);
       findings.push(finding);
+    };
+    // Layer 2's findings dedup by identity like the rest, but COUNT their
+    // occurrences: a producer systematically naming an expectation nothing
+    // declares is a different problem from one record doing it once, and a
+    // collapsed list reports them identically.
+    const transitionFindings = new Map<string, GateScorecardFinding>();
+    const pushTransitionFinding = (finding: GateScorecardFinding): void => {
+      const key = [finding.kind, finding.flow_id, finding.expectation_id ?? ""].join("\u0000");
+      const existing = transitionFindings.get(key);
+      if (existing) {
+        existing.transitions = (existing.transitions ?? 0) + 1;
+        return;
+      }
+      const created = { ...finding, transitions: 1 };
+      transitionFindings.set(key, created);
+      findings.push(created);
     };
 
     // NUL separator so a flow or gate id containing the separator cannot forge a
@@ -402,6 +583,11 @@ export function createGateScorecardProjection(): GateScorecardProjection {
           const owners = expectationOwnersByFlow.get(expectationId) ?? new Set<string>();
           owners.add(flow);
           expectationOwnersByFlow.set(expectationId, owners);
+          const claimants = expectationClaimants.get(expectationId) ?? [];
+          if (!claimants.some((claimant) => claimant.flow === flow && claimant.gate === gateId)) {
+            claimants.push({ flow, gate: gateId });
+          }
+          expectationClaimants.set(expectationId, claimants);
         }
       }
       declaredGatesByFlow.set(flow, declaredGates);
@@ -522,8 +708,129 @@ export function createGateScorecardProjection(): GateScorecardProjection {
       }
     }
 
+    // Pass 3 — LAYER 2, the optional cost enrichment. Runs after declarations so
+    // the join index is complete, and after the collision pass so a transition
+    // naming a colliding id is reported by the same standard the evidence side
+    // already uses. It touches nothing above it: no invocation, refusal,
+    // route-back, state or denominator is derived from a transition record. A
+    // producer that lies about its own invocations therefore cannot move layer 1.
+    const coverage: GateTransitionCoverage = {
+      folded: 0,
+      attributed: 0,
+      without_expectation: 0,
+      unattributable: 0,
+      outside_window: 0,
+      duplicates_suppressed: duplicateTransitions,
+    };
+
+    for (const record of transitions.values()) {
+      if (!transitionInWindow(record, sinceMs)) {
+        coverage.outside_window += 1;
+        continue;
+      }
+      coverage.folded += 1;
+
+      const targets = isPlainRecord(record.targets) ? record.targets : {};
+      const expectationId = typeof targets["expectation"] === "string" ? targets["expectation"] : "";
+      const namedFlow = typeof targets["flow"] === "string" && targets["flow"] ? targets["flow"] : null;
+      if (!nonEmpty(expectationId)) {
+        // Never claimed a gate — `capability-matrix`, `workflow start`, a
+        // `--help`. Reporting these as unattributable would drown the real
+        // findings in the ordinary case; they are counted instead.
+        coverage.without_expectation += 1;
+        continue;
+      }
+
+      const claimants = expectationClaimants.get(expectationId) ?? [];
+      const flowForFinding = namedFlow ?? "unknown";
+      if (claimants.length === 0) {
+        // Either the flow moved, the operator invented an id, or console has
+        // never ingested a projection of the flow this producer is describing.
+        // All three are real findings and none of them may be guessed into a gate.
+        coverage.unattributable += 1;
+        pushTransitionFinding({
+          kind: "transition_undeclared_expectation",
+          flow_id: flowForFinding,
+          expectation_id: expectationId,
+          reason: "a transition names an expectation no ingested flow declares",
+        });
+        continue;
+      }
+
+      let resolved: { flow: string; gate: string } | null = null;
+      if (namedFlow === null) {
+        // No flow to disambiguate with: only a fleet-unique id identifies a gate
+        // on its own. This is flow-agents' own rule in gate-scorecard.mjs, and it
+        // exists because the shipped kits share expectation ids.
+        resolved = claimants.length === 1 ? claimants[0]! : null;
+        if (!resolved) {
+          coverage.unattributable += 1;
+          pushTransitionFinding({
+            kind: "transition_expectation_collision",
+            flow_id: flowForFinding,
+            expectation_id: expectationId,
+            reason: `expectation id is declared by ${new Set(claimants.map((c) => c.flow)).size} flows and the transition names no flow to disambiguate`,
+          });
+          continue;
+        }
+      } else {
+        const withinFlow = claimants.filter((claimant) => claimant.flow === namedFlow);
+        // Exactly one match inside the named flow resolves it. TWO means the flow
+        // declares the id on two gates and naming the flow narrowed nothing.
+        resolved = withinFlow.length === 1 ? withinFlow[0]! : null;
+        if (!resolved && withinFlow.length > 1) {
+          coverage.unattributable += 1;
+          pushTransitionFinding({
+            kind: "transition_expectation_collision",
+            flow_id: namedFlow,
+            expectation_id: expectationId,
+            reason: `flow declares this expectation on ${withinFlow.length} gates, so naming the flow does not identify one`,
+          });
+          continue;
+        }
+        if (!resolved) {
+          // The record names a flow, and that flow does not declare this id —
+          // some OTHER flow does. Attributing it to that other flow is exactly
+          // the cross-flow misattribution the collision detection exists to
+          // prevent, so it resolves to nothing and says why.
+          coverage.unattributable += 1;
+          pushTransitionFinding({
+            kind: "transition_flow_mismatch",
+            flow_id: namedFlow,
+            expectation_id: expectationId,
+            reason: `the transition names flow "${namedFlow}", which does not declare this expectation; it is declared by ${claimants.map((c) => c.flow).sort().join(", ")}`,
+          });
+          continue;
+        }
+      }
+
+      coverage.attributed += 1;
+      const entry = ensure(resolved.flow, resolved.gate);
+      const cost = (entry.cost ??= emptyCostEnrichment());
+      cost.transitions += 1;
+      cost.duration_ms += Number.isFinite(record.duration_ms) ? Math.max(0, record.duration_ms) : 0;
+      if (record.gate_outcome === "advanced") cost.gate_advanced += 1;
+      else if (record.gate_outcome === "awaiting") cost.gate_awaiting += 1;
+      if (isTransitionOutcome(record.outcome)) cost.exit_outcomes[record.outcome] += 1;
+      // Absent output_tokens is NOT zero tokens: it is "no turn was attributed to
+      // this invocation", which is what makes the total a floor. Adding 0 here and
+      // reporting a total would be indistinguishable from a genuinely free gate.
+      if (typeof record.output_tokens === "number" && Number.isFinite(record.output_tokens) && record.output_tokens >= 0) {
+        cost.output_tokens_floor = (cost.output_tokens_floor ?? 0) + record.output_tokens;
+        cost.attribution.transitions_with_turn += 1;
+      } else {
+        cost.attribution.transitions_without_turn += 1;
+      }
+    }
+
     for (const entry of tally.values()) {
       entry.runs_observed = runsByFlow.get(entry.flow_id) ?? 0;
+      // Availability is DERIVED from what actually landed, never declared: a
+      // producer emitting invocations without a token source can only ever reach
+      // `activity_only`, and it stays there however many invocations it sends.
+      entry.cost_availability = entry.cost === null
+        ? "unavailable"
+        : entry.cost.output_tokens_floor === null ? "activity_only" : "floor";
       // Precedence: any qualifying verdict makes the gate invoked; a
       // proven-but-non-qualifying verdict alone is withheld; an unprovable
       // verdict alone is indeterminate (it outranks never_invoked because
@@ -561,8 +868,76 @@ export function createGateScorecardProjection(): GateScorecardProjection {
       runs_folded: runsFolded,
       flows_observed: [...observedFlows].sort(),
       window: { since },
+      transition_coverage: coverage,
     };
   }
 
-  return { apply, materialize };
+  return { apply, applyTransition, materialize };
+}
+
+/** Empty enrichment. `output_tokens_floor` starts NULL, not 0: a gate whose
+ *  invocations were all seen but never costed must remain distinguishable from a
+ *  gate that genuinely cost nothing. */
+function emptyCostEnrichment(): GateCostEnrichment {
+  return {
+    transitions: 0,
+    duration_ms: 0,
+    gate_advanced: 0,
+    gate_awaiting: 0,
+    exit_outcomes: { ok: 0, nonzero: 0, "unhandled-error": 0, usage: 0 },
+    output_tokens_floor: null,
+    attribution: { granularity: "output-tokens-only", transitions_with_turn: 0, transitions_without_turn: 0 },
+  };
+}
+
+const TRANSITION_OUTCOME_KEYS: ReadonlySet<string> = new Set<TransitionOutcome>(["ok", "nonzero", "unhandled-error", "usage"]);
+
+function isTransitionOutcome(value: unknown): value is TransitionOutcome {
+  return typeof value === "string" && TRANSITION_OUTCOME_KEYS.has(value);
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Same window rule the run side uses, on the producer's own `started_at`: a
+ *  record that does not say when it ran is KEPT rather than silently dropped,
+ *  because dropping it shrinks a denominator invisibly. */
+function transitionInWindow(record: ConsoleTransitionRecord, sinceMs: number | null): boolean {
+  if (sinceMs === null) return true;
+  if (typeof record.started_at !== "string" || !record.started_at) return true;
+  const at = Date.parse(record.started_at);
+  return Number.isNaN(at) ? true : at >= sinceMs;
+}
+
+/**
+ * A stable natural key for one invocation, because the producer emits no record
+ * id and the emitter's own dedup (`sentIds`) does not survive a restart.
+ *
+ * It hashes nothing and hides nothing: it is every field of the record that
+ * describes the invocation, in a canonical order. Two DELIVERIES of one
+ * invocation are byte-identical and collapse; two distinct invocations would have
+ * to share a session, a start instant to the millisecond, a duration, an exit
+ * code and every recorded argument. Collapsing can only ever UNDER-count, which
+ * is the safe direction for a set of figures that are all floors.
+ */
+export function transitionIdentity(record: ConsoleTransitionRecord): string {
+  const targets = isPlainRecord(record.targets) ? record.targets : {};
+  return JSON.stringify([
+    record.schema,
+    record.version,
+    record.command ?? null,
+    record.verb ?? null,
+    Object.keys(targets).sort().map((key) => [key, targets[key]]),
+    Array.isArray(record.flags) ? [...record.flags].sort() : [],
+    record.exit_code,
+    record.outcome,
+    record.started_at,
+    record.duration_ms,
+    record.gate_outcome ?? null,
+    record.error_name ?? null,
+    record.actor?.session_id ?? null,
+    record.actor?.runtime ?? null,
+    record.output_tokens ?? null,
+  ]);
 }

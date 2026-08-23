@@ -1111,6 +1111,156 @@ test("gate scorecard is tenant-scoped: the ingest tenant's fold is invisible to 
   }
 });
 
+// ── Transition ingest: the scorecard's optional cost producer (#277 layer 2) ───
+
+/** A REAL `kontour.flow-agents.transition` record, read from the captured corpus
+ *  rather than hand-shaped — the ingest boundary must accept the bytes the
+ *  producer actually writes, not the ones a test author imagines. */
+function transitionRecord(expectation: string, overrides: Record<string, unknown> = {}) {
+  const line = fs.readFileSync(
+    path.join(__dirname, "fixtures", "flow-agents-transitions", "captured.jsonl"), "utf8")
+    .split("\n")
+    .map((raw: string) => raw.trim())
+    .filter((raw: string) => raw.length > 0)
+    .map((raw: string) => JSON.parse(raw))
+    .find((record: any) => record?.targets?.expectation === expectation);
+  assert.ok(line, `no captured transition names ${expectation}`);
+  return { ...line, ...overrides };
+}
+
+test("#277 layer 2: a real transition record is accepted at /records and enriches the gate its expectation belongs to", async () => {
+  const app = createConsoleHubServer({ rootDir: tempRoot(), port: 0, ingestToken: "ingest-secret-token" });
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    // Layer 1 first: without the flow's declarations there is no gate to join to.
+    const payload = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "fixtures", "gate-scorecard", "builder-shape.json"), "utf8"));
+    assert.equal((await requestJson("POST", `${base}/ingest/flow`, {
+      contractVersion: "1", source: "flow", type: "flow.console.projection.0.1",
+      idempotencyKey: "transition-ingest:1", occurredAt: "2026-08-22T00:00:00.000Z", payload
+    }, { authorization: "Bearer ingest-secret-token" })).statusCode, 202);
+
+    // Before any transition: the gate exists and its cost is ABSENT, not zero.
+    const before = await requestJson("GET", `${base}/api/gates/scorecard`);
+    const shapeBefore = before.body.entries.find((e: any) => e.gate_id === "shape-gate");
+    assert.equal(shapeBefore.cost, null);
+    assert.equal(shapeBefore.cost_availability, "unavailable");
+    assert.deepEqual(before.body.transition_coverage,
+      { folded: 0, attributed: 0, without_expectation: 0, unattributable: 0, outside_window: 0, duplicates_suppressed: 0 });
+
+    const accepted = await requestJson("POST", `${base}/records`, transitionRecord("shaped-risk"));
+    assert.equal(accepted.statusCode, 202);
+    assert.equal(accepted.body.recordKind, "transition");
+    assert.equal(accepted.body.outcome, "accepted");
+    assert.match(accepted.body.recordId, /^transition-[0-9a-f]{16}$/);
+
+    const after = await requestJson("GET", `${base}/api/gates/scorecard`);
+    const shapeAfter = after.body.entries.find((e: any) => e.gate_id === "shape-gate");
+    assert.equal(shapeAfter.cost.transitions, 1);
+    assert.equal(shapeAfter.cost.gate_advanced, 1);
+    assert.equal(shapeAfter.cost.duration_ms, 6099);
+    // No producer attributes tokens yet, so this is activity — NOT cost.
+    assert.equal(shapeAfter.cost_availability, "activity_only");
+    assert.equal(shapeAfter.cost.output_tokens_floor, null);
+    assert.equal(shapeAfter.cost.attribution.transitions_without_turn, 1);
+    // Layer 1 is untouched by the enrichment.
+    assert.equal(shapeAfter.invocations, shapeBefore.invocations);
+    assert.equal(shapeAfter.state, shapeBefore.state);
+    // A re-delivery of the same invocation returns the same id and does not double-count.
+    const replay = await requestJson("POST", `${base}/records`, transitionRecord("shaped-risk"));
+    assert.equal(replay.body.recordId, accepted.body.recordId);
+    const replayed = await requestJson("GET", `${base}/api/gates/scorecard`);
+    assert.equal(replayed.body.entries.find((e: any) => e.gate_id === "shape-gate").cost.transitions, 1);
+    assert.equal(replayed.body.transition_coverage.duplicates_suppressed, 1);
+  } finally {
+    await close(app);
+  }
+});
+
+test("#277 layer 2: a malformed transition is a 400 naming the field, and an unknown schema is still refused", async () => {
+  const app = createConsoleHubServer({ rootDir: tempRoot(), port: 0 });
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    const bad = await requestJson("POST", `${base}/records`, transitionRecord("shaped-risk", { outcome: "crashed" }));
+    assert.equal(bad.statusCode, 400);
+    assert.equal(bad.body.error, "INVALID_RECORD");
+    assert.ok(bad.body.validation.some((issue: any) => issue.path === "record.outcome"));
+
+    // A cost claim that is malformed must be REJECTED, never absorbed as "no
+    // turn" — absorbing it turns an emitter bug into permanently understated cost.
+    const badTokens = await requestJson("POST", `${base}/records`, transitionRecord("shaped-risk", { output_tokens: -1 }));
+    assert.equal(badTokens.statusCode, 400);
+    assert.ok(badTokens.body.validation.some((issue: any) => issue.path === "record.output_tokens"));
+
+    // A producer minor-version addition must NOT become a fleet-wide 400.
+    const extra = await requestJson("POST", `${base}/records`, transitionRecord("shaped-risk", { some_future_field: 1 }));
+    assert.equal(extra.statusCode, 202);
+
+    // And the allowlist is still an allowlist.
+    const unknown = await requestJson("POST", `${base}/records`, { schema: "kontour.flow-agents.something-else", version: "1.0" });
+    assert.equal(unknown.statusCode, 400);
+    assert.equal(unknown.body.error, "INVALID_RECORD");
+    assert.match(unknown.body.safeMessage, /kontour\.flow-agents\.transition/);
+  } finally {
+    await close(app);
+  }
+});
+
+test("#277 layer 2 tenant isolation: one tenant's transitions never enrich another's gates", async () => {
+  // Transitions bind to the AUTHORITATIVE principal tenant — the same key the
+  // scorecard read uses — so a producer can only ever enrich its own tenant.
+  const app = createConsoleHubServer({
+    rootDir: tempRoot(),
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: TWO_TENANTS,
+    defaultTenantId: "tenant-a",
+    ingestToken: "ingest-secret-token"
+  });
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    const payload = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "fixtures", "gate-scorecard", "builder-shape.json"), "utf8"));
+    assert.equal((await requestJson("POST", `${base}/ingest/flow`, {
+      contractVersion: "1", source: "flow", type: "flow.console.projection.0.1",
+      idempotencyKey: "transition-tenancy:1", occurredAt: "2026-08-22T00:00:00.000Z", payload
+    }, { authorization: "Bearer ingest-secret-token" })).statusCode, 202);
+
+    // Tenant B posts a transition for tenant A's flow. It is accepted (it is a
+    // valid record) and lands in B's OWN fold, where it has nothing to join to.
+    assert.equal((await requestJson("POST", `${base}/records`, transitionRecord("shaped-risk"), AUTH_B)).statusCode, 202);
+
+    const cardA = await requestJson("GET", `${base}/api/gates/scorecard`, undefined, AUTH_A);
+    const shapeA = cardA.body.entries.find((e: any) => e.gate_id === "shape-gate");
+    assert.equal(shapeA.cost, null, "tenant A's gate must not be enriched by tenant B's producer");
+    assert.equal(shapeA.cost_availability, "unavailable");
+    assert.equal(cardA.body.transition_coverage.folded, 0);
+
+    const cardB = await requestJson("GET", `${base}/api/gates/scorecard`, undefined, AUTH_B);
+    assert.deepEqual(cardB.body.entries, []);
+    assert.equal(cardB.body.transition_coverage.folded, 1);
+    // B's own record is unattributable in B's fold — surfaced, never dropped.
+    assert.equal(cardB.body.transition_coverage.unattributable, 1);
+    assert.equal(cardB.body.unattributable[0].kind, "transition_undeclared_expectation");
+
+    // A body tenant that disagrees with the principal is a 403, on the same
+    // boundary every other kind uses.
+    const smuggle = await requestJson("POST", `${base}/records`,
+      transitionRecord("shaped-risk", { tenant_id: "tenant-a" }), AUTH_B);
+    assert.equal(smuggle.statusCode, 403);
+    const cardAAfter = await requestJson("GET", `${base}/api/gates/scorecard`, undefined, AUTH_A);
+    assert.equal(cardAAfter.body.transition_coverage.folded, 0);
+  } finally {
+    await close(app);
+  }
+});
+
 test("#159 two-token isolation: tenant B economics + liveness are invisible to tenant A, and the cross-tenant boundary holds", async () => {
   const sqlClient = new FakeTelemetrySqlClient();
   const app = hostedEconomicsApp(sqlClient, TWO_TENANTS);

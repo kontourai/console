@@ -45,7 +45,12 @@ import type {
 
 const FIXTURE_DIR = path.join(__dirname, "fixtures", "gate-scorecard");
 const GENERATOR = path.join(__dirname, "fixtures", "generate-gate-scorecard-fixtures.mjs");
-const FIXTURE_NAMES = ["builder-demo.snapshot-a", "builder-demo.snapshot-b", "other-flow", "indeterminate-demo"];
+const FIXTURE_NAMES = [
+  "builder-demo.snapshot-a", "builder-demo.snapshot-b", "other-flow", "indeterminate-demo",
+  // Layer 2's join target: the REAL builder.shape flow, whose expectation ids the
+  // captured transition records name (see gate-scorecard-cost-enrichment.test.ts).
+  "builder-shape", "other-shape",
+];
 
 /** A REAL producer payload, captured — never hand-written (finding HIGH-7). */
 function fixture(name: string): FlowProjectionLike {
