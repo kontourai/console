@@ -77,7 +77,8 @@ import type { FlowConsoleProjection } from "@kontourai/flow/console-contract" wi
  *  the contract real payloads satisfy. */
 export interface FlowProjectionEvidence {
   id: string;
-  status: string | null;
+  /** Present on the wire but not consumed by this fold; optional so the drift alarm tracks only the consumed set. */
+  status?: string | null;
   expectation_ids: ReadonlyArray<string>;
   gate_id?: string | null;
 }
@@ -115,8 +116,8 @@ export interface FlowProjectionRouteBack {
  *  degrades gracefully at runtime when a legacy/foreign producer omits pieces
  *  (see the legacy route-back fallback), because a type cannot police the wire. */
 export interface FlowProjectionLike {
-  run: { run_id: string; definition_id?: string | null; updated_at?: string | null };
-  definition?: { id?: string | null } | null;
+  run: { run_id: string; definition_id: string | null; updated_at: string | null };
+  definition: { id: string | null } | null;
   gates: ReadonlyArray<FlowProjectionGate>;
   evidence: ReadonlyArray<FlowProjectionEvidence>;
   transitions: ReadonlyArray<FlowProjectionTransition>;

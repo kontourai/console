@@ -61,6 +61,7 @@ const proj = (over: Partial<FlowProjectionLike> = {}): FlowProjectionLike => ({
     definition_id: "builder.build",
     updated_at: "2026-08-22T00:00:00.000Z",
   },
+  definition: null,
   gates: [],
   evidence: [],
   transitions: [],
@@ -471,8 +472,8 @@ test("folds gates from any flow, not an allow-list of one kit's", () => {
   // Builder's gate ids would be blind to every other flow — and would put kit
   // vocabulary in a kit-neutral surface.
   const card = fold([
-    proj({ run: { run_id: "r1", definition_id: "knowledge.ingest" }, gates: [gate({ id: "classify-gate", status: "pass" })] }),
-    proj({ run: { run_id: "r2", definition_id: "some.third-party" }, gates: [gate({ id: "whatever-gate", status: "pass" })] }),
+    proj({ run: { run_id: "r1", definition_id: "knowledge.ingest", updated_at: "2026-08-22T00:00:00.000Z" }, gates: [gate({ id: "classify-gate", status: "pass" })] }),
+    proj({ run: { run_id: "r2", definition_id: "some.third-party", updated_at: "2026-08-22T00:00:00.000Z" }, gates: [gate({ id: "whatever-gate", status: "pass" })] }),
   ]);
   assert.deepEqual(card.flows_observed, ["knowledge.ingest", "some.third-party"]);
   assert.deepEqual(card.entries.map((e: GateScorecardEntry) => e.gate_id), ["classify-gate", "whatever-gate"]);
