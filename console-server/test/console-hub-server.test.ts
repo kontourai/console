@@ -1060,6 +1060,57 @@ const TWO_TENANTS = [
   { token: "token-b", tenantId: "tenant-b" }
 ];
 
+test("gate scorecard is tenant-scoped: the ingest tenant's fold is invisible to another tenant (#278 round-2 HIGH-2)", async () => {
+  // Flow ingest is bound to the DEFAULT tenant (single per-product token). A
+  // server-global scorecard would let ANY tenant with records:read read that
+  // tenant's gate outcomes — the fold must be keyed by authoritative tenantId
+  // exactly like economics, and /api/gates/scorecard must only ever materialize
+  // context.tenantId's own.
+  const app = createConsoleHubServer({
+    rootDir: tempRoot(),
+    port: 0,
+    runtimeMode: "hosted",
+    telemetryStorageAdapter: "postgres",
+    telemetryDatabaseUrl: "postgres://example.invalid/console",
+    telemetrySqlClient: new FakeTelemetrySqlClient(),
+    hostedAuthTokens: TWO_TENANTS,
+    defaultTenantId: "tenant-a",
+    ingestToken: "ingest-secret-token"
+  });
+  await listen(app);
+  try {
+    const base = serverUrl(app);
+    const payload = JSON.parse(fs.readFileSync(
+      path.join(__dirname, "fixtures", "gate-scorecard", "builder-demo.snapshot-b.json"), "utf8"));
+    const posted = await requestJson("POST", `${base}/ingest/flow`, {
+      contractVersion: "1",
+      source: "flow",
+      type: "flow.console.projection.0.1",
+      idempotencyKey: "tenancy-check:1",
+      occurredAt: "2026-08-22T00:00:00.000Z",
+      payload
+    }, { authorization: "Bearer ingest-secret-token" });
+    assert.equal(posted.statusCode, 202);
+
+    // The ingest tenant (tenant-a = defaultTenantId) reads its own fold.
+    const cardA = await requestJson("GET", `${base}/api/gates/scorecard`, undefined, AUTH_A);
+    assert.equal(cardA.statusCode, 200);
+    assert.equal(cardA.body.runs_folded, 1);
+    assert.deepEqual(cardA.body.flows_observed, ["builder.demo"]);
+
+    // Tenant B holds records:read-equivalent access and must see ONLY its own
+    // (empty) fold — no entries, no unattributable findings, nothing.
+    const cardB = await requestJson("GET", `${base}/api/gates/scorecard`, undefined, AUTH_B);
+    assert.equal(cardB.statusCode, 200);
+    assert.equal(cardB.body.runs_folded, 0);
+    assert.deepEqual(cardB.body.entries, []);
+    assert.deepEqual(cardB.body.flows_observed, []);
+    assert.deepEqual(cardB.body.unattributable, []);
+  } finally {
+    await close(app);
+  }
+});
+
 test("#159 two-token isolation: tenant B economics + liveness are invisible to tenant A, and the cross-tenant boundary holds", async () => {
   const sqlClient = new FakeTelemetrySqlClient();
   const app = hostedEconomicsApp(sqlClient, TWO_TENANTS);

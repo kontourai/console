@@ -201,6 +201,107 @@ test("GET /ingest/flow/:runId returns the stored projection (404 when absent)", 
   }
 });
 
+// ── gate scorecard read surface (console #277/#278) ───────────────────────────
+//
+// The scorecard projection is FED at POST /ingest/flow and READ at
+// GET /api/gates/scorecard — the wiring review round 1 found missing entirely
+// (BLOCKING-2: the fold existed but nothing instantiated or served it). These
+// tests drive the REAL route with REAL producer-captured payloads.
+
+const scorecardFixture = (name: string) => JSON.parse(
+  fs.readFileSync(path.join(__dirname, "fixtures", "gate-scorecard", `${name}.json`), "utf8"),
+);
+
+test("GET /api/gates/scorecard serves the fold of everything accepted at POST /ingest/flow", async () => {
+  const app = createConsoleHubServer({ rootDir: tempRoot(), port: 0, ingestToken: INGEST_TOKEN });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    // Before any ingest: an EMPTY scorecard, not an error — nothing ran is a
+    // statement the panel can render honestly.
+    const empty = await requestJson("GET", `${baseUrl}/api/gates/scorecard`);
+    assert.equal(empty.statusCode, 200);
+    assert.deepEqual(empty.body.entries, []);
+    assert.equal(empty.body.runs_folded, 0);
+
+    // Ingest a real producer projection through the real route.
+    const snapshotA = scorecardFixture("builder-demo.snapshot-a");
+    const post = await requestJson("POST", `${baseUrl}/ingest/flow`, {
+      contractVersion: "1",
+      source: "flow",
+      type: "flow.console.projection.0.1",
+      idempotencyKey: "builder-demo:1",
+      occurredAt: "2026-08-22T00:00:00.000Z",
+      payload: snapshotA,
+    }, bearer());
+    assert.equal(post.statusCode, 202);
+
+    const card = await requestJson("GET", `${baseUrl}/api/gates/scorecard`);
+    assert.equal(card.statusCode, 200);
+    assert.deepEqual(card.body.flows_observed, ["builder.demo"]);
+    assert.equal(card.body.runs_folded, 1);
+    const planReview = card.body.entries.find((e: any) => e.gate_id === "plan.review");
+    assert.equal(planReview.state, "invoked");
+    assert.equal(planReview.route_backs, 1);
+
+    // A LATER snapshot of the SAME run (new idempotencyKey) supersedes: still one
+    // run folded, and the entries reflect the newer snapshot.
+    const snapshotB = scorecardFixture("builder-demo.snapshot-b");
+    await requestJson("POST", `${baseUrl}/ingest/flow`, {
+      contractVersion: "1",
+      source: "flow",
+      type: "flow.console.projection.0.1",
+      idempotencyKey: "builder-demo:2",
+      occurredAt: "2026-08-22T00:01:00.000Z",
+      payload: snapshotB,
+    }, bearer());
+    const updated = await requestJson("GET", `${baseUrl}/api/gates/scorecard`);
+    assert.equal(updated.body.runs_folded, 1, "same run superseded, not double-counted");
+    const planAfter = updated.body.entries.find((e: any) => e.gate_id === "plan.review");
+    assert.equal(planAfter.refusals, 0, "snapshot B's pass verdict superseded A's route-back");
+    assert.equal(planAfter.route_backs, 1);
+    // The orphan expectation carried by snapshot B's evidence is SHOWN, not dropped.
+    assert.equal(updated.body.unattributable.length, 1);
+    assert.equal(updated.body.unattributable[0].expectation_id, "ghost.expectation");
+  } finally {
+    await close(app);
+  }
+});
+
+test("GET /api/gates/scorecard rejects a non-ISO since with 400 and accepts a valid one", async () => {
+  const app = createConsoleHubServer({ rootDir: tempRoot(), port: 0, ingestToken: INGEST_TOKEN });
+  await listen(app);
+  try {
+    const baseUrl = serverUrl(app);
+    // The contract documents 400 for non-ISO input. Date.parse alone would
+    // happily accept most of these (round-2 LOW), so the strict-shape check is
+    // what each of them exercises.
+    for (const since of ["yesterday-ish", "0", "2026", "08/22/2026", "2026-08-22", "2026-08-22T00:00", "2026-08-22T00:00:00"]) {
+      const bad = await requestJson("GET", `${baseUrl}/api/gates/scorecard?since=${encodeURIComponent(since)}`);
+      assert.equal(bad.statusCode, 400, `since=${since} must be rejected`);
+    }
+
+    await requestJson("POST", `${baseUrl}/ingest/flow`, {
+      contractVersion: "1",
+      source: "flow",
+      type: "flow.console.projection.0.1",
+      idempotencyKey: "builder-demo:window",
+      occurredAt: "2026-08-22T00:00:00.000Z",
+      payload: scorecardFixture("builder-demo.snapshot-b"),
+    }, bearer());
+    // A window in the future: the run falls out of it, but the flow's declared
+    // gates stay visible as `unexercised` (scope DERIVED from retained runs).
+    const windowed = await requestJson("GET", `${baseUrl}/api/gates/scorecard?since=2100-01-01T00:00:00.000Z`);
+    assert.equal(windowed.statusCode, 200);
+    assert.equal(windowed.body.runs_folded, 0);
+    assert.equal(windowed.body.window.since, "2100-01-01T00:00:00.000Z");
+    assert.equal(windowed.body.entries.every((e: any) => e.state === "unexercised"), true);
+    assert.equal(windowed.body.entries.length, 3);
+  } finally {
+    await close(app);
+  }
+});
+
 // ── helpers (mirror console-hub-server.test.ts) ────────────────────────────────
 
 function listen(app: any) {

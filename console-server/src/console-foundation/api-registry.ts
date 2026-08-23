@@ -109,6 +109,10 @@ export const API_ROUTES: ApiRoute[] = [
   { method: "GET", path: "/api/economics/delegations", auth: "gate", scope: "economics:read", knownRoute: true, summary: "Delegation efficiency per (role, model): outcome mix + acceptance rate (excluding `unavailable`), outcome coverage, and MODEL-GRANULARITY PROXY cost (no runtime isolates per-sub-agent tokens) (flow-agents #415).", tags: ["economics"],
     responses: { "200": { description: "EconomicsDelegationRollup read-model." }, "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
 
+  { method: "GET", path: "/api/gates/scorecard", auth: "gate", scope: "records:read", knownRoute: true, summary: "Per-gate outcome scorecard folded from ingested Flow projections: invoked / never_invoked / unexercised / withheld / indeterminate, refusal and route-back counts, and unattributable evidence (console #277).", tags: ["records"],
+    query: [{ name: "since", type: "string", description: "Window start as an extended-format ISO 8601 timestamp with date, time including seconds, and an explicit zone (e.g. 2026-08-22T00:00:00Z); other ISO forms are rejected with 400. Older runs still contribute declared gates (shown as unexercised)." }],
+    responses: { "200": { description: "GateScorecard read-model." }, "400": ERR("Invalid query."), "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant.") } },
+
   { method: "POST", path: "/api/kits/contributions", auth: "gate", scope: "records:write", knownRoute: true, summary: "Register a versioned Flow Agents Kit observability contribution for the authenticated tenant.", tags: ["kits"],
     request: { description: "KitContributionRegistration wrapping the public Flow Agents descriptor." },
     responses: { "201": { description: "Contribution registered." }, "202": { description: "Contribution quarantined with diagnostics." }, "400": ERR("Invalid body."), "401": ERR("Unauthorized."), "403": ERR("Insufficient scope / tenant."), "503": ERR("Kit host dependency unavailable.") } },

@@ -9,6 +9,7 @@ import { createSseBroker, openSseResponse, writeSse, type SseBroker } from "./ss
 import { createOptionalPgClient, createTelemetryStore, parseTelemetryQuery, validateTelemetryRecordBody, type TelemetryStore } from "./telemetry";
 import { createRevocationStore, newSessionId, type RevocationStore } from "./session-revocation";
 import { validateFlowIngestRequest, wrapFlowIngestRecord } from "./flow-ingest";
+import { createGateScorecardProjection, type FlowProjectionLike, type GateScorecardProjection } from "./gate-scorecard-projection";
 import { isLivenessRecord, normalizeLivenessRecord, validateLivenessRecord, LIVENESS_SCHEMA } from "./liveness";
 import type {
   ConsoleEconomicsRecord,
@@ -50,7 +51,7 @@ const { LocalConsoleHub } = require("./console-hub");
 export const DEFAULT_HOST = "127.0.0.1";
 export const DEFAULT_PORT = 3737;
 const MAX_BODY_BYTES = 1024 * 1024;
-export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/api/kits/contributions", "/api/kits/records", "/api/kits/workspace", "/healthz", "/readyz", "/version", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
+export const KNOWN_ROUTES = ["/events", "/stream", "/state", "/inspect", "/records", "/ingest/flow", "/api/telemetry", "/api/telemetry/records", "/api/economics", "/api/economics/value", "/api/economics/delegations", "/api/gates/scorecard", "/api/kits/contributions", "/api/kits/records", "/api/kits/workspace", "/healthz", "/readyz", "/version", "/session", "/session/logout", "/.well-known/oauth-protected-resource", "/auth/login", "/auth/callback", "/mcp", "/openapi.json"];
 
 const KIT_RUN_PREFIX = "/api/kits/runs/";
 
@@ -159,7 +160,14 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
   // already persists the wrapped records, so a restart loses only the read cache.
   const ingestState: FlowIngestServerState = {
     seen: new Map<string, string>(),
-    projections: new Map<string, unknown>()
+    projections: new Map<string, unknown>(),
+    // Rebuildable per-gate scorecards folded from every accepted ingest (console
+    // #277/#278), keyed by the AUTHORITATIVE tenantId exactly like `economics`
+    // above — isolation by construction (round-2 finding HIGH-2: a server-global
+    // fold let any tenant with records:read read the ingest tenant's outcomes).
+    // In-memory alongside the read cache; the hub persists the raw records, so a
+    // restart can replay them — same durability posture as `projections` above.
+    scorecards: new Map<string, GateScorecardProjection>()
   };
   const telemetry = createTelemetryStore(options);
   // Resolve the SQL client once so it can be shared between telemetry and the
@@ -229,6 +237,23 @@ export function createConsoleHubServer(options: ConsoleHubServerOptions = {}): C
 interface FlowIngestServerState {
   seen: Map<string, string>;
   projections: Map<string, unknown>;
+  /** Per-gate outcome folds over accepted ingests, keyed by authoritative
+   *  tenantId (`safePathToken`ed, mirroring `economicsForTenant`); read at
+   *  GET /api/gates/scorecard, which only ever materializes the caller's own. */
+  scorecards: Map<string, GateScorecardProjection>;
+}
+
+/** Lazily create the per-tenant scorecard fold — the exact `economicsForTenant`
+ *  shape, minus the durable branch (the hub persists the raw ingest records;
+ *  rebuilding this in-memory fold from them is the documented follow-up). */
+function scorecardForTenant(scorecards: Map<string, GateScorecardProjection>, tenantId: string): GateScorecardProjection {
+  const key = safePathToken(tenantId);
+  let existing = scorecards.get(key);
+  if (!existing) {
+    existing = createGateScorecardProjection();
+    scorecards.set(key, existing);
+  }
+  return existing;
 }
 
 async function routeRequest(input: {
@@ -524,6 +549,23 @@ async function routeRequest(input: {
         return;
       }
       writeJson(response, 200, entry.projection.materializeDelegations(context.tenantId));
+      return;
+    }
+
+    // Gate scorecard read-model (console #277/#278): the per-gate outcome fold
+    // over every projection accepted at POST /ingest/flow. Same wiring shape as
+    // the economics read-models: rebuildable projection behind the auth gate,
+    // TENANT-SCOPED via the per-tenant map keyed by the authoritative tenantId —
+    // a caller only ever materializes context.tenantId's own fold (HIGH-2).
+    // `?since=` narrows the run window; declarations from older runs still
+    // surface gates as `unexercised`.
+    if (request.method === "GET" && url.pathname === "/api/gates/scorecard") {
+      const since = url.searchParams.get("since");
+      if (since !== null && !isStrictIso8601Timestamp(since)) {
+        writeApiError(response, 400, "INVALID_QUERY", "since must be an ISO 8601 timestamp (e.g. 2026-08-22T00:00:00Z)");
+        return;
+      }
+      writeJson(response, 200, scorecardForTenant(ingestState.scorecards, context.tenantId).materialize(since === null ? {} : { since }));
       return;
     }
 
@@ -1352,6 +1394,14 @@ async function handleFlowIngestRoute(
     if (typeof runId === "string" && runId) {
       ingestState.projections.set(runId, projection);
     }
+    // Fold the accepted projection into the INGEST TENANT's gate scorecard
+    // (console #277/#278). Flow ingest is bound to runtimeConfig.defaultTenantId
+    // — the same tenant whose hub/events this route resolved — and in local mode
+    // context.tenantId equals defaultTenantId, so writer and reader agree. The
+    // projection dedups internally by run_id with last-write-wins, so a later
+    // snapshot of the same run supersedes rather than double-counts.
+    scorecardForTenant(ingestState.scorecards, runtimeConfig.defaultTenantId)
+      .apply(validation.request.payload as FlowProjectionLike);
 
     events.broadcast("record.accepted", {
       delivery: result,
@@ -1760,6 +1810,7 @@ export function requiredScopeForRoute(method: string, pathname: string): string 
   if (pathname === "/api/kits/contributions" || pathname === "/api/kits/records") return "records:write";
   if (pathname === "/api/kits/workspace" || pathname.startsWith(KIT_RUN_PREFIX)) return "records:read";
   if (pathname === "/api/economics" || pathname === "/api/economics/value" || pathname === "/api/economics/delegations") return "economics:read"; // only GET is handled
+  if (pathname === "/api/gates/scorecard") return "records:read"; // a read over folded ingest records; only GET is handled
   if (pathname === "/mcp") return "telemetry:read"; // MCP tools expose telemetry/cost analytics
   if (pathname === "/state" || pathname === "/inspect" || pathname === "/events" || pathname === "/stream") {
     return "records:read";
@@ -2124,6 +2175,15 @@ function hostedEventsForTenant(hostedEvents: Map<string, SseBroker>, tenantId: s
 
 function safePathToken(value: string): string {
   return crypto.createHash("sha256").update(value).digest("hex").slice(0, 32);
+}
+
+/** Strict ISO-8601 timestamp shape (date, time with seconds, explicit zone).
+ *  `Date.parse` alone is far too permissive — it accepts "0", "2026" and
+ *  "08/22/2026", which the /api/gates/scorecard contract documents as 400 —
+ *  so the SHAPE is checked first and Date.parse only validates field ranges. */
+export function isStrictIso8601Timestamp(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/.test(value)
+    && !Number.isNaN(Date.parse(value));
 }
 
 function isLoopbackAddress(address: string | undefined): boolean {

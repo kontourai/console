@@ -1,0 +1,446 @@
+{
+  "continuation": "resume from plan, not chat memory",
+  "current_step": "plan",
+  "definition": {
+    "description": null,
+    "id": "builder.demo",
+    "raw": {
+      "gates": {
+        "plan.review": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "claimType": "plan.approved"
+              },
+              "description": "Plan approved by an owner-authorized reviewer.",
+              "id": "plan.approved",
+              "kind": "trust.bundle",
+              "required": true
+            }
+          ],
+          "on_route_back": {
+            "default": "plan"
+          },
+          "step": "plan"
+        },
+        "publish.window": {
+          "expects": [],
+          "step": "verify"
+        },
+        "verify.tests": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "claimType": "tests.green"
+              },
+              "description": "Test suite ran green on the candidate tree.",
+              "id": "tests.green",
+              "kind": "trust.bundle",
+              "required": true
+            }
+          ],
+          "step": "build"
+        }
+      },
+      "id": "builder.demo",
+      "steps": [
+        {
+          "id": "plan",
+          "label": "Plan",
+          "next": "build"
+        },
+        {
+          "id": "build",
+          "label": "Build",
+          "next": "verify"
+        },
+        {
+          "id": "verify",
+          "label": "Verify",
+          "next": null
+        }
+      ],
+      "title": "Builder demo flow",
+      "version": "1"
+    },
+    "title": "Builder demo flow",
+    "version": "1"
+  },
+  "evidence": [
+    {
+      "authority_trace": null,
+      "authority_traces": [],
+      "bundle_report": null,
+      "claim": null,
+      "diagnostics": null,
+      "expectation_ids": [
+        "plan.approved"
+      ],
+      "external_links": [],
+      "gate_id": "plan.review",
+      "id": "ev-plan-1",
+      "kind": "trust.bundle",
+      "original_path": null,
+      "producer": null,
+      "raw": {
+        "expectation_ids": [
+          "plan.approved"
+        ],
+        "gate_id": "plan.review",
+        "id": "ev-plan-1",
+        "kind": "trust.bundle",
+        "route_reason": "default",
+        "status": "failed"
+      },
+      "requested_kind": null,
+      "route_reason": "default",
+      "status": "failed",
+      "stored_path": null,
+      "trust_artifact": null
+    }
+  ],
+  "exceptions": [],
+  "expectations": [
+    {
+      "description": "Plan approved by an owner-authorized reviewer.",
+      "gate_id": "plan.review",
+      "id": "plan.approved",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "claimType": "plan.approved"
+        },
+        "description": "Plan approved by an owner-authorized reviewer.",
+        "id": "plan.approved",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    },
+    {
+      "description": "Test suite ran green on the candidate tree.",
+      "gate_id": "verify.tests",
+      "id": "tests.green",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "claimType": "tests.green"
+        },
+        "description": "Test suite ran green on the candidate tree.",
+        "id": "tests.green",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    }
+  ],
+  "external_links": [],
+  "gates": [
+    {
+      "attempt": 1,
+      "evidence": [
+        {
+          "authority_trace": null,
+          "authority_traces": [],
+          "bundle_report": null,
+          "claim": null,
+          "diagnostics": null,
+          "expectation_ids": [
+            "plan.approved"
+          ],
+          "external_links": [],
+          "gate_id": "plan.review",
+          "id": "ev-plan-1",
+          "kind": "trust.bundle",
+          "original_path": null,
+          "producer": null,
+          "raw": {
+            "expectation_ids": [
+              "plan.approved"
+            ],
+            "gate_id": "plan.review",
+            "id": "ev-plan-1",
+            "kind": "trust.bundle",
+            "route_reason": "default",
+            "status": "failed"
+          },
+          "requested_kind": null,
+          "route_reason": "default",
+          "status": "failed",
+          "stored_path": null,
+          "trust_artifact": null
+        }
+      ],
+      "evidence_refs": [
+        "ev-plan-1"
+      ],
+      "expectation_ids": [
+        "plan.approved"
+      ],
+      "expectations": [
+        {
+          "description": "Plan approved by an owner-authorized reviewer.",
+          "id": "plan.approved",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "claimType": "plan.approved"
+            },
+            "description": "Plan approved by an owner-authorized reviewer.",
+            "id": "plan.approved",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "plan.review",
+      "is_open": true,
+      "limit_exceeded": false,
+      "matched_expectations": [],
+      "missing": [],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "claimType": "plan.approved"
+            },
+            "description": "Plan approved by an owner-authorized reviewer.",
+            "id": "plan.approved",
+            "kind": "trust.bundle",
+            "required": true
+          }
+        ],
+        "id": "plan.review",
+        "on_route_back": {
+          "default": "plan"
+        },
+        "step": "plan"
+      },
+      "reason": "default",
+      "route_back_to": "plan",
+      "route_reason": "default",
+      "selected_route": "plan",
+      "status": "route-back",
+      "step_id": "plan",
+      "summary": "plan.review has failing evidence"
+    },
+    {
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [],
+      "id": "publish.window",
+      "is_open": false,
+      "matched_expectations": [],
+      "missing": [],
+      "optional_missing": [],
+      "raw": {
+        "expects": [],
+        "id": "publish.window",
+        "step": "verify"
+      },
+      "status": "wait",
+      "step_id": "verify",
+      "summary": "publish.window waiting for evidence"
+    },
+    {
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [
+        {
+          "description": "Test suite ran green on the candidate tree.",
+          "id": "tests.green",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "claimType": "tests.green"
+            },
+            "description": "Test suite ran green on the candidate tree.",
+            "id": "tests.green",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "verify.tests",
+      "is_open": false,
+      "matched_expectations": [],
+      "missing": [
+        "tests.green"
+      ],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "claimType": "tests.green"
+            },
+            "description": "Test suite ran green on the candidate tree.",
+            "id": "tests.green",
+            "kind": "trust.bundle",
+            "required": true
+          }
+        ],
+        "id": "verify.tests",
+        "step": "build"
+      },
+      "status": "block",
+      "step_id": "build",
+      "summary": "Test suite ran green on the candidate tree. missing"
+    }
+  ],
+  "next_action": "return to plan and replace failing evidence attempt 1",
+  "open_gates": [
+    "plan.review"
+  ],
+  "report": null,
+  "route_backs": [
+    {
+      "attempt": 1,
+      "evidence_refs": [
+        "ev-plan-1"
+      ],
+      "expectation_ids": [
+        "plan.approved"
+      ],
+      "from_step": null,
+      "gate_id": "plan.review",
+      "id": "gate_outcome.1",
+      "invalidated_steps": [],
+      "limit_exceeded": false,
+      "max_attempts": null,
+      "reason": "default",
+      "recovery_step": null,
+      "route_back_to": "plan",
+      "selected_route": "plan",
+      "source": "gate_outcome",
+      "to_step": "plan"
+    },
+    {
+      "attempt": 1,
+      "evidence_refs": [
+        "ev-plan-1"
+      ],
+      "expectation_ids": [
+        "plan.approved"
+      ],
+      "from_step": "plan",
+      "gate_id": "plan.review",
+      "id": "transition.1",
+      "invalidated_steps": [
+        "build",
+        "verify"
+      ],
+      "limit_exceeded": false,
+      "max_attempts": null,
+      "reason": "default",
+      "recovery_step": null,
+      "route_back_to": "plan",
+      "selected_route": "plan",
+      "source": "transition",
+      "to_step": "plan"
+    }
+  ],
+  "run": {
+    "current_step": "plan",
+    "definition_id": "builder.demo",
+    "definition_version": "1",
+    "params": {
+      "subject": "demo-slice"
+    },
+    "run_id": "run-builder-demo-1",
+    "status": "active",
+    "subject": "demo-slice",
+    "updated_at": "2026-08-22T23:54:03.649Z"
+  },
+  "schema_version": "0.1",
+  "steps": [
+    {
+      "gates": [
+        "plan.review"
+      ],
+      "id": "plan",
+      "index": 0,
+      "label": "Plan",
+      "next": "build",
+      "raw": {
+        "id": "plan",
+        "label": "Plan",
+        "next": "build"
+      }
+    },
+    {
+      "gates": [
+        "verify.tests"
+      ],
+      "id": "build",
+      "index": 1,
+      "label": "Build",
+      "next": "verify",
+      "raw": {
+        "id": "build",
+        "label": "Build",
+        "next": "verify"
+      }
+    },
+    {
+      "gates": [
+        "publish.window"
+      ],
+      "id": "verify",
+      "index": 2,
+      "label": "Verify",
+      "next": null,
+      "raw": {
+        "id": "verify",
+        "label": "Verify",
+        "next": null
+      }
+    }
+  ],
+  "transitions": [
+    {
+      "at": "2026-08-22T23:54:03.649Z",
+      "evidence_refs": [
+        "ev-plan-1"
+      ],
+      "expectation_ids": [
+        "plan.approved"
+      ],
+      "external_links": [],
+      "from_step": "plan",
+      "gate_id": "plan.review",
+      "id": "transition.1",
+      "raw": {
+        "at": "2026-08-22T23:54:03.649Z",
+        "attempt": 1,
+        "evidence_refs": [
+          "ev-plan-1"
+        ],
+        "expectation_ids": [
+          "plan.approved"
+        ],
+        "from_step": "plan",
+        "gate_id": "plan.review",
+        "invalidated_steps": [
+          "build",
+          "verify"
+        ],
+        "limit_exceeded": false,
+        "reason": "default",
+        "route_reason": "default",
+        "selected_route": "plan",
+        "status": "blocked",
+        "to_step": "plan",
+        "type": "route_back"
+      },
+      "reason": "default",
+      "route_reason": "default",
+      "status": "blocked",
+      "to_step": "plan",
+      "type": "route_back"
+    }
+  ]
+}
