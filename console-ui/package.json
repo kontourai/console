@@ -1,6 +1,6 @@
 {
   "name": "@kontourai/console-ui",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Kontour Console React app, and the host-mountable board/timeline/fleet view components it is built from.",
   "type": "module",
   "license": "Apache-2.0",
@@ -42,7 +42,7 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
-    "@kontourai/console-core": "0.3.0",
+    "@kontourai/console-core": "0.4.0",
     "@kontourai/ui": "^1.1.0"
   },
   "devDependencies": {

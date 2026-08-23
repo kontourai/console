@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.1.0](https://github.com/kontourai/console/compare/console-server-v1.0.0...console-server-v1.1.0) (2026-08-23)
+
+
+### Features
+
+* **console-server:** bridge Surface trust projections into OperatingState ([#254](https://github.com/kontourai/console/issues/254)) ([#260](https://github.com/kontourai/console/issues/260)) ([eb95f67](https://github.com/kontourai/console/commit/eb95f674e980ed0c17a615a0bce6755056487d5d))
+* **console-server:** layer 2 — transition ingest and derived per-gate cost availability ([#277](https://github.com/kontourai/console/issues/277)) ([#279](https://github.com/kontourai/console/issues/279)) ([6c0fd61](https://github.com/kontourai/console/commit/6c0fd61536e3c323cbfca5d9e8e556f46de562ca))
+* host generic Kit observability contributions ([b4b3ccb](https://github.com/kontourai/console/commit/b4b3ccbea8bf12f2052d8e5397d45839de04f1cb))
+* host generic Kit observability contributions ([#271](https://github.com/kontourai/console/issues/271)) ([55fc098](https://github.com/kontourai/console/commit/55fc098aef5fd605cf25f1c40644a8a0e7f1a818))
+* **telemetry:** project repeated invocation signals ([#243](https://github.com/kontourai/console/issues/243)) ([7ed115e](https://github.com/kontourai/console/commit/7ed115edc75b1add2152adcecfeae39fc26800af))
+
+
+### Bug Fixes
+
+* harden kit contribution replay and packaging ([7042cf7](https://github.com/kontourai/console/commit/7042cf7b1c6346f5cc335b13882699a0514e2ca1))
+* preserve kit host package exports ([0f0d774](https://github.com/kontourai/console/commit/0f0d774c15d2010d38857c87638df2b9702fde82))
+* **telemetry:** bound hosted retention ([#246](https://github.com/kontourai/console/issues/246)) ([237f9cb](https://github.com/kontourai/console/commit/237f9cb24a39731b3bb3f998bff4bb2557a1f64a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @kontourai/console-core bumped from 0.3.0 to 0.4.0
+
 ## [1.0.0](https://github.com/kontourai/console/compare/console-server-v0.1.0...console-server-v1.0.0) (2026-07-23)
 
 
