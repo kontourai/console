@@ -145,20 +145,26 @@ export { createEconomicsStore } from "./economics-store";
 export type { EconomicsStore } from "./economics-store";
 export { createEconomicsProjection } from "./economics-projection";
 export type { EconomicsProjection } from "./economics-projection";
-export { createGateScorecardProjection } from "./gate-scorecard-projection";
+export { createGateScorecardProjection, transitionIdentity } from "./gate-scorecard-projection";
 export type {
   FlowProjectionEvidence,
   FlowProjectionGate,
   FlowProjectionLike,
   FlowProjectionRouteBack,
   FlowProjectionTransition,
+  GateCostAttribution,
+  GateCostAvailability,
+  GateCostEnrichment,
   GateOutcomeState,
   GateScorecard,
   GateScorecardEntry,
   GateScorecardFinding,
   GateScorecardProjection,
-  GateScorecardWindow
+  GateScorecardWindow,
+  GateTransitionCoverage
 } from "./gate-scorecard-projection";
+export { TRANSITION_SCHEMA, TRANSITION_SCHEMA_VERSION, validateTransitionRecord } from "./transition-records";
+export type { ConsoleTransitionRecord, TransitionOutcome } from "./transition-records";
 export { validateEconomicsRecordBody } from "./console-hub-server";
 export type {
   ConsoleEconomicsRecord,
@@ -926,6 +932,7 @@ const telemetry = require("./telemetry");
 const economicsStore = require("./economics-store");
 const economicsProjection = require("./economics-projection");
 const gateScorecardProjection = require("./gate-scorecard-projection");
+const transitionRecords = require("./transition-records");
 const kitObservabilityHost = require("./kit-observability-host");
 
 module.exports = {
@@ -957,6 +964,11 @@ module.exports = {
   createEconomicsStore: economicsStore.createEconomicsStore,
   createEconomicsProjection: economicsProjection.createEconomicsProjection,
   createGateScorecardProjection: gateScorecardProjection.createGateScorecardProjection,
+  transitionIdentity: gateScorecardProjection.transitionIdentity,
+  validateTransitionRecord: transitionRecords.validateTransitionRecord,
+  validateTransitionRecordBody: consoleHubServer.validateTransitionRecordBody,
+  TRANSITION_SCHEMA: transitionRecords.TRANSITION_SCHEMA,
+  TRANSITION_SCHEMA_VERSION: transitionRecords.TRANSITION_SCHEMA_VERSION,
   KitObservabilityHost: kitObservabilityHost.KitObservabilityHost,
   loadKitObservabilityContractAdapter: kitObservabilityHost.loadKitObservabilityContractAdapter,
   renderKitStandardViewText: kitObservabilityHost.renderKitStandardViewText,

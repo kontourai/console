@@ -1,0 +1,140 @@
+{
+  "continuation": "resume from shape, not chat memory",
+  "current_step": "shape",
+  "definition": {
+    "description": null,
+    "id": "other.shape",
+    "raw": {
+      "gates": {
+        "rival-shape-gate": {
+          "expects": [
+            {
+              "bundle_claim": {
+                "claimType": "builder.shape.problem"
+              },
+              "description": "A rival flow declaring the same expectation id.",
+              "id": "shaped-problem",
+              "kind": "trust.bundle",
+              "required": true
+            }
+          ],
+          "step": "shape"
+        }
+      },
+      "id": "other.shape",
+      "steps": [
+        {
+          "id": "shape",
+          "next": null
+        }
+      ],
+      "version": "1"
+    },
+    "title": null,
+    "version": "1"
+  },
+  "evidence": [],
+  "exceptions": [],
+  "expectations": [
+    {
+      "description": "A rival flow declaring the same expectation id.",
+      "gate_id": "rival-shape-gate",
+      "id": "shaped-problem",
+      "kind": "trust.bundle",
+      "raw": {
+        "bundle_claim": {
+          "claimType": "builder.shape.problem"
+        },
+        "description": "A rival flow declaring the same expectation id.",
+        "id": "shaped-problem",
+        "kind": "trust.bundle",
+        "required": true
+      },
+      "required": true
+    }
+  ],
+  "external_links": [],
+  "gates": [
+    {
+      "evidence": [],
+      "evidence_refs": [],
+      "expectations": [
+        {
+          "description": "A rival flow declaring the same expectation id.",
+          "id": "shaped-problem",
+          "kind": "trust.bundle",
+          "raw": {
+            "bundle_claim": {
+              "claimType": "builder.shape.problem"
+            },
+            "description": "A rival flow declaring the same expectation id.",
+            "id": "shaped-problem",
+            "kind": "trust.bundle",
+            "required": true
+          },
+          "required": true
+        }
+      ],
+      "id": "rival-shape-gate",
+      "is_open": true,
+      "matched_expectations": [],
+      "missing": [
+        "shaped-problem"
+      ],
+      "optional_missing": [],
+      "raw": {
+        "expects": [
+          {
+            "bundle_claim": {
+              "claimType": "builder.shape.problem"
+            },
+            "description": "A rival flow declaring the same expectation id.",
+            "id": "shaped-problem",
+            "kind": "trust.bundle",
+            "required": true
+          }
+        ],
+        "id": "rival-shape-gate",
+        "step": "shape"
+      },
+      "status": "block",
+      "step_id": "shape",
+      "summary": "A rival flow declaring the same expectation id. missing"
+    }
+  ],
+  "next_action": "attach evidence for rival shape gate",
+  "open_gates": [
+    "rival-shape-gate"
+  ],
+  "report": null,
+  "route_backs": [],
+  "run": {
+    "current_step": "shape",
+    "definition_id": "other.shape",
+    "definition_version": "1",
+    "params": {
+      "subject": "rival-subject"
+    },
+    "run_id": "run-other-shape-1",
+    "status": "active",
+    "subject": "rival-subject",
+    "updated_at": "2026-08-23T20:39:17.502Z"
+  },
+  "schema_version": "0.1",
+  "steps": [
+    {
+      "gates": [
+        "rival-shape-gate"
+      ],
+      "id": "shape",
+      "index": 0,
+      "label": "shape",
+      "next": null,
+      "raw": {
+        "id": "shape",
+        "next": null
+      }
+    }
+  ],
+  "transitions": []
+}
