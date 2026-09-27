@@ -14,6 +14,7 @@ Console is the suite operating plane over the primitives — it renders and corr
 - See it locally (hub + UI + replay): README "See it locally".
 - Bridging real Flow runs: README "Bridge a real Flow run" and `console-server/src/console-foundation/flow-bridge.ts`.
 - Hosted deployment shape (generic): [docs/deployment/hosted-console.md](docs/deployment/hosted-console.md).
+- UI, brand, and product-copy rules: `DESIGN.md` in `@kontourai/ui` (https://github.com/kontourai/ui/blob/main/DESIGN.md; also shipped at `node_modules/@kontourai/ui/DESIGN.md` from 1.13.0). Style with the `--k-*` tokens instead of hard-coded colors, spacing, radii or font sizes, and don't resolve anything the doc marks OPEN.
 
 ## Match Checks To Change Type
 
