@@ -227,13 +227,24 @@ async function attachTrustReports(runDir: string, pipeline: Pipeline, allowedRun
   // can tree-shake if surface is absent, and to avoid top-level async.
   type BuildTrustReportFn = (bundle: Record<string, unknown>) => unknown;
   let buildTrustReport: BuildTrustReportFn | null = null;
+  let statusFunctionVersion: string | undefined;
+  // A missing Surface used to make live derivation vanish silently, leaving the producer's own
+  // embedded report attached under the same field name — the claimant summarising itself, read
+  // as a derivation. Record WHY instead of swallowing it.
+  let derivationUnavailable: string | undefined;
   try {
     const surfaceMod = await import("@kontourai/surface");
-    const fn = (surfaceMod as unknown as Record<string, unknown>)["buildTrustReport"];
+    const bag = surfaceMod as unknown as Record<string, unknown>;
+    const fn = bag["buildTrustReport"];
     if (typeof fn === "function") {
       buildTrustReport = fn as BuildTrustReportFn;
+      if (typeof bag["statusFunctionVersion"] === "string") statusFunctionVersion = bag["statusFunctionVersion"] as string;
+    } else {
+      derivationUnavailable = "@kontourai/surface is installed but exports no buildTrustReport";
     }
-  } catch { /* @kontourai/surface not available; skip trust reports */ }
+  } catch (error) {
+    derivationUnavailable = `@kontourai/surface is unavailable: ${error instanceof Error ? error.message : String(error)}`;
+  }
 
   // For each gate-expect whose Flow definition kind is "trust.bundle", find the
   // matching manifest entry and attach a derived TrustReport.
@@ -307,16 +318,31 @@ async function attachTrustReports(runDir: string, pipeline: Pipeline, allowedRun
         const bundleData = matched["bundle"] as Record<string, unknown> | undefined;
 
         // Prefer live derivation from the raw bundle; fall back to embedded bundle_report.
+        let derivationError: string | undefined;
         if (buildTrustReport && bundleData &&
           Array.isArray(bundleData["claims"]) && Array.isArray(bundleData["evidence"])) {
           try {
             (expect as PipelineGateExpect).trustReport = buildTrustReport(bundleData);
-          } catch { /* derivation error — try fallback */ }
+            (expect as PipelineGateExpect).trustReportProvenance = {
+              source: "derived",
+              ...(statusFunctionVersion ? { statusFunctionVersion } : {}),
+            };
+          } catch (error) {
+            derivationError = `live derivation failed: ${error instanceof Error ? error.message : String(error)}`;
+          }
         }
 
-        // Fallback: use the embedded bundle_report if live derivation wasn't possible.
+        // Fallback: the producer's own embedded report. Attaching it is fine; attaching it
+        // WITHOUT saying so is not — a consumer would read the claimant's self-summary as a
+        // derivation it could re-run.
         if (expect.trustReport === undefined && matched["bundle_report"]) {
           (expect as PipelineGateExpect).trustReport = matched["bundle_report"];
+          const reason = derivationError ?? derivationUnavailable
+            ?? (buildTrustReport ? "the evidence bundle carried no claims/evidence arrays to derive from" : undefined);
+          (expect as PipelineGateExpect).trustReportProvenance = {
+            source: "embedded",
+            ...(reason ? { unavailable_reason: reason } : {}),
+          };
         }
       }
     }
