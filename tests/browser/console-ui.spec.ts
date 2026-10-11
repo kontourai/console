@@ -1,4 +1,10 @@
+import { dirname, join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+
+// Telemetry fixture directories are derived from the checkout at runtime so the
+// spec carries no machine-specific absolute paths. Playwright runs from the repo root.
+const consoleProjectCwd = process.cwd();
+const surfaceProjectCwd = join(dirname(consoleProjectCwd), "surface");
 
 const hubState = {
   generatedAt: "2026-06-08T15:00:00.000Z",
@@ -430,12 +436,12 @@ const telemetryState = {
       runtimeSessionId: "runtime-session-1",
       turnId: "turn-1",
       project: "kontour-console",
-      cwd: "/Users/brian/dev/github/kontourai/kontour-console",
+      cwd: consoleProjectCwd,
       toolName: "execute_bash",
       outcome: "accepted",
       attributes: {
         project: "kontour-console",
-        cwd: "/Users/brian/dev/github/kontourai/kontour-console",
+        cwd: consoleProjectCwd,
         runtimeVersion: "codex-cli 0.138.0",
         model: "gpt-5.5",
         feature: "query-controls",
@@ -470,12 +476,12 @@ const telemetryState = {
       runtimeSessionId: "runtime-session-2",
       turnId: "turn-2",
       project: "surface",
-      cwd: "/Users/brian/dev/github/kontourai/surface",
+      cwd: surfaceProjectCwd,
       toolName: "read_file",
       outcome: "accepted",
       attributes: {
         project: "surface",
-        cwd: "/Users/brian/dev/github/kontourai/surface",
+        cwd: surfaceProjectCwd,
         feature: "surface-review",
       },
     },
@@ -490,7 +496,7 @@ const telemetryState = {
       runtime: "codex",
       model: "gpt-5.5",
       project: "kontour-console",
-      cwd: "/Users/brian/dev/github/kontourai/kontour-console",
+      cwd: consoleProjectCwd,
       toolName: "<img src=x onerror=\"window.__kontourConsoleXss=true\">",
       outcome: "accepted",
       attributes: {
@@ -578,9 +584,9 @@ test("renders telemetry usage from the console API", async ({ page }) => {
   await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["events:tool.invoke", "outcomes:accepted"]);
   await expect(page.getByRole("main")).toContainText("3 visible / 3 matched");
   await page.getByRole("button", { name: "Clear", exact: true }).click();
-  await page.getByRole("button", { name: /kontourai\/surface/ }).click();
-  await expect(page.getByLabel("Telemetry filters")).toContainText("Project directories: /Users/brian/dev/github/kontourai/surface");
-  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual(["cwd:/Users/brian/dev/github/kontourai/surface"]);
+  await page.getByRole("button", { name: new RegExp(escapeRegExp(surfaceProjectCwd)) }).click();
+  await expect(page.getByLabel("Telemetry filters")).toContainText(`Project directories: ${surfaceProjectCwd}`);
+  await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.filters)).toEqual([`cwd:${surfaceProjectCwd}`]);
   await expect(page.locator(".telemetry-recent")).toContainText("read_file");
   await expect(page.locator(".telemetry-recent")).not.toContainText("execute_bash");
   await page.getByRole("button", { name: "Clear", exact: true }).click();
@@ -606,7 +612,7 @@ test("renders telemetry usage from the console API", async ({ page }) => {
   await page.getByRole("button", { name: "Previous page" }).click();
   await expect.poll(() => lastTelemetryRequest(page).then((request) => request?.offset ?? "0")).toBe("0");
   await openFirstTelemetryDetails(page);
-  await expect(page.getByRole("main")).toContainText("/Users/brian/dev/github/kontourai/kontour-console");
+  await expect(page.getByRole("main")).toContainText(consoleProjectCwd);
   await expect(page.getByRole("main")).toContainText("codex-cli 0.138.0");
   await expect(page.getByRole("main")).toContainText('"eventId": "evt-telemetry-1"');
   await page.getByRole("button", { name: "Clear", exact: true }).click();
@@ -1255,4 +1261,8 @@ declare global {
       offset?: string;
     }>;
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
