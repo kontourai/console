@@ -65,5 +65,28 @@
   "exclude": [
     "docs/backlog/**",
     "docs/prototypes/**"
-  ]
+  ],
+  "redirects": {
+    "adr/0001-console-as-suite-management-plane.html": "docs/adr/0001-console-as-suite-management-plane.md",
+    "adr/0002-learning-records-use-control-plane.html": "docs/adr/0002-learning-records-use-control-plane.md",
+    "adr/0003-authenticated-multi-tenant-ingestion-and-the-value-plane.html": "docs/adr/0003-authenticated-multi-tenant-ingestion-and-the-value-plane.md",
+    "adr/0004-console-http-framework.html": "docs/adr/0004-console-http-framework.md",
+    "adr/0005-telemetry-pricing-layers.html": "docs/adr/0005-telemetry-pricing-layers.md",
+    "adr/0006-console-multitenant-auth.html": "docs/adr/0006-console-multitenant-auth.md",
+    "deployment/hosted-console.html": "docs/deployment/hosted-console.md",
+    "deployment/local-fullstack.html": "docs/deployment/local-fullstack.md",
+    "deployment/multi-tenant.html": "docs/deployment/multi-tenant.md",
+    "deployment/npm-package-releases.html": "docs/deployment/npm-package-releases.md",
+    "examples/golden-demo.html": "docs/examples/golden-demo.md",
+    "integrations/flow-agents-console.html": "docs/integrations/flow-agents-console.md",
+    "migrations/console-runtime-root.html": "docs/migrations/console-runtime-root.md",
+    "product-boundaries.html": "docs/product-boundaries.md",
+    "specs/emitter-sink-plane-contract.html": "docs/specs/emitter-sink-plane-contract.md",
+    "specs/intent-binding-consent.html": "docs/specs/intent-binding-consent.md",
+    "specs/kontour-cli-router.html": "docs/specs/kontour-cli-router.md",
+    "specs/kontour-init.html": "docs/specs/kontour-init.md",
+    "specs/product-capability-descriptor.html": "docs/specs/product-capability-descriptor.md",
+    "specs/projection-schema.html": "docs/specs/projection-schema.md",
+    "specs/telemetry-descriptor.html": "docs/specs/telemetry-descriptor.md"
+  }
 }
