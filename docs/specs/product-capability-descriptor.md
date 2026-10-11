@@ -1,8 +1,3 @@
----
-title: Product Capability Descriptor Protocol
-description: Versioned, inert declarations for discovering product-owned Kontour CLI capabilities safely and offline.
----
-
 # Product Capability Descriptor Protocol
 
 The product capability descriptor is the shared discovery contract for Kontour command-line products. It lets a suite-level router learn which local commands a product exposes without importing that product's kernel, interpreting its semantics, or acquiring its authority.

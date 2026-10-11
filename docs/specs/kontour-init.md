@@ -1,8 +1,3 @@
----
-title: Kontour Init
-description: Inspect, plan, and explicitly apply product-owned repository and harness onboarding.
----
-
 # Kontour Init
 
 `kontour init` is a suite-level onboarding transaction planner. It shows how a repository would be configured and delegates approved actions to the product that owns them. It does not implement Flow Agents runtime, provider, power, doctor, or kit semantics.
