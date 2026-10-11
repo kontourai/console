@@ -8,7 +8,7 @@ published `@kontourai/console-ui` host-mountable view components.
 Run the local hub and UI together from the parent package:
 
 ```sh
-cd /Users/brian/dev/github/kontourai/kontour-console
+# from the repository root
 npm run dev:local
 ```
 
