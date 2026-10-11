@@ -14,6 +14,8 @@ const tsxLoader = pathToFileURL(require.resolve("tsx")).href;
 const macHome = "/" + "Users" + "/somebody/dev/project";
 const linuxHome = "/" + "home" + "/somebody/dev/project";
 const placeholderHome = "/" + "home" + "/me/dev/project";
+const macSharedDir = "/" + "Users" + "/Shared/project";
+const ciRunnerHome = "/" + "home" + "/runner/work/console/console";
 
 // Git hooks (pre-push runs `npm test`) export GIT_DIR, GIT_INDEX_FILE and
 // friends. Inherited, they point the fixture's git commands at the real
@@ -57,6 +59,18 @@ test("content boundary rejects a tracked Linux home directory path", () => {
 
 test("content boundary allows placeholder home paths used by path-parsing fixtures", () => {
   const result = runCheckerInRepo({ "fixture.ts": `parse("${placeholderHome}");\n` });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Content boundary check passed\./);
+});
+
+test("content boundary allows the machine-neutral macOS shared directory", () => {
+  const result = runCheckerInRepo({ "shared.ts": `const dir = "${macSharedDir}";\n` });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Content boundary check passed\./);
+});
+
+test("content boundary allows the GitHub Actions runner home directory", () => {
+  const result = runCheckerInRepo({ "ci.ts": `const dir = "${ciRunnerHome}";\n` });
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /Content boundary check passed\./);
 });

@@ -21,9 +21,11 @@ const bannedTerms = [
   {
     // A real account's home directory ties a file to one machine (and names the
     // person). Derive paths at runtime instead (import.meta.url, process.cwd()).
-    // Obvious placeholders such as /home/me/ stay allowed for path-parsing fixtures.
+    // Obvious placeholders such as /home/me/ stay allowed for path-parsing fixtures,
+    // as do machine-neutral shared locations: macOS /Users/Shared/ and the
+    // GitHub Actions runner home /home/runner/.
     label: "machine-specific absolute home directory path",
-    pattern: /\/(?:Users|home)\/(?!(?:me|user|example|<[^>/]*>)\/)[A-Za-z0-9._-]+\//,
+    pattern: /\/(?:Users|home)\/(?!(?:me|user|example|Shared|runner|<[^>/]*>)\/)[A-Za-z0-9._-]+\//,
   },
 ];
 
