@@ -10,7 +10,7 @@ This file is the footnote for people developing the product itself.
 - Console is the suite operating plane over primitives — it renders and correlates; it must not become the authority for claim, gate, review, or governance semantics
 - keep the core product generic — no machine-specific paths, usernames, or private workspace assumptions in tracked source
 - this repo is public; the production console.kontourai.io configuration lives privately — never commit hosted configuration
-- run `npm run check:content-boundary` before any commit that touches public-facing copy — this repo must not leak private deployment or vertical terms
+- run `npm run check:content-boundary` before any commit that touches public-facing copy — this repo must not leak private deployment or vertical terms, or machine-specific home directory paths (`/Users/<name>/`, `/home/<name>/`; derive paths at runtime from `import.meta.url` or `process.cwd()` instead)
 - keep `docs/product-boundaries.md` and `CONTEXT.md` current when the product boundary changes
 
 ## Setup
@@ -34,7 +34,7 @@ This runs typechecks, the content-boundary check, all workspace suites (console-
 Individual checks:
 
 - `npm run typecheck` — TypeScript across all workspaces
-- `npm run check:content-boundary` — no private or vertical terms in public copy
+- `npm run check:content-boundary` — no private or vertical terms in public copy, and no machine-specific home directory paths in tracked files
 - `npm run test:browser` — Playwright browser tests
 - `npm run validate:repo-hooks` — verify repo hook wiring
 

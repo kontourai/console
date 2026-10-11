@@ -37,9 +37,8 @@ await new Promise((resolve) => setTimeout(resolve, 2500));
 const outDir = "/tmp/grounded-demo";
 mkdirSync(outDir, { recursive: true });
 
-const { chromium } = await import(
-  "/Users/brian/dev/github/kontourai/kontourai.io/node_modules/playwright/index.mjs"
-);
+// Resolved from this repo's own @playwright/test devDependency.
+const { chromium } = await import("@playwright/test");
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({

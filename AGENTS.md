@@ -20,7 +20,7 @@ Console is the suite operating plane over the primitives — it renders and corr
 
 - Any code change: `npm test` (typecheck, content boundary, all workspace suites, dev-local, browser tests).
 - Docs: published with docs-kit; `docs-kit.json` lists the published docs and MCP topics. `npm run docs:check` is the gate; when you change code a document `covers`, update that document.
-- Public-facing copy: `npm run check:content-boundary` — this repo must not leak private deployment or vertical terms.
+- Public-facing copy: `npm run check:content-boundary` — this repo must not leak private deployment or vertical terms, or machine-specific home directory paths (`/Users/<name>/`, `/home/<name>/`); derive paths at runtime instead.
 - Package metadata/exports/bins: `npm pack --dry-run` per workspace; node:sqlite requires Node >= 22.
 - Releases: `release-please.yml` is the single npm trusted-publisher identity; it publishes exact component tags via OIDC and owns immutable-tag retries. See [docs/deployment/npm-package-releases.md](docs/deployment/npm-package-releases.md).
 

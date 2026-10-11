@@ -18,6 +18,15 @@ const bannedTerms = [
     label: "private regulated vertical term",
     pattern: new RegExp("\\b" + ["t", "a", "x"].join("") + "\\b", "i"),
   },
+  {
+    // A real account's home directory ties a file to one machine (and names the
+    // person). Derive paths at runtime instead (import.meta.url, process.cwd()).
+    // Obvious placeholders such as /home/me/ stay allowed for path-parsing fixtures,
+    // as do machine-neutral shared locations: macOS /Users/Shared/ and the
+    // GitHub Actions runner home /home/runner/.
+    label: "machine-specific absolute home directory path",
+    pattern: /\/(?:Users|home)\/(?!(?:me|user|example|Shared|runner|<[^>/]*>)\/)[A-Za-z0-9._-]+\//,
+  },
 ];
 
 const ignoredPathPatterns = [
@@ -55,8 +64,8 @@ const findings: Finding[] = [];
 // (hardcoded-pin and stale-docs checks against cli/src/init-plan.ts and
 // docs/specs/kontour-cli-router.md|kontour-init.md) moved out along with the
 // `@kontourai/cli` package itself — see https://github.com/kontourai/cli.
-// This script now only owns the private-vertical-name content boundary
-// below; an equivalent freshness gate for kontour init, if still wanted,
+// This script now owns the private-vertical-name and machine-path content
+// boundary below; an equivalent freshness gate for kontour init, if still wanted,
 // belongs in the kontourai/cli repository against its own source.
 
 for (const filePath of trackedFiles()) {
