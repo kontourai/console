@@ -1,8 +1,3 @@
----
-title: Intent Binding And Consent Policy
-description: How a host binds console-ui component intents to product-owned execution authority, and the consent policy for a bound intent that would execute a side effect.
----
-
 # Intent Binding And Consent Policy
 
 `@kontourai/console-ui` components (the board/timeline/fleet view layer, console#230) emit **intents** — data describing a user-triggered request — through an `onIntent` callback. A component never executes anything itself. This mirrors the same discipline the [Product Capability Descriptor Protocol](product-capability-descriptor.md) already states for the CLI router: a descriptor, and by extension an intent, is **transparency, not consent**. Console routes; the named product remains the execution authority (ADR 0001, ADR 0003 §6).

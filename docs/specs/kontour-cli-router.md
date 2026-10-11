@@ -1,8 +1,3 @@
----
-title: Kontour CLI Router
-description: Offline suite navigation that delegates commands to product-owned executables without merging product authority.
----
-
 # Kontour CLI Router
 
 `@kontourai/cli` provides the suite-level `kontour` command. It owns navigation, descriptor discovery, diagnostics, and safe subprocess delegation. It does not implement product commands, import product kernels, download products, or acquire authority to mutate product state.
