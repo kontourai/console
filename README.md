@@ -1,9 +1,13 @@
 # Kontour Console
 
+[![npm version](https://img.shields.io/npm/v/%40kontourai%2Fconsole)](https://www.npmjs.com/package/@kontourai/console)
 [![CI](https://github.com/kontourai/console/actions/workflows/ci.yml/badge.svg)](https://github.com/kontourai/console/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-kontourai.github.io-blue)](https://kontourai.github.io/console/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 **One operating plane for the whole suite: claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.**
+
+[Documentation](https://kontourai.github.io/console/) · [kontourai.io/console](https://kontourai.io/console/)
 
 The primitives remain portable — Console never becomes the authority for any of them:
 
