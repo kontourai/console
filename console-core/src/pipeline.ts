@@ -11,6 +11,21 @@ export interface PipelineGateExpect {
   kind: string;
   /** Derived Surface TrustReport for this claim (attached by the flow-bridge when evidence bundles are present). */
   trustReport?: unknown;
+  /**
+   * WHERE `trustReport` came from. A report derived live from the bundle and one the producer
+   * embedded in its own manifest are different epistemic objects — the first is a derivation a
+   * consumer can re-run, the second is the claimant's own summary of itself — and the field
+   * alone cannot tell them apart. Absent when no report was attached.
+   *
+   * `unavailable_reason` is present when live derivation could NOT run (Surface missing, or the
+   * derivation threw): silence there would report the fallback as if it were freshly derived.
+   */
+  trustReportProvenance?: {
+    source: "derived" | "embedded";
+    /** Surface's versioned status function, when the report was derived by it. */
+    statusFunctionVersion?: string;
+    unavailable_reason?: string;
+  };
   /** Surface verification endpoint URL for live-fetch of the trust report. */
   verifyUrl?: string;
 }
