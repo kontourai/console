@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "purpose": "Make suite state operable across products and installations.",
+  "purpose": "Make suite state and next actions visible in one operating plane.",
   "builtOn": [
     {
       "product": "flow",
