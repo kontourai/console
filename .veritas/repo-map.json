@@ -59,7 +59,7 @@
         "label": "root manifests",
         "patterns": [
           "package.json",
-          "docs-kit.json",
+          "corpus.json",
           "package-lock.json",
           "README.md",
           ".gitignore",
