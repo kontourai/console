@@ -28,12 +28,63 @@ export function resolveLockIntegrityBaseRef(options: { explicitBaseRef?: string;
   throw new Error("lock-integrity base authority is unavailable; set KONTOUR_LOCK_INTEGRITY_BASE_REF to a fetched base commit SHA/ref");
 }
 
+const platformAndOptionality = ["libc", "os", "cpu", "optional", "devOptional"] as const;
+const resolution = ["integrity", "resolved"] as const;
+const integrityStrength: Record<string, number> = { sha1: 1, sha256: 2, sha384: 3, sha512: 4 };
+
+function versionChanged(next: Record<string, unknown>, prior: Record<string, unknown>): boolean {
+  return typeof prior.version === "string" && typeof next.version === "string" && next.version !== prior.version;
+}
+
+function httpsOrigin(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    // Non-special schemes (git+ssh:, file:) report origin "null"; only an https registry origin is comparable.
+    return url.protocol === "https:" ? url.origin : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function strongestIntegrity(value: string): number {
+  const ranks = value.trim().split(/\s+/).map((entry) => integrityStrength[entry.split("-", 1)[0]] ?? 0);
+  return Math.max(0, ...ranks);
+}
+
+// A version bump of a path already on the base legitimately changes its tarball URL and hash. It may
+// not move the tarball to another registry origin, drop either field, or weaken the hash algorithm.
+function assertVersionBumpResolution(path: string, next: Record<string, unknown>, prior: Record<string, unknown>): void {
+  for (const key of resolution) {
+    assert.equal(typeof next[key], typeof prior[key], `${path} changed base ${key} metadata`);
+  }
+  if (typeof prior.resolved === "string") {
+    const priorOrigin = httpsOrigin(prior.resolved);
+    const nextOrigin = httpsOrigin(next.resolved as string);
+    if (priorOrigin === undefined) {
+      assert.equal(next.resolved, prior.resolved, `${path} changed base resolved metadata`);
+    } else {
+      assert.equal(nextOrigin, priorOrigin, `${path} changed base resolved registry origin on a version bump`);
+    }
+  }
+  if (typeof prior.integrity === "string") {
+    const nextIntegrity = next.integrity as string;
+    assert.ok(
+      strongestIntegrity(nextIntegrity) > 0 && strongestIntegrity(nextIntegrity) >= strongestIntegrity(prior.integrity),
+      `${path} weakened base integrity algorithm on a version bump`,
+    );
+  }
+}
+
 export function validateLockIntegrity(current: Lockfile, base: Lockfile): void {
-  const sensitive = ["libc", "os", "cpu", "optional", "devOptional", "integrity", "resolved"];
   for (const [path, prior] of Object.entries(base.packages)) {
     const next = current.packages[path];
     if (!next) continue;
-    for (const key of sensitive) assert.deepEqual(next[key], prior[key], `${path} changed base ${key} metadata`);
+    for (const key of platformAndOptionality) assert.deepEqual(next[key], prior[key], `${path} changed base ${key} metadata`);
+    if (versionChanged(next, prior)) {
+      assertVersionBumpResolution(path, next, prior);
+    } else {
+      for (const key of resolution) assert.deepEqual(next[key], prior[key], `${path} changed base ${key} metadata`);
+    }
   }
 }
 
@@ -48,7 +99,7 @@ export function checkLockIntegrity(root = repositoryRoot, explicitBaseRef = proc
 if (require.main === module) {
   try {
     checkLockIntegrity();
-    process.stdout.write("Existing lock platform, optionality, resolution, and integrity metadata is preserved.\n");
+    process.stdout.write("Existing lock platform, optionality, resolution, and integrity metadata is preserved; resolution changes only with a same-origin version bump.\n");
   } catch (error) {
     process.stderr.write(`LOCK_INTEGRITY_CHECK_FAILED: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
