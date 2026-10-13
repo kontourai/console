@@ -1,5 +1,28 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "purpose": "Make suite state operable across products and installations.",
+  "builtOn": [
+    {
+      "product": "flow",
+      "via": "@kontourai/flow",
+      "for": "Bridge run projections and embed the local flow run panel."
+    },
+    {
+      "product": "flow-agents",
+      "via": "@kontourai/flow-agents",
+      "for": "Validate kit observability contracts and host their projection lifecycle."
+    },
+    {
+      "product": "surface",
+      "via": "@kontourai/surface",
+      "for": "Derive bridge trust reports and embed inspectable trust panels."
+    },
+    {
+      "product": "ui",
+      "via": "@kontourai/ui",
+      "for": "Render suite operating views with shared visual components and tokens."
+    }
+  ],
   "product": "console",
   "title": "Kontour Console",
   "tagline": "The suite operating plane: current claim, process, proof, and queue state across Kontour products, without owning their semantics.",

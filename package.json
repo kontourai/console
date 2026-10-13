@@ -69,8 +69,8 @@
     "demo:grounded:present": "node --import tsx demo/grounded-answer/build-present.ts",
     "demo:grounded:present:serve": "node --import tsx demo/grounded-answer/build-present.ts && npx serve demo/grounded-answer/dist -p 9877",
     "demo:grounded:present:screenshot": "node --import tsx demo/grounded-answer/screenshot-present.ts",
-    "docs:check": "npx -y github:kontourai/docs-kit#efe0bfe4ad247861ef661c907f6354d6167fa3be docs-kit check",
-    "docs:build": "npx -y github:kontourai/docs-kit#efe0bfe4ad247861ef661c907f6354d6167fa3be docs-kit build"
+    "docs:check": "npx -y github:kontourai/corpus#cc7f6e4939dcc0777c4c3e2d5222b30455013861 corpus check",
+    "docs:build": "npx -y github:kontourai/corpus#cc7f6e4939dcc0777c4c3e2d5222b30455013861 corpus build"
   },
   "publishConfig": {
     "access": "public"
