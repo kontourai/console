@@ -42,6 +42,8 @@ See the [Golden Demo](examples/golden-demo.md) for a full end-to-end example acr
 
 ## Architecture decisions
 
+These numbered ADRs are frozen history. New decisions go to `docs/decisions/<slug>.md` in the [Corpus decision-record format](https://github.com/kontourai/corpus/blob/main/docs/decisions.md), citing an ADR as `adr` evidence; the [decision index](decisions/index.md) lists them.
+
 - [ADR 0001: Console As Suite Management Plane](adr/0001-console-as-suite-management-plane.md)
 - [ADR 0002: Learning Records Use Control Plane](adr/0002-learning-records-use-control-plane.md)
 - [ADR 0003: Authenticated Multi-Tenant Ingestion And The Value Plane](adr/0003-authenticated-multi-tenant-ingestion-and-the-value-plane.md)
