@@ -50,7 +50,7 @@
     "prototype:handoff": "node --import tsx scripts/serve-prototype.ts docs/prototypes/handoff-replay",
     "dev:local": "node --import tsx scripts/dev-local.ts",
     "serve": "npm --workspace @kontourai/console-server run serve --",
-    "test": "npm run check:release-package-versions && npm run test:release-policy && npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontourai/console-core test && npm --workspace @kontourai/console-core run test:package-surface && npm --workspace @kontourai/console-server test && npm --workspace @kontourai/console-ui test && npm --workspace @kontourai/console-ui run typecheck && npm run test:dev-local && npm run test:browser",
+    "test": "npm run check:decisions && npm run check:release-package-versions && npm run test:release-policy && npm run typecheck && node --import tsx scripts/check-content-boundary.ts && npm --workspace @kontourai/console-core test && npm --workspace @kontourai/console-core run test:package-surface && npm --workspace @kontourai/console-server test && npm --workspace @kontourai/console-ui test && npm --workspace @kontourai/console-ui run typecheck && npm run test:dev-local && npm run test:browser",
     "test:browser": "playwright test",
     "smoke:ui:hosted": "node scripts/hosted-ui-smoke.mjs",
     "test:dev-local": "node --import tsx --test scripts/dev-local.test.ts scripts/check-content-boundary.test.ts scripts/publish-npm-policy.test.ts scripts/check-release-package-versions.test.ts",
@@ -69,8 +69,10 @@
     "demo:grounded:present": "node --import tsx demo/grounded-answer/build-present.ts",
     "demo:grounded:present:serve": "node --import tsx demo/grounded-answer/build-present.ts && npx serve demo/grounded-answer/dist -p 9877",
     "demo:grounded:present:screenshot": "node --import tsx demo/grounded-answer/screenshot-present.ts",
-    "docs:check": "npx -y github:kontourai/corpus#340b66fc8f723c1babe35fce8240c82cd196b0db corpus check",
-    "docs:build": "npx -y github:kontourai/corpus#340b66fc8f723c1babe35fce8240c82cd196b0db corpus build"
+    "check:decisions": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/08c62ccd72880ff4bd4c378ae252ad437b4b4fb5 -- corpus decisions check --base ${DECISIONS_BASE:-origin/main}",
+    "gen:decisions-index": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/08c62ccd72880ff4bd4c378ae252ad437b4b4fb5 -- corpus decisions index",
+    "docs:check": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/08c62ccd72880ff4bd4c378ae252ad437b4b4fb5 -- corpus check",
+    "docs:build": "npx -y --package=https://codeload.github.com/kontourai/corpus/tar.gz/08c62ccd72880ff4bd4c378ae252ad437b4b4fb5 -- corpus build"
   },
   "publishConfig": {
     "access": "public"
