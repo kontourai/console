@@ -41,6 +41,7 @@
     { "source": "docs/adr/0006-console-multitenant-auth.md", "section": "Concepts" },
     { "source": "docs/decisions/index.md", "section": "Concepts" },
     { "source": "docs/decisions/console-http-framework.md", "section": "Concepts" },
+    { "source": "docs/decisions/console-multi-tenant-auth.md", "section": "Concepts" },
     { "source": "docs/deployment/local-fullstack.md", "section": "Guides" },
     { "source": "docs/integrations/flow-agents-console.md", "section": "Guides" },
     { "source": "console-ui/README.md", "section": "Guides" },
