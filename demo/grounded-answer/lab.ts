@@ -14,7 +14,7 @@
 import { buildSurveyTrustBundle } from "@kontourai/survey";
 import { buildTrustReport } from "@kontourai/surface";
 import type { SurveyInput } from "@kontourai/survey";
-import type { TrustBundle, TrustReport } from "@kontourai/surface";
+import type { TrustBundle, TrustReport, VerificationPolicy } from "@kontourai/surface";
 import type { SalesRecord } from "./sales-system.js";
 
 export interface ClaimRequest {
@@ -140,7 +140,7 @@ export function groundClaim(
         candidateId,
         subjectType: request.subjectType,
         subjectId: request.subjectId,
-        surface: "sales-grounding-demo",
+        facet: "sales-grounding-demo",
         claimType: request.claimType,
         fieldOrBehavior: request.fieldOrBehavior,
         value: record.amount,
@@ -164,6 +164,22 @@ export function groundClaim(
   // REAL call — not faked. buildSurveyTrustBundle asserts producer discipline:
   // a "verified" claim CANNOT be produced without a review outcome with actor + reviewedAt.
   const bundle = buildSurveyTrustBundle(surveyInput);
+
+  // Survey emits no verification policy, and Surface 2.x+ reports a verified claim without
+  // one as a blocking `no-verification-policy` gap. A recorded figure for a closed quarter
+  // is a historical fact, so the grounding does not expire.
+  const historicalPolicy: VerificationPolicy = {
+    id: `policy.${request.claimType}.historical`,
+    claimType: request.claimType,
+    requiredEvidence: [],
+    acceptanceCriteria: ["the amount is read from the system-of-record entry for the stated quarter"],
+    reviewAuthority: "revenue-ops",
+    validityRule: { kind: "historical" },
+    stalenessTriggers: [],
+    conflictRules: [],
+    impactLevel: "high",
+  };
+  bundle.policies = [...bundle.policies, historicalPolicy];
 
   // REAL surface report — derives the TrustReport from the Hachure TrustBundle.
   const report = buildTrustReport(bundle, {

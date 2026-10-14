@@ -188,7 +188,7 @@ export function groundValue(
         candidateId,
         subjectType: binding.subjectType,
         subjectId: binding.subjectId,
-        surface: "grounded-answer-gallery",
+        facet: "grounded-answer-gallery",
         claimType: binding.claimType,
         fieldOrBehavior: binding.fieldOrBehavior,
         value: record.value,
@@ -263,6 +263,22 @@ export function groundValue(
       // integrityRef (the stale snapshot), which is what makes the claim stale.
       c.currentIntegrityRef = opts.currentIntegrityRef;
     }
+  } else {
+    // Survey emits no verification policy, and Surface 2.x+ reports a verified claim without
+    // one as a blocking `no-verification-policy` gap. A recorded figure for a closed period
+    // is a historical fact, so the fresh grounding does not expire.
+    const historicalPolicy: VerificationPolicy = {
+      id: `policy.${binding.claimType}.historical`,
+      claimType: binding.claimType,
+      requiredEvidence: [],
+      acceptanceCriteria: ["the value is read from the system-of-record entry for the stated period"],
+      reviewAuthority: "revenue-ops",
+      validityRule: { kind: "historical" },
+      stalenessTriggers: [],
+      conflictRules: [],
+      impactLevel: "high",
+    };
+    bundle.policies = [...bundle.policies, historicalPolicy];
   }
 
   const report = buildTrustReport(bundle, { id: `report.${claimId}`, now: new Date() });

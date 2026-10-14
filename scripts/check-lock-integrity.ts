@@ -75,12 +75,75 @@ function assertVersionBumpResolution(path: string, next: Record<string, unknown>
   }
 }
 
+// Reviewed one-time transitions that the rules above would otherwise reject. Each entry names one
+// lock path and the exact base -> next value, in one direction. Every other field on that path is
+// still checked, and an entry matches nothing once its transition is on the base.
+
+type Optionality = "optional" | "devOptional";
+type OptionalityRecomputation = { path: string; key: Optionality; from: true | undefined; to: true | undefined };
+
+// npm 11 recomputes these flags on any install against this base. An untouched origin/main gives the
+// same set with `npm install --package-lock-only`. None of them changes a version, tarball or hash.
+export const reviewedOptionalityRecomputations: readonly OptionalityRecomputation[] = [
+  { path: "node_modules/@types/react", key: "devOptional", from: true, to: undefined },
+  { path: "node_modules/@types/react-dom", key: "devOptional", from: true, to: undefined },
+  { path: "node_modules/csstype", key: "devOptional", from: true, to: undefined },
+  { path: "node_modules/tslib", key: "devOptional", from: undefined, to: true },
+  { path: "node_modules/typescript", key: "devOptional", from: undefined, to: true },
+  { path: "node_modules/agent-base", key: "optional", from: true, to: undefined },
+  { path: "node_modules/agent-base", key: "devOptional", from: undefined, to: true },
+  { path: "node_modules/http-proxy-agent", key: "optional", from: true, to: undefined },
+  { path: "node_modules/http-proxy-agent", key: "devOptional", from: undefined, to: true },
+  { path: "node_modules/https-proxy-agent", key: "optional", from: true, to: undefined },
+  { path: "node_modules/https-proxy-agent", key: "devOptional", from: undefined, to: true },
+];
+
+type LinkToRegistry = { path: string; linkResolved: string; tarballPrefix: string };
+
+// A sibling-checkout link replaced by the published package (console#292). A link entry has no
+// version or integrity, so the version-bump rule cannot apply to it.
+export const reviewedLinkToRegistry: readonly LinkToRegistry[] = [
+  {
+    path: "node_modules/@kontourai/survey",
+    linkResolved: "../survey",
+    tarballPrefix: "https://registry.npmjs.org/@kontourai/survey/-/survey-",
+  },
+];
+
+function isReviewedRecomputation(path: string, key: string, prior: unknown, next: unknown): boolean {
+  return reviewedOptionalityRecomputations.some(
+    (entry) => entry.path === path && entry.key === key && entry.from === prior && entry.to === next,
+  );
+}
+
+function reviewedLinkFor(path: string, prior: Record<string, unknown>): LinkToRegistry | undefined {
+  const entry = reviewedLinkToRegistry.find((candidate) => candidate.path === path);
+  if (!entry || prior.link !== true || prior.resolved !== entry.linkResolved || prior.integrity !== undefined) return undefined;
+  return entry;
+}
+
+function assertLinkToRegistryResolution(path: string, next: Record<string, unknown>, entry: LinkToRegistry): void {
+  assert.equal(next.link, undefined, `${path} must stop being a link to move to the registry`);
+  assert.equal(typeof next.version, "string", `${path} registry entry has no version`);
+  assert.equal(next.resolved, `${entry.tarballPrefix}${next.version as string}.tgz`, `${path} changed base resolved metadata`);
+  assert.ok(
+    typeof next.integrity === "string" && strongestIntegrity(next.integrity) === integrityStrength.sha512,
+    `${path} registry entry needs sha512 integrity`,
+  );
+}
+
 export function validateLockIntegrity(current: Lockfile, base: Lockfile): void {
   for (const [path, prior] of Object.entries(base.packages)) {
     const next = current.packages[path];
     if (!next) continue;
-    for (const key of platformAndOptionality) assert.deepEqual(next[key], prior[key], `${path} changed base ${key} metadata`);
-    if (versionChanged(next, prior)) {
+    for (const key of platformAndOptionality) {
+      if (isReviewedRecomputation(path, key, prior[key], next[key])) continue;
+      assert.deepEqual(next[key], prior[key], `${path} changed base ${key} metadata`);
+    }
+    const reviewedLink = reviewedLinkFor(path, prior);
+    if (reviewedLink) {
+      assertLinkToRegistryResolution(path, next, reviewedLink);
+    } else if (versionChanged(next, prior)) {
       assertVersionBumpResolution(path, next, prior);
     } else {
       for (const key of resolution) assert.deepEqual(next[key], prior[key], `${path} changed base ${key} metadata`);
@@ -99,7 +162,7 @@ export function checkLockIntegrity(root = repositoryRoot, explicitBaseRef = proc
 if (require.main === module) {
   try {
     checkLockIntegrity();
-    process.stdout.write("Existing lock platform, optionality, resolution, and integrity metadata is preserved; resolution changes only with a same-origin version bump.\n");
+    process.stdout.write("Existing lock platform, optionality, resolution, and integrity metadata is preserved; resolution changes only with a same-origin version bump or a reviewed transition.\n");
   } catch (error) {
     process.stderr.write(`LOCK_INTEGRITY_CHECK_FAILED: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;

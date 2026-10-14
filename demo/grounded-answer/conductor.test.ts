@@ -123,9 +123,11 @@ describe("buildSurveyTrustBundle producer discipline enforcement", () => {
     // We verify this by checking that the real call produced a proper bundle structure.
     const result = answer({ accountId: "account-alpha", period: "Q3-2025" }) as GroundedAnswer;
 
-    // schemaVersion: 3 is only present in the real Hachure TrustBundle output.
-    assert.equal(result.bundle.schemaVersion, 3,
-      "schemaVersion=3 confirms real buildSurveyTrustBundle was called");
+    // schemaVersion 5 (Surface 2.0+ / Survey 1.4+) is only present in the real Hachure TrustBundle output.
+    assert.equal(result.bundle.schemaVersion, 5,
+      "schemaVersion=5 confirms real buildSurveyTrustBundle was called");
+    // Survey 1.4+ writes the claim-target facet as Claim.facet (formerly Claim.surface).
+    assert.equal(result.bundle.claims[0].facet, "sales-grounding-demo");
 
     // Real bundle has events
     assert.ok(result.bundle.events.length > 0, "real bundle must have verification events");
