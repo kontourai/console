@@ -4,6 +4,8 @@
 
 ## Install and invoke
 
+> **Current status:** `kontour console serve` fails with the published packages ([kontourai/cli#6](https://github.com/kontourai/cli/issues/6)). Until that is fixed, start Console with `npx --yes --package @kontourai/console kontour serve`.
+
 Node.js 22 or newer is required. Install the router explicitly:
 
 ```sh
