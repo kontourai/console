@@ -31,9 +31,7 @@ Start the local hub and UI without a global install (the first run downloads the
 npx --yes --package @kontourai/console kontour serve   # hub and UI on 127.0.0.1:3737
 ```
 
-The suite router [`@kontourai/cli`](https://github.com/kontourai/cli), a separate repository, is meant to front this as `kontour console serve`. With the currently published packages that route fails, so use the direct Console command above until [kontourai/cli#6](https://github.com/kontourai/cli/issues/6) is fixed. Both packages also install a `kontour` executable, so a global install of one blocks a later global install of the other (`EEXIST`).
-
-The router is offline and never installs missing products itself. It discovers compatible product packages installed beside `@kontourai/cli` through normal Node package resolution. Explicit `--product-root=<flow|flow-agents|console>=<absolute-package-root>` mappings take precedence for reproducible or offline overrides. `kontour --help` and `kontour init --help` are inert and do not require repository setup. See the [Kontour CLI Router specification](https://github.com/kontourai/cli/blob/main/docs/kontour-cli-router.md) for Flow/Flow Agents kit ownership, direct-bin compatibility, confirmation boundaries, and compatibility-catalog provenance.
+The suite router [`@kontourai/cli`](https://github.com/kontourai/cli), a separate repository, is meant to run this as `kontour console serve`. That route fails with the currently published packages ([kontourai/cli#6](https://github.com/kontourai/cli/issues/6)), so use the command above until it is fixed. The [Kontour CLI Router specification](https://github.com/kontourai/cli/blob/main/docs/kontour-cli-router.md) describes how the router discovers products.
 
 Run the inspector against any directory without a global install:
 
@@ -51,7 +49,7 @@ kontour-flow-bridge --help # bridge local Flow runs into the hub
 kontour-process-bridge --help # bridge flow-agents workflow-process projections into the hub
 ```
 
-`kontour-trust-bridge` is not in published releases through 2.8.0 ([#268](https://github.com/kontourai/console/issues/268)).
+`@kontourai/cli` and `@kontourai/console` both provide a `kontour` executable, so installing one globally after the other fails with `EEXIST`.
 
 The `@kontourai/console` package's `kontour serve` entry point is deprecated in favor of `@kontourai/cli` and `kontour console serve`, but it is the working path until the router issue above is fixed. It will not be removed before Console 3.0; it remains a direct Console bin and does not proxy through the router.
 
@@ -59,7 +57,7 @@ The `@kontourai/console` package's `kontour serve` entry point is deprecated in 
 
 ## Published packages
 
-- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, `kontour-flow-bridge`, `kontour-process-bridge`, and `kontour-trust-bridge` bins.
+- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, `kontour-flow-bridge`, and `kontour-process-bridge` bins (`kontour-trust-bridge` is not in published releases yet; see [#268](https://github.com/kontourai/console/issues/268)).
 - `@kontourai/console-core` — shared record and process-flow shapes.
 - `@kontourai/telemetry` — the canonical telemetry contract: event/pricing shapes, versioned pricing registry, and OpenTelemetry GenAI mapping, consumed by `@kontourai/console`.
 - [`@kontourai/cli`](https://github.com/kontourai/cli) — the offline-first suite router (`kontour` bin) for Flow, Flow Agents, and Console product delegation. Published from its own repository; its only dependency is this repo's `@kontourai/console-core`.
