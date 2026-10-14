@@ -11,3 +11,4 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | Topic | Status | Decision |
 | --- | --- | --- |
 | [console-http-framework](./console-http-framework.md) | needs-decision | Console HTTP framework |
+| [console-multi-tenant-auth](./console-multi-tenant-auth.md) | current | Console multi-tenant authentication and MCP authorization |
