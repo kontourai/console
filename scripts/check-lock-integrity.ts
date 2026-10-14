@@ -96,6 +96,16 @@ export const reviewedOptionalityRecomputations: readonly OptionalityRecomputatio
   { path: "node_modules/http-proxy-agent", key: "devOptional", from: undefined, to: true },
   { path: "node_modules/https-proxy-agent", key: "optional", from: true, to: undefined },
   { path: "node_modules/https-proxy-agent", key: "devOptional", from: undefined, to: true },
+  // Adding @kontourai/veritas 1.11.2 also reaches these through a dev dependency, so they are no
+  // longer optional-only.
+  { path: "node_modules/iconv-lite", key: "optional", from: true, to: undefined },
+  { path: "node_modules/iconv-lite", key: "devOptional", from: undefined, to: true },
+  { path: "node_modules/ip-address", key: "optional", from: true, to: undefined },
+  { path: "node_modules/ip-address", key: "devOptional", from: undefined, to: true },
+  { path: "node_modules/negotiator", key: "optional", from: true, to: undefined },
+  { path: "node_modules/negotiator", key: "devOptional", from: undefined, to: true },
+  { path: "node_modules/safer-buffer", key: "optional", from: true, to: undefined },
+  { path: "node_modules/safer-buffer", key: "devOptional", from: undefined, to: true },
 ];
 
 type LinkToRegistry = { path: string; linkResolved: string; tarballPrefix: string };
