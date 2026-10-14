@@ -124,7 +124,8 @@ export function groundClaim(
         actor: record.recordedBy,
         reviewedAt: record.recordedAt,
         rationale: `Revenue figure verified against internal sales system record ${record.docId}.`,
-        evidenceIds: [`${extractionId}.evidence`],
+        // Survey names the claim's source evidence `${claimId}.evidence.source`.
+        evidenceIds: [`${claimId}.evidence.source`],
         authorizing: {
           kind: "explicit-statement",
           statement: `Revenue record ${record.docId} recorded by ${record.recordedBy} in the internal sales system.`,
@@ -166,8 +167,10 @@ export function groundClaim(
   const bundle = buildSurveyTrustBundle(surveyInput);
 
   // Survey emits no verification policy, and Surface 2.x+ reports a verified claim without
-  // one as a blocking `no-verification-policy` gap. A recorded figure for a closed quarter
-  // is a historical fact, so the grounding does not expire.
+  // one as a blocking `no-verification-policy` gap. A SalesRecord carries no content hash,
+  // so commit validity cannot be evaluated here (Surface reports that as a blocking gap too),
+  // and this path models no restatement: the closed quarter's figure is treated as historical.
+  // The gallery path (ground.ts) has content hashes and uses commit validity.
   const historicalPolicy: VerificationPolicy = {
     id: `policy.${request.claimType}.historical`,
     claimType: request.claimType,

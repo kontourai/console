@@ -301,3 +301,15 @@ test("the reviewed transition lists stay exactly as reviewed", () => {
     "node_modules/safer-buffer devOptional undefined->true",
   ]);
 });
+
+test("entry point: the reviewed survey link needs a plain semver registry version", () => {
+  for (const version of ["8.2.0/../../../left-pad/-/left-pad-1.3.0", "8.2.0.tgz?x=1"]) {
+    const result = runSurveyCheck({
+      ...publishedSurvey,
+      version,
+      resolved: `https://registry.npmjs.org/@kontourai/survey/-/survey-${version}.tgz`,
+    });
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /node_modules\/@kontourai\/survey registry version is not a plain semver version/);
+  }
+});
