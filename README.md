@@ -25,23 +25,20 @@ This repo ships local-first Console foundation code alongside the product contex
 
 Requires Node.js 22 or newer.
 
-For suite navigation, install the dedicated router — [`@kontourai/cli`](https://github.com/kontourai/cli), a separate repository — and opt into product packages separately:
+Start the local hub and UI without a global install (the first run downloads the package):
 
 ```sh
-npm install --global @kontourai/cli @kontourai/console
-kontour console serve
-
-npx --yes --package @kontourai/cli@<exact-version> \
-  --package @kontourai/console@<exact-version> \
-  kontour console serve
+npx --yes --package @kontourai/console kontour serve   # hub and UI on 127.0.0.1:3737
 ```
+
+The suite router [`@kontourai/cli`](https://github.com/kontourai/cli), a separate repository, is meant to front this as `kontour console serve`. With the currently published packages that route fails, so use the direct Console command above until [kontourai/cli#6](https://github.com/kontourai/cli/issues/6) is fixed. Both packages also install a `kontour` executable, so a global install of one blocks a later global install of the other (`EEXIST`).
 
 The router is offline and never installs missing products itself. It discovers compatible product packages installed beside `@kontourai/cli` through normal Node package resolution. Explicit `--product-root=<flow|flow-agents|console>=<absolute-package-root>` mappings take precedence for reproducible or offline overrides. `kontour --help` and `kontour init --help` are inert and do not require repository setup. See the [Kontour CLI Router specification](https://github.com/kontourai/cli/blob/main/docs/kontour-cli-router.md) for Flow/Flow Agents kit ownership, direct-bin compatibility, confirmation boundaries, and compatibility-catalog provenance.
 
-Run the inspector against any directory without installing anything:
+Run the inspector against any directory without a global install:
 
 ```sh
-npx @kontourai/console console-inspect
+npx --yes --package @kontourai/console console-inspect
 ```
 
 Or install globally and run directly:
@@ -52,10 +49,11 @@ console-inspect            # inspect the current directory
 kontour serve              # start the local hub on 127.0.0.1:3737
 kontour-flow-bridge --help # bridge local Flow runs into the hub
 kontour-process-bridge --help # bridge flow-agents workflow-process projections into the hub
-kontour-trust-bridge --help # bridge flow-agents workflow-trust projections into the hub
 ```
 
-The `@kontourai/console` package's `kontour serve` entry point remains behaviorally compatible but is deprecated in favor of `@kontourai/cli` and `kontour console serve`. It will not be removed before Console 3.0; it remains a direct Console bin and does not proxy through the router.
+`kontour-trust-bridge` is not in published releases through 2.8.0 ([#268](https://github.com/kontourai/console/issues/268)).
+
+The `@kontourai/console` package's `kontour serve` entry point is deprecated in favor of `@kontourai/cli` and `kontour console serve`, but it is the working path until the router issue above is fixed. It will not be removed before Console 3.0; it remains a direct Console bin and does not proxy through the router.
 
 `console-inspect` reads `.kontourai/console/events/**/*.jsonl` and `.kontourai/console/projections/**/*.json` in the current directory, validates the records, and prints event counts plus current claim, process, gate, review, action, and link summaries. It exits 0 on success and 1 if validation errors are found. No network access; no mutations.
 
@@ -92,7 +90,7 @@ npx --package @kontourai/console kontour-process-bridge \
 
 ## Bridge a flow-agents workflow-trust projection
 
-`kontour-trust-bridge` reads flow-agents' local workflow-trust projection envelopes (`.kontourai/console/projections/<producer>/*.json`, written by the `flow-agents-console-trust-projection` CLI, flow-agents#891) and delivers them to a hub as Console gate/process/claim/evidence events — read-only over the envelope files, content-addressed event ids, idempotent re-runs. Surface's own `buildTrustReport` output is relayed verbatim (never recomputed): claim status/freshness, evidence, and gate-scoped evidence associations render on the board without Console ever asserting a trust verdict of its own:
+`kontour-trust-bridge` reads flow-agents' local workflow-trust projection envelopes (`.kontourai/console/projections/<producer>/*.json`, written by the `flow-agents-console-trust-projection` CLI, flow-agents#891) and delivers them to a hub as Console gate/process/claim/evidence events — read-only over the envelope files, content-addressed event ids, idempotent re-runs. Surface's own `buildTrustReport` output is relayed verbatim (never recomputed): claim status/freshness, evidence, and gate-scoped evidence associations render on the board without Console ever asserting a trust verdict of its own. Published releases through 2.8.0 do not include this bin ([#268](https://github.com/kontourai/console/issues/268)), so the commands below work once it ships:
 
 ```sh
 npx --package @kontourai/console kontour serve           # hub on 127.0.0.1:3737
@@ -104,7 +102,7 @@ npx --package @kontourai/console kontour-trust-bridge \
 
 Start the hub and the UI, then replay the bundled cross-product example streams into it.
 
-When using `npx @kontourai/console kontour serve`, the UI is served automatically at `http://127.0.0.1:3737/` — no separate terminal needed. For development inside this repo, use `npm run dev:local` to run the Vite dev server and hub together:
+When using `npx --package @kontourai/console kontour serve`, the UI is served automatically at `http://127.0.0.1:3737/` — no separate terminal needed. For development inside this repo, use `npm run dev:local` to run the Vite dev server and hub together:
 
 ```sh
 # terminal 1: loopback hub + UI together (dev mode with HMR)

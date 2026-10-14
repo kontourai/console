@@ -35,7 +35,7 @@ The [`kontour init` workflow](specs/kontour-init.md) can inspect and plan onboar
 Console v0 runs locally without a hosted service. Producers write JSONL event streams and projection snapshots under `.kontourai/console/`. The `console-inspect` CLI reads them and prints a current operating state summary. `kontour serve` exposes the same state over a loopback SSE hub for the UI.
 
 ```sh
-npx @kontourai/console console-inspect
+npx --yes --package @kontourai/console console-inspect
 ```
 
 See the [Golden Demo](examples/golden-demo.md) for a full end-to-end example across Flow, Survey, and Surface.
