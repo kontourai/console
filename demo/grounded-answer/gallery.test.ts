@@ -18,6 +18,8 @@ import { runAll, runScenario } from "./harness.js";
 import { SCENARIOS, TRAP_SCENARIOS, WIN_SCENARIOS, OKF_WIN, OKF_TRAP } from "./scenarios.js";
 import { factCheck, retrieve } from "./rag-baseline.js";
 import { loadOkfConcept, countSchemaFields, sha256Of } from "./okf.js";
+import { groundValue } from "./ground.js";
+import { findRecordByDoc, hashValue } from "./corpus.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -418,5 +420,30 @@ describe("the RAG retriever + fact-checker are real and deterministic", () => {
     // so the checker abstains rather than falsely corroborating.
     const fc = factCheck("Vega Labs Q3-2025 sales", 512_000, ["Vega"]);
     assert.notEqual(fc.verdict, "supported", "must not falsely support from off-subject chunk");
+  });
+});
+
+describe("freshness is derived from the content hash, not the outcome", () => {
+  const beta = findRecordByDoc("sales-2025-q3-beta")!;
+  const b = {
+    subjectType: "account",
+    subjectId: "account-beta",
+    requestedQualifier: "Q3-2025",
+    fieldOrBehavior: "revenue_usd",
+    claimType: "sales.quarterly",
+  };
+  const claimStatus = (opts: Parameters<typeof groundValue>[2]) =>
+    groundValue(b, beta, opts).report.claims[0].status;
+
+  it("a current hash that matches the grounding snapshot is verified", () => {
+    assert.equal(claimStatus({ currentIntegrityRef: beta.contentHash }), "verified");
+    assert.equal(claimStatus(undefined), "verified", "no live hash: the snapshot is current");
+  });
+
+  it("a current hash that differs from the grounding snapshot is stale", () => {
+    const staleSnapshot = hashValue("sales-2025-q3-beta", "records[0].amount", 512_000);
+    assert.equal(claimStatus({ snapshotHash: staleSnapshot, currentIntegrityRef: beta.contentHash }), "stale");
+    // The same snapshot, still current at the source, is verified: the hash decides, not the scenario.
+    assert.equal(claimStatus({ snapshotHash: staleSnapshot, currentIntegrityRef: staleSnapshot }), "verified");
   });
 });

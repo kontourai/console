@@ -75,9 +75,10 @@ function assertVersionBumpResolution(path: string, next: Record<string, unknown>
   }
 }
 
-// Reviewed one-time transitions that the rules above would otherwise reject. Each entry names one
+// Reviewed transitions that the rules above would otherwise reject. Each entry names one
 // lock path and the exact base -> next value, in one direction. Every other field on that path is
-// still checked, and an entry matches nothing once its transition is on the base.
+// still checked. An entry stays live after its transition reaches the base: it admits the same
+// change again only if the base first returns to the entry's from value.
 
 type Optionality = "optional" | "devOptional";
 type OptionalityRecomputation = { path: string; key: Optionality; from: true | undefined; to: true | undefined };
@@ -97,6 +98,9 @@ export const reviewedOptionalityRecomputations: readonly OptionalityRecomputatio
   { path: "node_modules/https-proxy-agent", key: "optional", from: true, to: undefined },
   { path: "node_modules/https-proxy-agent", key: "devOptional", from: undefined, to: true },
 ];
+
+// A registry version is spliced into the expected tarball URL, so it must not carry path or query text.
+const plainSemver = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 
 type LinkToRegistry = { path: string; linkResolved: string; tarballPrefix: string };
 
@@ -125,6 +129,7 @@ function reviewedLinkFor(path: string, prior: Record<string, unknown>): LinkToRe
 function assertLinkToRegistryResolution(path: string, next: Record<string, unknown>, entry: LinkToRegistry): void {
   assert.equal(next.link, undefined, `${path} must stop being a link to move to the registry`);
   assert.equal(typeof next.version, "string", `${path} registry entry has no version`);
+  assert.match(next.version as string, plainSemver, `${path} registry version is not a plain semver version`);
   assert.equal(next.resolved, `${entry.tarballPrefix}${next.version as string}.tgz`, `${path} changed base resolved metadata`);
   assert.ok(
     typeof next.integrity === "string" && strongestIntegrity(next.integrity) === integrityStrength.sha512,
