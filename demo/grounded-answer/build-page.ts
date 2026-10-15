@@ -22,14 +22,13 @@ import { SCENARIOS, WIN_SCENARIOS, TRAP_SCENARIOS } from "./scenarios.js";
 import type { LaneResults } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, "..", "..");
 const outDir = join(__dirname, "dist");
 
+// The panel element ships with @kontourai/surface (the same copy that builds the reports below).
+const panelSource = fileURLToPath(import.meta.resolve("@kontourai/surface/trust-panel/element"));
+
 mkdirSync(outDir, { recursive: true });
-copyFileSync(
-  join(root, "console-ui", "public", "surface-trust-panel.js"),
-  join(outDir, "surface-trust-panel.js")
-);
+copyFileSync(panelSource, join(outDir, "surface-trust-panel.js"));
 
 const results = runAll(SCENARIOS);
 

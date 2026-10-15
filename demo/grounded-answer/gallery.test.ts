@@ -8,7 +8,7 @@
  *       freshness / locator / join check fails.
  *
  * The Kontour lane uses the REAL buildSurveyTrustBundle() + buildTrustReport()
- * (not stubs). These tests assert on the real bundle (schemaVersion 3, verified
+ * (not stubs). These tests assert on the real bundle (schemaVersion 5, verified
  * events) to prove that.
  */
 
@@ -18,6 +18,8 @@ import { runAll, runScenario } from "./harness.js";
 import { SCENARIOS, TRAP_SCENARIOS, WIN_SCENARIOS, OKF_WIN, OKF_TRAP } from "./scenarios.js";
 import { factCheck, retrieve } from "./rag-baseline.js";
 import { loadOkfConcept, countSchemaFields, sha256Of } from "./okf.js";
+import { groundValue } from "./ground.js";
+import { findRecordByDoc, hashValue } from "./corpus.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -87,17 +89,19 @@ describe("precision: the WIN (answerable) scenarios — Kontour CONFIDENTLY answ
         assert.equal(result.kontour.value, scenario.rawAnswer, "answers the right number");
       });
 
-      it("the PASS carries a REAL schemaVersion-3 bundle with a VERIFIED claim", () => {
+      it("the PASS carries a REAL schemaVersion-5 bundle with a VERIFIED claim", () => {
         assert.equal(result.kontour.outcome, "pass");
         if (result.kontour.outcome !== "pass") return;
         const g = result.kontour.grounded;
-        // schemaVersion 3 only comes from the real buildSurveyTrustBundle output.
-        assert.equal(g.bundle.schemaVersion, 3, "must be the real bundle");
+        // schemaVersion 5 only comes from the real buildSurveyTrustBundle output.
+        assert.equal(g.bundle.schemaVersion, 5, "must be the real bundle");
         assert.equal(g.bundle.claims[0].status, "verified", "claim is verified");
+        assert.equal(g.bundle.claims[0].facet, "grounded-answer-gallery", "claim carries the gallery facet");
         assert.ok(g.bundle.events.length > 0, "real bundle has verification events");
         assert.ok(g.bundle.events[0].verifiedAt, "verified event has verifiedAt");
         // The report is the real surface report with one verified claim.
         assert.equal(g.report.summary.byStatus.verified, 1);
+        assert.deepEqual((g.report.transparencyGaps ?? []).filter((gap) => gap.blocking), [], "a PASS has no blocking gap");
         // The grounded qualifier matches what was asked — that is WHY it passes. For the
         // sales scenarios the qualifier is a quarter in the query; the OKF win's qualifier
         // is the OKF `timestamp` (not in the query), asserted in its own dedicated tests.
@@ -169,14 +173,14 @@ describe("Kontour lane uses the REAL survey/surface kernel (not stubs)", () => {
   const FRESHNESS_TRAPS = new Set(["s2", "sokf"]);
 
   for (const scenario of TRAP_SCENARIOS.filter((s) => s.id !== "s0")) {
-    it(`${scenario.id}: blocked outcome still carries a real schemaVersion-3 bundle`, () => {
+    it(`${scenario.id}: blocked outcome still carries a real schemaVersion-5 bundle`, () => {
       const result = runScenario(scenario);
       assert.equal(result.kontour.outcome, "block");
       if (result.kontour.outcome !== "block") return;
       const grounded = result.kontour.grounded;
       assert.ok(grounded, "non-absence blocks should carry the grounded bundle");
-      // schemaVersion 3 only comes from the real buildSurveyTrustBundle output.
-      assert.equal(grounded!.bundle.schemaVersion, 3, "must be the real bundle");
+      // schemaVersion 5 only comes from the real buildSurveyTrustBundle output.
+      assert.equal(grounded!.bundle.schemaVersion, 5, "must be the real bundle");
       // The authored claim is verified (the value was reviewed) in every trap; the DERIVED
       // report status is what distinguishes freshness from binding traps (asserted below).
       assert.equal(grounded!.bundle.claims[0].status, "verified");
@@ -327,8 +331,8 @@ describe("OKF interop — grounded against a REAL, public Google OKF concept", (
     assert.equal(result.kontour.outcome, "pass", "the OKF win must PASS");
     if (result.kontour.outcome !== "pass") return;
     const g = result.kontour.grounded;
-    // Real schemaVersion-3 bundle with a verified claim.
-    assert.equal(g.bundle.schemaVersion, 3, "real buildSurveyTrustBundle output");
+    // Real schemaVersion-5 bundle with a verified claim.
+    assert.equal(g.bundle.schemaVersion, 5, "real buildSurveyTrustBundle output");
     assert.equal(g.bundle.claims[0].status, "verified", "claim is verified");
     assert.equal(g.report.summary.byStatus.verified, 1);
     // The evidence sourceLocator == the OKF resource URI.
@@ -371,8 +375,8 @@ describe("OKF interop — grounded against a REAL, public Google OKF concept", (
     assert.match(result.kontour.reason, /STALE|stale/);
     assert.match(result.kontour.reason, /integrity-ref/, "names the integrity-ref boundary");
     assert.match(result.kontour.reason, /timestamp/, "explains a bare timestamp cannot detect a content change");
-    // Still a real schemaVersion-3 bundle (the stale grounding is real, just stale).
-    assert.equal(result.kontour.grounded!.bundle.schemaVersion, 3);
+    // Still a real schemaVersion-5 bundle (the stale grounding is real, just stale).
+    assert.equal(result.kontour.grounded!.bundle.schemaVersion, 5);
   });
 
   it("OKF TRAP: a naive OKF-trusting / RAG consumer would serve the stale fact (the gap)", () => {
@@ -416,5 +420,30 @@ describe("the RAG retriever + fact-checker are real and deterministic", () => {
     // so the checker abstains rather than falsely corroborating.
     const fc = factCheck("Vega Labs Q3-2025 sales", 512_000, ["Vega"]);
     assert.notEqual(fc.verdict, "supported", "must not falsely support from off-subject chunk");
+  });
+});
+
+describe("freshness is derived from the content hash, not the outcome", () => {
+  const beta = findRecordByDoc("sales-2025-q3-beta")!;
+  const b = {
+    subjectType: "account",
+    subjectId: "account-beta",
+    requestedQualifier: "Q3-2025",
+    fieldOrBehavior: "revenue_usd",
+    claimType: "sales.quarterly",
+  };
+  const claimStatus = (opts: Parameters<typeof groundValue>[2]) =>
+    groundValue(b, beta, opts).report.claims[0].status;
+
+  it("a current hash that matches the grounding snapshot is verified", () => {
+    assert.equal(claimStatus({ currentIntegrityRef: beta.contentHash }), "verified");
+    assert.equal(claimStatus(undefined), "verified", "no live hash: the snapshot is current");
+  });
+
+  it("a current hash that differs from the grounding snapshot is stale", () => {
+    const staleSnapshot = hashValue("sales-2025-q3-beta", "records[0].amount", 512_000);
+    assert.equal(claimStatus({ snapshotHash: staleSnapshot, currentIntegrityRef: beta.contentHash }), "stale");
+    // The same snapshot, still current at the source, is verified: the hash decides, not the scenario.
+    assert.equal(claimStatus({ snapshotHash: staleSnapshot, currentIntegrityRef: staleSnapshot }), "verified");
   });
 });

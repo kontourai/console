@@ -90,18 +90,18 @@ async function buildTrustReportFromBundle(opts: {
 }): Promise<unknown> {
   const { buildTrustReport } = await import("@kontourai/surface");
   const now = new Date();
-  // Build a Hachure-conformant TrustBundle (schemaVersion 3) — same shape
-  // that Flow writes to evidence/manifest.json as a trust.bundle entry's
-  // "bundle" field.
+  // Build a Hachure-conformant TrustBundle (schemaVersion 5, where Claim.surface
+  // became Claim.facet) — same shape that Flow writes to evidence/manifest.json
+  // as a trust.bundle entry's "bundle" field.
   const bundle = {
-    schemaVersion: 3 as const,
+    schemaVersion: 5 as const,
     source: opts.producer,
     claims: [
       {
         id: opts.claimId,
         subjectType: opts.subjectType,
         subjectId: opts.subjectId,
-        surface: opts.producer,
+        facet: opts.producer,
         claimType: opts.claimType,
         fieldOrBehavior: opts.claimType,
         value: "all checks passed",
@@ -123,7 +123,22 @@ async function buildTrustReportFromBundle(opts: {
         supportStrength: "entails" as const,
       },
     ],
-    policies: [],
+    // Surface 2.x+ reports a verified claim with no resolved policy as a blocking
+    // `no-verification-policy` gap. The claim describes one finished run, so it
+    // does not expire.
+    policies: [
+      {
+        id: `policy.${opts.claimType}.historical`,
+        claimType: opts.claimType,
+        requiredEvidence: ["test_output" as const],
+        acceptanceCriteria: ["the run's checks passed"],
+        reviewAuthority: opts.producer,
+        validityRule: { kind: "historical" as const },
+        stalenessTriggers: [],
+        conflictRules: [],
+        impactLevel: "medium" as const,
+      },
+    ],
     // A claim event with status="verified" is required by Surface's derivation
     // function (deriveTrustStatus) to produce a verified TrustStatus.
     events: [

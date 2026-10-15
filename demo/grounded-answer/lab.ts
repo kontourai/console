@@ -14,7 +14,7 @@
 import { buildSurveyTrustBundle } from "@kontourai/survey";
 import { buildTrustReport } from "@kontourai/surface";
 import type { SurveyInput } from "@kontourai/survey";
-import type { TrustBundle, TrustReport } from "@kontourai/surface";
+import type { TrustBundle, TrustReport, VerificationPolicy } from "@kontourai/surface";
 import type { SalesRecord } from "./sales-system.js";
 
 export interface ClaimRequest {
@@ -124,7 +124,8 @@ export function groundClaim(
         actor: record.recordedBy,
         reviewedAt: record.recordedAt,
         rationale: `Revenue figure verified against internal sales system record ${record.docId}.`,
-        evidenceIds: [`${extractionId}.evidence`],
+        // Survey names the claim's source evidence `${claimId}.evidence.source`.
+        evidenceIds: [`${claimId}.evidence.source`],
         authorizing: {
           kind: "explicit-statement",
           statement: `Revenue record ${record.docId} recorded by ${record.recordedBy} in the internal sales system.`,
@@ -140,7 +141,7 @@ export function groundClaim(
         candidateId,
         subjectType: request.subjectType,
         subjectId: request.subjectId,
-        surface: "sales-grounding-demo",
+        facet: "sales-grounding-demo",
         claimType: request.claimType,
         fieldOrBehavior: request.fieldOrBehavior,
         value: record.amount,
@@ -164,6 +165,24 @@ export function groundClaim(
   // REAL call — not faked. buildSurveyTrustBundle asserts producer discipline:
   // a "verified" claim CANNOT be produced without a review outcome with actor + reviewedAt.
   const bundle = buildSurveyTrustBundle(surveyInput);
+
+  // Survey emits no verification policy, and Surface 2.x+ reports a verified claim without
+  // one as a blocking `no-verification-policy` gap. A SalesRecord carries no content hash,
+  // so commit validity cannot be evaluated here (Surface reports that as a blocking gap too),
+  // and this path models no restatement: the closed quarter's figure is treated as historical.
+  // The gallery path (ground.ts) has content hashes and uses commit validity.
+  const historicalPolicy: VerificationPolicy = {
+    id: `policy.${request.claimType}.historical`,
+    claimType: request.claimType,
+    requiredEvidence: [],
+    acceptanceCriteria: ["the amount is read from the system-of-record entry for the stated quarter"],
+    reviewAuthority: "revenue-ops",
+    validityRule: { kind: "historical" },
+    stalenessTriggers: [],
+    conflictRules: [],
+    impactLevel: "high",
+  };
+  bundle.policies = [...bundle.policies, historicalPolicy];
 
   // REAL surface report — derives the TrustReport from the Hachure TrustBundle.
   const report = buildTrustReport(bundle, {

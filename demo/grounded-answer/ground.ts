@@ -90,9 +90,9 @@ export function groundValue(
     /** Override the integrity-ref snapshot (stale grounding). */
     snapshotHash?: string;
     /**
-     * The source's CURRENT content hash. When supplied AND it differs from the
-     * grounding snapshot (`snapshotHash`), the bundle is annotated with a real
-     * Surface commit-validity policy and `currentIntegrityRef`, so the REAL
+     * The source's CURRENT content hash (defaults to the grounding snapshot). The
+     * bundle always carries a Surface commit-validity policy and this value as
+     * `currentIntegrityRef`, so when it differs from `snapshotHash` the REAL
      * buildTrustReport() derives the claim's status as **stale** (TrustStatus
      * "stale") — not "verified". This makes the trust ARTIFACT carry the adverse
      * freshness state, so the panel shows it independently of the lane's prose.
@@ -172,7 +172,9 @@ export function groundValue(
         actor: record.recordedBy,
         reviewedAt: record.observedAt,
         rationale: `${record.field} verified against record ${record.docId}.`,
-        evidenceIds: [`${extractionId}.evidence`],
+        // Survey names the claim's source evidence `${claimId}.evidence.source`; citing it links the
+        // verified event to the evidence that carries the grounding integrity-ref.
+        evidenceIds: [`${claimId}.evidence.source`],
         authorizing: {
           kind: "explicit-statement",
           statement: `Record ${record.docId} recorded by ${record.recordedBy}.`,
@@ -188,7 +190,7 @@ export function groundValue(
         candidateId,
         subjectType: binding.subjectType,
         subjectId: binding.subjectId,
-        surface: "grounded-answer-gallery",
+        facet: "grounded-answer-gallery",
         claimType: binding.claimType,
         fieldOrBehavior: binding.fieldOrBehavior,
         value: record.value,
@@ -230,39 +232,30 @@ export function groundValue(
     e.metadata = { ...(e.metadata ?? {}), retrieval };
   }
 
-  // Freshness: if the caller supplied the source's CURRENT content hash and it no
-  // longer matches the grounding snapshot, annotate the REAL bundle so Surface's own
-  // deriveTrustStatus() resolves the claim to "stale". This is not a label we paint:
-  // buildTrustReport() below derives it, exactly as it would in production —
-  //   - a commit-validity VerificationPolicy on the claim's claimType, and
-  //   - claim.currentIntegrityRef = the live source hash (≠ the evidence integrityRef,
-  //     which is the stale grounding snapshot).
-  // status.isVerifiedEventStale() then sees no event-evidence integrityRef matching the
-  // claim's currentIntegrityRef and returns "stale" → the panel renders "Needs refresh"
-  // and a freshness-breach transparency gap. NOTHING fabricated; the data is just stale.
-  const isStale =
-    opts?.currentIntegrityRef !== undefined && opts.currentIntegrityRef !== snapshotHash;
-  if (isStale) {
-    const stalePolicy: VerificationPolicy = {
-      id: `policy.${binding.claimType}.commit`,
-      claimType: binding.claimType,
-      requiredEvidence: [],
-      acceptanceCriteria: [
-        "the grounding snapshot's integrity-ref still matches the source's current content hash",
-      ],
-      reviewAuthority: "revenue-ops",
-      // commit-validity: the grounding is valid only while its content hash holds.
-      validityRule: { kind: "commit" },
-      stalenessTriggers: ["source content hash advanced past the grounding snapshot"],
-      conflictRules: [],
-      impactLevel: "high",
-    };
-    bundle.policies = [...bundle.policies, stalePolicy];
-    for (const c of bundle.claims) {
-      // The CURRENT content hash of the live source — differs from the evidence
-      // integrityRef (the stale snapshot), which is what makes the claim stale.
-      c.currentIntegrityRef = opts.currentIntegrityRef;
-    }
+  // Freshness, derived by Surface rather than painted: a commit-validity policy keeps the
+  // claim verified only while its currentIntegrityRef equals the integrity-ref of the
+  // evidence its verified event cites (the grounding snapshot). The caller may supply the
+  // source's CURRENT content hash; without one, the snapshot is the current state. When the
+  // live hash differs, buildTrustReport() derives "stale", the panel renders
+  // "Needs refresh", and a freshness-breach transparency gap appears.
+  const commitPolicy: VerificationPolicy = {
+    id: `policy.${binding.claimType}.commit`,
+    claimType: binding.claimType,
+    requiredEvidence: [],
+    acceptanceCriteria: [
+      "the grounding snapshot's integrity-ref still matches the source's current content hash",
+    ],
+    reviewAuthority: "revenue-ops",
+    // commit-validity: the grounding is valid only while its content hash holds.
+    validityRule: { kind: "commit" },
+    stalenessTriggers: ["source content hash advanced past the grounding snapshot"],
+    conflictRules: [],
+    impactLevel: "high",
+  };
+  bundle.policies = [...bundle.policies, commitPolicy];
+  const currentIntegrityRef = opts?.currentIntegrityRef ?? snapshotHash;
+  for (const c of bundle.claims) {
+    c.currentIntegrityRef = currentIntegrityRef;
   }
 
   const report = buildTrustReport(bundle, { id: `report.${claimId}`, now: new Date() });

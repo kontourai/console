@@ -33,21 +33,17 @@ import { SCENARIOS, OKF_WIN, OKF_TRAP } from "./scenarios.js";
 import type { LaneResults } from "./harness.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = join(__dirname, "..", "..");
 const outDir = join(__dirname, "dist");
 
+// The panel element ships with @kontourai/surface (the same copy that builds the reports below).
+const panelSource = fileURLToPath(import.meta.resolve("@kontourai/surface/trust-panel/element"));
+
 mkdirSync(outDir, { recursive: true });
-copyFileSync(
-  join(root, "console-ui", "public", "surface-trust-panel.js"),
-  join(outDir, "surface-trust-panel.js")
-);
+copyFileSync(panelSource, join(outDir, "surface-trust-panel.js"));
 // Inline the panel module so the deck renders the trust panel even when opened as a
 // plain file:// page (browsers block <script type="module" src> over file:// via CORS).
 // Escape any "</script" so the inline tag can't be closed early by the source's comments.
-const panelInlineJs = readFileSync(
-  join(root, "console-ui", "public", "surface-trust-panel.js"),
-  "utf8"
-).replaceAll("</script", "<\\/script");
+const panelInlineJs = readFileSync(panelSource, "utf8").replaceAll("</script", "<\\/script");
 
 const results = runAll(SCENARIOS);
 const byId = (id: string) => results.find((r) => r.scenario.id === id)!;
