@@ -291,6 +291,14 @@ test("the reviewed transition lists stay exactly as reviewed", () => {
     "node_modules/http-proxy-agent devOptional undefined->true",
     "node_modules/https-proxy-agent optional true->undefined",
     "node_modules/https-proxy-agent devOptional undefined->true",
+    "node_modules/iconv-lite optional true->undefined",
+    "node_modules/iconv-lite devOptional undefined->true",
+    "node_modules/ip-address optional true->undefined",
+    "node_modules/ip-address devOptional undefined->true",
+    "node_modules/negotiator optional true->undefined",
+    "node_modules/negotiator devOptional undefined->true",
+    "node_modules/safer-buffer optional true->undefined",
+    "node_modules/safer-buffer devOptional undefined->true",
   ]);
 });
 
