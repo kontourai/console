@@ -5,11 +5,13 @@
 [![Docs](https://img.shields.io/badge/docs-kontourai.github.io-blue)](https://kontourai.github.io/console/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
-**One operating plane for the whole suite: claim status, process status, proof, queues, decisions, freshness, exceptions, and next actions.**
+**Find blocked work, inspect reported status and evidence, and see what needs to happen next.**
 
 [Documentation](https://kontourai.github.io/console/) · [kontourai.io/console](https://kontourai.io/console/)
 
-The primitives remain portable — Console never becomes the authority for any of them:
+Console brings producer-reported work into one view and correlates related records, evidence, and next actions. It displays what products report; each producing product remains the authority for its own status and decisions. See [Product Boundaries](docs/product-boundaries.md) for the contracts and limits.
+
+The products remain usable without Console:
 
 - [Surface](https://kontourai.io/surface) owns claim trust state.
 - [Flow](https://kontourai.io/flow) owns process transparency and gate control.
