@@ -1,6 +1,6 @@
 # Kontour Console
 
-One operating plane for the whole suite. Console surfaces what is true, what is stale, what is blocked, and what comes next — without becoming the authority for any primitive.
+Find blocked work, inspect producer-reported status and evidence, and see what needs to happen next. Console correlates related product records in one view; each producing product remains the authority for its own status and decisions.
 
 - [Product Boundaries](product-boundaries.md): What Console owns, what the primitives own, and how suite-level authority is kept separate from product semantics.
 - [Event & Projection Schema](specs/projection-schema.md): The v0.1 event envelope, projection envelope, local JSONL stream convention, replay rules, and cross-product refs.
