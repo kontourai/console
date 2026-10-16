@@ -2,7 +2,7 @@ import assert = require("node:assert/strict");
 import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test = require("node:test");
 
 const repositoryRoot = join(__dirname, "..", "..");
@@ -14,14 +14,20 @@ test("packed Console consumer can require Kit observability runtime exports", { 
   mkdirSync(packed);
   mkdirSync(consumerDirectory);
   const consumer = realpathSync(consumerDirectory);
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const npmOptions = { windowsHide: true, shell: process.platform === "win32", timeout: 120_000 };
+  // npm scripts supply their CLI path; direct Windows runs use Node's bundled npm.
+  // Invoke it through Node so temporary paths remain arguments, without a shell.
+  const npmCli = process.env.npm_execpath ?? (process.platform === "win32"
+    ? join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js")
+    : undefined);
+  const npm = npmCli ? process.execPath : "npm";
+  const npmArgs = (args: string[]) => npmCli ? [npmCli, ...args] : args;
+  const npmOptions = { windowsHide: true, timeout: 120_000 };
   const coreRoot = join(repositoryRoot, "console-core");
   const candidateConsole = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8"));
   const candidateCore = JSON.parse(readFileSync(join(coreRoot, "package.json"), "utf8"));
 
   function packPackage(packageRoot: string): string {
-    const output = execFileSync(npm, ["pack", "--json", "--pack-destination", packed], {
+    const output = execFileSync(npm, npmArgs(["pack", "--json", "--pack-destination", packed]), {
       ...npmOptions, cwd: packageRoot, encoding: "utf8",
     });
     const jsonStart = output.lastIndexOf("\n[");
@@ -39,7 +45,7 @@ test("packed Console consumer can require Kit observability runtime exports", { 
     const consoleTarball = packPackage(repositoryRoot);
 
     writeFileSync(join(consumer, "package.json"), JSON.stringify({ private: true, name: "console-kit-observability-consumer" }));
-    execFileSync(npm, ["install", "--ignore-scripts", "--no-package-lock", "--no-audit", "--no-fund", coreTarball, consoleTarball], {
+    execFileSync(npm, npmArgs(["install", "--ignore-scripts", "--no-package-lock", "--no-audit", "--no-fund", coreTarball, consoleTarball]), {
       ...npmOptions, cwd: consumer, stdio: "pipe",
     });
     const exported = JSON.parse(execFileSync(process.execPath, ["-e", `
