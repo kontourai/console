@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.1](https://github.com/kontourai/console/compare/console-server-v1.1.0...console-server-v1.1.1) (2026-10-17)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @kontourai/console-core bumped from 0.4.0 to 0.5.0
+
 ## [1.1.0](https://github.com/kontourai/console/compare/console-server-v1.0.0...console-server-v1.1.0) (2026-10-17)
 
 
