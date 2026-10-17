@@ -1,0 +1,57 @@
+{
+  "name": "@kontourai/console-server",
+  "version": "1.1.0",
+  "type": "commonjs",
+  "exports": {
+    ".": {
+      "types": "./dist/src/console-foundation/index.d.ts",
+      "default": "./dist/src/console-foundation/index.js"
+    }
+  },
+  "scripts": {
+    "db:migrate": "node --import tsx bin/console-db-migrate.ts",
+    "inspect:fixtures": "KONTOUR_REPO_ROOT=.. node --import tsx bin/console-inspect.ts",
+    "serve": "KONTOUR_REPO_ROOT=.. node --import tsx bin/kontour.ts serve",
+    "test": "KONTOUR_REPO_ROOT=.. node --import tsx --test test/*.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "generate:openapi": "node scripts/generate-openapi-schemas.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "ts-json-schema-generator": "^2.9.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "description": "Kontour Console local hub: event ingestion, projections, telemetry, SSE, and the Flow run bridge.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/console.git",
+    "directory": "console-server"
+  },
+  "main": "dist/src/console-foundation/index.js",
+  "types": "dist/src/console-foundation/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@kontourai/console-core": "0.4.0",
+    "@kontourai/flow": "^1.4.0",
+    "@kontourai/surface": "^1.0.1",
+    "@kontourai/telemetry": "^0.1.0",
+    "jose": "^6.2.3"
+  },
+  "peerDependencies": {
+    "@kontourai/flow-agents": ">=5.5.0"
+  },
+  "peerDependenciesMeta": {
+    "@kontourai/flow-agents": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

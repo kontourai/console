@@ -12,13 +12,13 @@ const { Manifest } = require("release-please/build/src/manifest.js") as typeof i
 type Baseline = { root: string; core: string; server: string; ui: string };
 const repositoryRoot = join(__dirname, "..");
 const releaseWorkflow = readFileSync(join(repositoryRoot, ".github/workflows/release-please.yml"), "utf8");
-type ReleaseSet = { console?: string; core?: string; server?: string };
+type ReleaseSet = { console?: string; core?: string; server?: string; ui?: string };
 type WorkflowDocument = { jobs: Record<string, { needs?: string | string[]; if?: string; uses?: string; with?: { target_tag?: string } }> };
 
 function evaluatePublishCalls(document: WorkflowDocument, releases: ReleaseSet, coreResult = "success"): string[] {
   const calls: string[] = [];
-  const tags: Record<string, string | undefined> = { console_tag_name: releases.console, core_tag_name: releases.core, server_tag_name: releases.server };
-  const created: Record<string, boolean> = { console_release_created: !!releases.console, core_release_created: !!releases.core, server_release_created: !!releases.server };
+  const tags: Record<string, string | undefined> = { console_tag_name: releases.console, core_tag_name: releases.core, server_tag_name: releases.server, ui_tag_name: releases.ui };
+  const created: Record<string, boolean> = { console_release_created: !!releases.console, core_release_created: !!releases.core, server_release_created: !!releases.server, ui_release_created: !!releases.ui };
   for (const [id, job] of Object.entries(document.jobs)) {
     if (!id.startsWith("publish-")) continue;
     if (job.uses !== "./.github/workflows/publish-npm.yml") continue;
@@ -37,14 +37,15 @@ function evaluatePublishCalls(document: WorkflowDocument, releases: ReleaseSet, 
 }
 
 function assertReleaseMatrix(document: WorkflowDocument): void {
-  const all = { console: "v2.0.0", core: "console-core-v1.0.0", server: "console-server-v1.0.0" };
+  const all = { console: "v2.0.0", core: "console-core-v1.0.0", server: "console-server-v1.0.0", ui: "console-ui-v1.0.0" };
   assert.deepEqual(evaluatePublishCalls(document, all).sort(), Object.values(all).sort());
   assert.deepEqual(evaluatePublishCalls(document, { core: all.core }), [all.core]);
   assert.deepEqual(evaluatePublishCalls(document, { console: all.console }), [all.console]);
   assert.deepEqual(evaluatePublishCalls(document, { server: all.server }), [all.server]);
+  assert.deepEqual(evaluatePublishCalls(document, { ui: all.ui }), [all.ui]);
   assert.deepEqual(evaluatePublishCalls(document, all, "failure"), [all.core]);
   assert.deepEqual(evaluatePublishCalls(document, {}), []);
-  assert.equal(new Set(evaluatePublishCalls(document, all)).size, 3);
+  assert.equal(new Set(evaluatePublishCalls(document, all)).size, 4);
 }
 const releaseConfig = readFileSync(join(repositoryRoot, "release-please-config.json"), "utf8");
 const loadedManifest = JSON.parse(readFileSync(join(repositoryRoot, ".release-please-manifest.json"), "utf8")) as Record<string, string>;
@@ -142,7 +143,7 @@ function registerFixtureTests(): void {
     }
   });
 
-  test("release orchestration behavior covers all-three, subsets, and Core failure", () => {
+  test("release orchestration behavior covers all-four, subsets, and Core failure", () => {
     assertReleaseMatrix(parseYaml(releaseWorkflow) as WorkflowDocument);
   });
 
@@ -150,6 +151,7 @@ function registerFixtureTests(): void {
     const source = parseYaml(releaseWorkflow) as WorkflowDocument;
     for (const mutate of [
       (doc: WorkflowDocument) => { delete doc.jobs["publish-core"]; },
+      (doc: WorkflowDocument) => { delete doc.jobs["publish-console-ui"]; },
       (doc: WorkflowDocument) => { doc.jobs["publish-core-copy"] = structuredClone(doc.jobs["publish-core"]); },
       (doc: WorkflowDocument) => { doc.jobs["publish-server"].with!.target_tag = "${{ needs.release-please.outputs.console_tag_name }}"; },
       (doc: WorkflowDocument) => { doc.jobs["publish-server"].needs = ["release-please"]; },

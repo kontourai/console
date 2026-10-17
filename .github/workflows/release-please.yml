@@ -11,6 +11,16 @@ on:
         required: false
         type: string
         default: ''
+      recover_release_pr:
+        description: Merged release PR whose missing component releases should be completed
+        required: false
+        type: string
+        default: ''
+      recover_release_sha:
+        description: Exact main-ancestor merge SHA of that release PR (required with recover_release_pr)
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -19,18 +29,46 @@ permissions:
 
 jobs:
   release-please:
-    if: github.event_name == 'push' || inputs.target_tag == ''
+    if: github.event_name == 'push' || inputs.target_tag == '' || inputs.recover_release_pr != '' || inputs.recover_release_sha != ''
+    concurrency:
+      group: console-release-creation
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     outputs:
-      console_release_created: ${{ steps.release.outputs.release_created }}
-      console_tag_name: ${{ steps.release.outputs.tag_name }}
-      core_release_created: ${{ steps.release.outputs['console-core--release_created'] }}
-      core_tag_name: ${{ steps.release.outputs['console-core--tag_name'] }}
-      server_release_created: ${{ steps.release.outputs['console-server--release_created'] }}
-      server_tag_name: ${{ steps.release.outputs['console-server--tag_name'] }}
-      ui_release_created: ${{ steps.release.outputs['console-ui--release_created'] }}
-      ui_tag_name: ${{ steps.release.outputs['console-ui--tag_name'] }}
+      console_release_created: ${{ steps.components.outputs.release_created }}
+      console_tag_name: ${{ steps.components.outputs.tag_name }}
+      core_release_created: ${{ steps.components.outputs['console-core--release_created'] }}
+      core_tag_name: ${{ steps.components.outputs['console-core--tag_name'] }}
+      server_release_created: ${{ steps.components.outputs['console-server--release_created'] }}
+      server_tag_name: ${{ steps.components.outputs['console-server--tag_name'] }}
+      ui_release_created: ${{ steps.components.outputs['console-ui--release_created'] }}
+      ui_tag_name: ${{ steps.components.outputs['console-ui--tag_name'] }}
     steps:
+      - name: Validate release mode
+        env:
+          TARGET_TAG: ${{ inputs.target_tag }}
+          RECOVER_RELEASE_PR: ${{ inputs.recover_release_pr }}
+          RECOVER_RELEASE_SHA: ${{ inputs.recover_release_sha }}
+        run: |
+          if [ -n "${TARGET_TAG}" ] && { [ -n "${RECOVER_RELEASE_PR}" ] || [ -n "${RECOVER_RELEASE_SHA}" ]; }; then
+            echo "Tag retry and component recovery are mutually exclusive." >&2
+            exit 1
+          fi
+
+      - name: Checkout release policy
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Install locked release tooling
+        run: npm ci --no-fund --no-audit
+
       # Release PRs authored by the default GITHUB_TOKEN (github-actions[bot])
       # get their CI runs held as action_required on every refresh. Minting a
       # token from the org's kontour-release-bot app makes the app the PR
@@ -42,18 +80,28 @@ jobs:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
-      - name: Run release-please
+      - name: Create component releases without reserializing merged notes
+        id: components
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ steps.app-token.outputs.token }}
+          RECOVER_RELEASE_PR: ${{ inputs.recover_release_pr }}
+          RECOVER_RELEASE_SHA: ${{ inputs.recover_release_sha }}
+        run: node --import tsx scripts/create-component-releases.ts
+
+      - name: Generate release-please pull request
         id: release
-        uses: googleapis/release-please-action@v4
+        if: inputs.recover_release_pr == '' && inputs.recover_release_sha == ''
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1, PR generation only
         with:
           token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+          skip-github-release: true
 
   # npm trusted publishing validates the calling workflow for workflow_call.
   # Keep retries under this same top-level identity as automatic releases.
   retry-publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.target_tag != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.target_tag != '' && inputs.recover_release_pr == '' && inputs.recover_release_sha == ''
     uses: ./.github/workflows/publish-npm.yml
     with:
       target_tag: ${{ inputs.target_tag }}

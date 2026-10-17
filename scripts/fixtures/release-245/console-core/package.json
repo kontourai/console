@@ -1,0 +1,57 @@
+{
+  "name": "@kontourai/console-core",
+  "version": "0.4.0",
+  "type": "commonjs",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./product-capability-descriptor": {
+      "types": "./dist/product-capability-descriptor.d.ts",
+      "default": "./dist/product-capability-descriptor.js"
+    },
+    "./product-capability-descriptor/node": {
+      "types": "./dist/product-capability-descriptor-node.d.ts",
+      "default": "./dist/product-capability-descriptor-node.js"
+    },
+    "./intent-binding": {
+      "types": "./dist/intent-binding.d.ts",
+      "default": "./dist/intent-binding.js"
+    },
+    "./schemas/product-capability-descriptor.schema.json": {
+      "default": "./schemas/product-capability-descriptor.schema.json"
+    }
+  },
+  "scripts": {
+    "test": "node --import tsx --test test/*.ts",
+    "check:descriptor-boundary": "node --import tsx --test --test-name-pattern='descriptor import boundary|descriptor package' test/product-capability-descriptor-boundary.test.ts",
+    "test:package-surface": "node --import tsx scripts/test-package-surface.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "ajv": "^8.20.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "description": "Shared Kontour Console record and process-flow shapes.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kontourai/console.git",
+    "directory": "console-core"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "schemas"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
