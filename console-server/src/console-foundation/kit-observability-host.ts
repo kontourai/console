@@ -4,7 +4,7 @@ import type {
   KitObservabilityHostState,
   KitObservabilityNegotiation,
   KitObservabilityRecord,
-} from "@kontourai/flow-agents/kit-observability-contract" with { "resolution-mode": "import" };
+} from "./kit-observability-types";
 
 export type KitEvidenceMode = "observational" | "controlled";
 export type KitContributionLifecycle =

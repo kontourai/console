@@ -11,6 +11,20 @@ import {
 } from "../src/console-foundation/kit-observability-host";
 import { createConsoleHubServer } from "../src/console-foundation/console-hub-server";
 import type { KitObservabilityContribution } from "@kontourai/flow-agents/kit-observability-contract" with { "resolution-mode": "import" };
+import type * as Producer from "@kontourai/flow-agents/kit-observability-contract" with { "resolution-mode": "import" };
+import type * as Boundary from "../src/console-foundation/kit-observability-types";
+
+// Fail the normal Server typecheck if Console's self-contained adapter boundary
+// drifts in either direction from the real optional producer contract.
+type Equivalent<L, R> = [L] extends [R] ? [R] extends [L] ? true : false : false;
+type AssertCompatible<T extends true> = T;
+type AdapterBoundaryCompatibility = [
+  AssertCompatible<Equivalent<Boundary.KitObservabilityContribution, Producer.KitObservabilityContribution>>,
+  AssertCompatible<Equivalent<Boundary.KitObservabilityRecord, Producer.KitObservabilityRecord>>,
+  AssertCompatible<Equivalent<Boundary.KitObservabilityHostState, Producer.KitObservabilityHostState>>,
+  AssertCompatible<Equivalent<Boundary.KitObservabilityNegotiation, Producer.KitObservabilityNegotiation>>,
+  AssertCompatible<Equivalent<Boundary.KitObservabilityDiagnostic, Producer.KitObservabilityDiagnostic>>,
+];
 
 test("console-foundation runtime entrypoint retains Kit observability exports", () => {
   const foundation = require("../src/console-foundation");
