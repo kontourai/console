@@ -11,16 +11,18 @@ import { assertExactCoreMetadata, resolveCoreRegistryManifest } from "./npm-rele
 // — the caller sets `working-directory` to the immutable tag checkout — never
 // from this file's own on-disk location.
 const root = process.cwd();
-// Any package that pins @kontourai/console-core exactly runs this
-// anti-drift gate. Currently only console-server: @kontourai/cli used to
-// share this pin and this exact gate before it was extracted to its own
-// kontourai/cli repository, which now carries its own copy. The manifest
-// defaults to console-server's for backward compatibility; the publish
-// workflow passes the resolved target manifest explicitly.
+// Run for every resolved target, including immutable retries. Root, Server
+// and UI must prove their own exact Core pin; Core itself has no prerequisite
+// on its own publication. Default to Server only for legacy direct callers.
 const manifestPath = process.env.PACKAGE_MANIFEST ?? "console-server/package.json";
-const manifest = JSON.parse(readFileSync(resolve(root, manifestPath), "utf8")) as { dependencies?: Record<string, unknown> };
+const manifest = JSON.parse(readFileSync(resolve(root, manifestPath), "utf8")) as { name?: string; dependencies?: Record<string, unknown> };
 const spec = manifest.dependencies?.["@kontourai/console-core"];
-if (typeof spec !== "string") throw new Error(`${manifestPath} is missing Core dependency`);
-const output = execFileSync("npm", ["view", `@kontourai/console-core@${spec}`, "--json"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
-assertExactCoreMetadata(spec, resolveCoreRegistryManifest(spec, JSON.parse(output)));
-process.stdout.write(`Confirmed compatible @kontourai/console-core@${spec} on npm before ${manifestPath} publication.\n`);
+if (manifest.name === "@kontourai/console-core") {
+  if (spec !== undefined) throw new Error("Core must not depend on itself");
+  process.stdout.write(`Core publication has no Core dependency to verify in ${manifestPath}.\n`);
+} else {
+  if (typeof spec !== "string") throw new Error(`${manifestPath} is missing Core dependency`);
+  const output = execFileSync("npm", ["view", `@kontourai/console-core@${spec}`, "--json"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], windowsHide: true, timeout: 30_000 });
+  assertExactCoreMetadata(spec, resolveCoreRegistryManifest(spec, JSON.parse(output)));
+  process.stdout.write(`Confirmed compatible @kontourai/console-core@${spec} on npm before ${manifestPath} publication.\n`);
+}

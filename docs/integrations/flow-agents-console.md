@@ -46,6 +46,10 @@ postinstall build step or private-source dependency for this integration.
 
 Production installs that omit the optional Flow Agents peer fail Kit routes
 closed with `503 KIT_HOST_UNAVAILABLE`; the rest of Console remains available.
+Console and Server ship self-contained structural types for this adapter
+boundary, so their public declarations also typecheck without Flow Agents.
+Flow Agents remains the owner of validation and negotiation; the optional
+integration is checked against its real contract types and conformance vectors.
 
 The first slice explicitly reports these limitations in every workspace read:
 

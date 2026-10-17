@@ -4,7 +4,16 @@
 
 Release Core before CLI. A CLI tag is allowed to publish only after its exact Core dependency is visible on npm and exposes both `./product-capability-descriptor` and `./product-capability-descriptor/node`. Core publication is blocking, not best effort.
 
+The reusable publisher applies that exact registry check, including the
+`./intent-binding` export, to the resolved root Console, Server, and UI manifests
+on automatic releases and immutable retries. Core itself has no dependency on
+its own publication. Current-main policy code reads each immutable tag's manifest.
+
 Local workspace success is not adopter evidence. Pull requests must install copied CLI and Core tarballs in a temporary directory outside the repository with workspace resolution unavailable. Release verification additionally installs exact public versions into an isolated npm cache and runs the public `npx` entrypoint. Release Please owns package manifests, changelogs, component tags, and root lock workspace identities; generated release pull requests must not be repaired by hand.
+
+Packed Console and Server adopters must also compile their public declarations
+with `skipLibCheck: false` and without the optional Flow Agents package. Optional
+Kit integration is checked separately with the real Flow Agents contract.
 
 ## Trusted publisher identity and retries
 

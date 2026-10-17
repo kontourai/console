@@ -176,8 +176,7 @@ jobs:
           fi
         working-directory: console
 
-      - name: Verify Console Server Core Dependency Is Public
-        if: startsWith(inputs.target_tag, 'console-server-v')
+      - name: Verify Target Core Dependency Is Public
         env:
           PACKAGE_MANIFEST: ${{ needs.gate.outputs.manifest }}
         # Policy code from current main (console-main); manifest/package data
