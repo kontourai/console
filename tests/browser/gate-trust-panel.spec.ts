@@ -343,8 +343,10 @@ test("deselecting a gate and selecting a DIFFERENT one renders a fresh panel wit
   const verifiedPanel = page.getByLabel("Trust panel for gate gate-verified");
   const verifiedPanelEl = verifiedPanel.locator("surface-trust-panel");
   await expect(verifiedPanelEl).toHaveCount(1);
-  const shadowTextBefore = await verifiedPanelEl.evaluate((el) => el.shadowRoot?.textContent ?? "");
-  expect(shadowTextBefore).toContain("required tests pass");
+  // Element presence can precede its lazy custom-element upgrade/render.
+  await expect
+    .poll(() => verifiedPanelEl.evaluate((el) => el.shadowRoot?.textContent ?? ""))
+    .toContain("required tests pass");
 
   // Deselect gate-verified, then select the unrelated no-data gate.
   await page.locator("#gate\\:gate-verified").click();
