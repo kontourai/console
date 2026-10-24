@@ -59,7 +59,7 @@ The `@kontourai/console` package's `kontour serve` entry point is deprecated in 
 
 ## Published packages
 
-- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, `kontour-flow-bridge`, and `kontour-process-bridge` bins (`kontour-trust-bridge` is not in published releases yet; see [#268](https://github.com/kontourai/console/issues/268)).
+- `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, `kontour-flow-bridge`, `kontour-process-bridge`, and `kontour-trust-bridge` bins.
 - `@kontourai/console-core` — shared record and process-flow shapes.
 - `@kontourai/console-server` — the standalone server package for programmatic consumers.
 - `@kontourai/console-ui` — React view components and the `@kontourai/console-ui/board.css` stylesheet for host applications.
@@ -92,7 +92,7 @@ npx --package @kontourai/console kontour-process-bridge \
 
 ## Bridge a flow-agents workflow-trust projection
 
-`kontour-trust-bridge` reads flow-agents' local workflow-trust projection envelopes (`.kontourai/console/projections/<producer>/*.json`, written by the `flow-agents-console-trust-projection` CLI, flow-agents#891) and delivers them to a hub as Console gate/process/claim/evidence events — read-only over the envelope files, content-addressed event ids, idempotent re-runs. Surface's own `buildTrustReport` output is relayed verbatim (never recomputed): claim status/freshness, evidence, and gate-scoped evidence associations render on the board without Console ever asserting a trust verdict of its own. Published releases through 2.8.0 do not include this bin ([#268](https://github.com/kontourai/console/issues/268)), so the commands below work once it ships:
+`kontour-trust-bridge` reads flow-agents' local workflow-trust projection envelopes (`.kontourai/console/projections/<producer>/*.json`, written by the `flow-agents-console-trust-projection` CLI, flow-agents#891) and delivers them to a hub as Console gate/process/claim/evidence events — read-only over the envelope files, content-addressed event ids, idempotent re-runs. Surface's own `buildTrustReport` output is relayed verbatim (never recomputed): claim status/freshness, evidence, and gate-scoped evidence associations render on the board without Console ever asserting a trust verdict of its own. The `@kontourai/console@2.9.0` package includes this bin; releases through 2.8.0 do not ([#268](https://github.com/kontourai/console/issues/268)):
 
 ```sh
 npx --package @kontourai/console kontour serve           # hub on 127.0.0.1:3737
