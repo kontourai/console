@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.9.1](https://github.com/kontourai/console/compare/v2.9.0...v2.9.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* preserve release component selection and bounded recovery ([#309](https://github.com/kontourai/console/issues/309)) ([f585844](https://github.com/kontourai/console/commit/f58584498d044e7b58a5e77da34efb1bc2e3ef7a))
+
 ## [2.9.0](https://github.com/kontourai/console/compare/v2.8.0...v2.9.0) (2026-10-17)
 
 
