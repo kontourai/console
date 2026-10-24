@@ -61,10 +61,12 @@ The `@kontourai/console` package's `kontour serve` entry point is deprecated in 
 
 - `@kontourai/console` — the installable/npx entry point; ships the local hub (event ingestion, projections, telemetry, SSE) and the bundled React UI, plus compiled `kontour`, `console-inspect`, `kontour-flow-bridge`, and `kontour-process-bridge` bins (`kontour-trust-bridge` is not in published releases yet; see [#268](https://github.com/kontourai/console/issues/268)).
 - `@kontourai/console-core` — shared record and process-flow shapes.
+- `@kontourai/console-server` — the standalone server package for programmatic consumers.
+- `@kontourai/console-ui` — React view components and the `@kontourai/console-ui/board.css` stylesheet for host applications.
 - `@kontourai/telemetry` — the canonical telemetry contract: event/pricing shapes, versioned pricing registry, and OpenTelemetry GenAI mapping, consumed by `@kontourai/console`.
 - [`@kontourai/cli`](https://github.com/kontourai/cli) — the offline-first suite router (`kontour` bin) for Flow, Flow Agents, and Console product delegation. Published from its own repository; its only dependency is this repo's `@kontourai/console-core`.
 
-The React UI (`console-ui`) is built into the `@kontourai/console` package at `console-ui/dist` and served by `kontour serve` at the hub origin. It is not published as a separate npm package.
+The React application is built into the `@kontourai/console` package at `console-ui/dist` and served by `kontour serve` at the hub origin. The separate `@kontourai/console-ui` package exports the component library and board stylesheet; it does not contain that application bundle.
 
 ## Bridge a real Flow run
 
